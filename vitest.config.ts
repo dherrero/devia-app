@@ -1,28 +1,37 @@
 import { defineConfig } from 'vitest/config';
-import { resolve } from 'path';
 
 export default defineConfig({
+  // Anchor the project root to this file so include/coverage globs resolve
+  // wherever vitest is launched from.
+  root: __dirname,
   test: {
-    globals: true,
     environment: 'node',
-    include: ['**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/apps/front/**', // Angular: own config (apps/front/vitest.config.mts)
-      '**/apps/desktop/**', // Electron satellite: own configs + pipeline (vitest.config.ts / vitest.angular.config.ts)
-      '**/libs/angular-auth/**', // Angular lib: own config (happy-dom + TestBed)
-      '**/libs/ui/**', // Angular UI lib: own config (happy-dom + TestBed)
-      '**/tests/e2e/**', // Playwright-only; uses its own runner.
-    ],
-  },
-  resolve: {
-    alias: {
-      '@dto': resolve(__dirname, 'libs/rest-dto/src/index.ts'),
-      '@internal-auth': resolve(__dirname, 'libs/internal-auth/src/index.ts'),
-      '@front': resolve(__dirname, 'apps/front/src'),
-      '@api': resolve(__dirname, 'apps/api/src'),
-      '@gateway': resolve(__dirname, 'apps/gateway/src'),
+    include: ['src/main/**/*.test.ts', 'src/shared/**/*.test.ts', 'tools/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      // The WHOLE main process and shared domain, not a whitelist.
+      //
+      // This used to list nine files. The thresholds below then read 80/60 and
+      // looked like a quality gate, but they measured 582 statements out of
+      // ~13 700 — a number that could only ever say "those nine files are still
+      // fine". Worse than no number, because it bought false confidence.
+      //
+      // Measured over the real surface: 61.2% statements, 58.0% branches,
+      // 52.8% functions, 63.7% lines. The thresholds are set just under that.
+      //
+      // RATCHET: these only ever go UP. When a change pushes the real number
+      // above a threshold by a comfortable margin, raise the threshold in the
+      // same PR. Never lower one to make a build green — that is the whole
+      // point of the mechanism.
+      include: ['src/main/**/*.ts', 'src/shared/**/*.ts'],
+      exclude: ['**/*.test.ts', '**/*.spec.ts'],
+      reporter: ['text', 'html'],
+      thresholds: {
+        lines: 62,
+        functions: 50,
+        branches: 55,
+        statements: 60,
+      },
     },
   },
 });

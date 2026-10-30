@@ -20,15 +20,17 @@ Descarga el instalador desde la [página de descargas](https://dherrero.github.i
 
 ```bash
 nvm use && npm install
-npm run build:desktop && npm run dev:desktop
+npm run build && npm run dev
 ```
 
 | Ruta | Contenido |
 | --- | --- |
-| [`apps/desktop`](apps/desktop) | La app: proceso principal de Electron + renderer Angular 21 |
-| [`libs/ui`](libs/ui), [`libs/styles`](libs/styles) | Componentes y tokens de diseño compartidos |
+| [`src/main`](src/main) | Proceso principal de Electron (Node, CommonJS) |
+| [`src/renderer`](src/renderer) | Interfaz Angular 21 |
+| [`src/shared`](src/shared) | Contratos IPC y tipos de dominio compartidos |
+| [`src/libs`](src/libs) | `@devia/ui` y `@devia/styles` |
 
-Guías: [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) · [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) · [SECURITY.md](SECURITY.md).
+Guías: [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) · [docs/](docs/README.md) · [SECURITY.md](SECURITY.md).
 
 ## Licencia
 

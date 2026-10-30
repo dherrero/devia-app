@@ -18,7 +18,3 @@
 .mcp.json
 package-lock.json
 
-# Satellite apps consolidated via subtree — each owns its toolchain & formatting
-/apps/desktop
-/apps/docs
-/apps/mobile

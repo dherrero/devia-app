@@ -1,0 +1,124 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "newProjectRoot": "projects",
+  "projects": {
+    "devia-renderer": {
+      "projectType": "application",
+      "schematics": {
+        "@schematics/angular:component": {
+          "style": "scss",
+          "changeDetection": "OnPush"
+        }
+      },
+      "root": "",
+      "sourceRoot": "src/renderer",
+      "prefix": "ds",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:application",
+          "options": {
+            "outputPath": "dist/renderer",
+            "index": "src/renderer/index.html",
+            "browser": "src/renderer/main.ts",
+            "tsConfig": "tsconfig.app.json",
+            "polyfills": ["zone.js"],
+            "ssr": false,
+            "prerender": false,
+            "allowedCommonJsDependencies": [
+              "@xterm/xterm",
+              "@xterm/addon-fit",
+              "@xterm/addon-web-links"
+            ],
+            "stylePreprocessorOptions": {
+              "includePaths": ["src/libs/styles/src"]
+            },
+            "assets": [
+              { "glob": "**/*", "input": "src/renderer/assets", "output": "assets" }
+            ],
+            "styles": [
+              "node_modules/@fontsource/inter/400.css",
+              "node_modules/@fontsource/inter/500.css",
+              "node_modules/@fontsource/inter/600.css",
+              "node_modules/@fontsource/inter/700.css",
+              "node_modules/@fontsource/jetbrains-mono/400.css",
+              "node_modules/@fontsource/jetbrains-mono/500.css",
+              "node_modules/@fontsource/jetbrains-mono/600.css",
+              "node_modules/@fontsource/jetbrains-mono/700.css",
+              "node_modules/material-icons/iconfont/material-icons.css",
+              "node_modules/@xterm/xterm/css/xterm.css",
+              "src/renderer/styles.scss"
+            ],
+            "scripts": [
+              "node_modules/marked/lib/marked.umd.js",
+              "node_modules/dompurify/dist/purify.min.js"
+            ],
+            "baseHref": "./",
+            "deployUrl": "",
+            "outputHashing": "none"
+          },
+          "configurations": {
+            "production": {
+              "optimization": true,
+              "extractLicenses": false,
+              "sourceMap": false,
+              "namedChunks": true
+            },
+            "development": {
+              "optimization": false,
+              "sourceMap": true,
+              "namedChunks": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular-devkit/build-angular:dev-server",
+          "options": {
+            "buildTarget": "devia-renderer:build:development",
+            "host": "127.0.0.1",
+            "port": 4300
+          },
+          "configurations": {
+            "production": {
+              "buildTarget": "devia-renderer:build:production"
+            },
+            "development": {
+              "buildTarget": "devia-renderer:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        }
+      }
+    }
+  },
+  "cli": {
+    "analytics": false
+  },
+  "schematics": {
+    "@schematics/angular:component": {
+      "type": "component"
+    },
+    "@schematics/angular:directive": {
+      "type": "directive"
+    },
+    "@schematics/angular:service": {
+      "type": "service"
+    },
+    "@schematics/angular:guard": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:interceptor": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:module": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:pipe": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:resolver": {
+      "typeSeparator": "."
+    }
+  }
+}

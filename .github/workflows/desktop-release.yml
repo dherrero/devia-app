@@ -1,6 +1,6 @@
 name: 🖥️ Desktop Release
 
-# Builds apps/desktop for macOS, Windows and Linux and publishes the installers
+# Builds the desktop app for macOS, Windows and Linux and publishes the installers
 # + the electron-updater feeds (latest*.yml) as a GitHub Release of the PUBLIC
 # distribution repo `dherrero/devia` (the landing site). Installed apps
 # auto-update from there, so the target must not change. A final job
@@ -96,14 +96,14 @@ jobs:
 
       # electron-updater compares the binary's version with the published
       # latest*.yml, so the binary must carry the tag's version (not the
-      # historic 1.0.0 in apps/desktop/package.json).
-      - name: Sync apps/desktop version with the tag
+      # version in package.json at the time of the build).
+      - name: Sync package.json version with the tag
         shell: bash
         run: |
-          node -e "const f='apps/desktop/package.json',p=require('./'+f);p.version='${{ needs.gate.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          node -e "const f='package.json',p=require('./'+f);p.version='${{ needs.gate.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
 
       - name: Build renderer + main
-        run: npx nx build desktop
+        run: npm run build
 
       - name: Package
         shell: bash
@@ -113,7 +113,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx electron-builder --projectDir apps/desktop ${{ matrix.ebflag }} --publish never
+        run: npx electron-builder ${{ matrix.ebflag }} --publish never
 
       - name: Create the Release in the distribution repo (if missing)
         shell: bash
@@ -134,7 +134,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
           TAG="v${{ needs.gate.outputs.version }}"
-          cd apps/desktop/release
+          cd release
           find . -maxdepth 1 -type f | while IFS= read -r f; do
             asset="${f#./}"
             echo "Uploading $asset..."
