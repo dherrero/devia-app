@@ -24,16 +24,17 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npx nx run desktop:typecheck
-      - run: npx nx run desktop:lint
-      - run: npx nx run desktop:test:coverage
-      - run: npx nx run desktop:test:renderer
-      - run: npx nx run desktop:build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:coverage
+      - run: npm run test:renderer
+      - run: npm run test:libs
+      - run: npm run build
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: desktop-coverage
-          path: apps/desktop/coverage/
+          path: coverage/
           retention-days: 7
 
   audit:
@@ -46,4 +47,4 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --no-audit --no-fund --ignore-scripts
-      - run: node scripts/audit-runtime.mjs
+      - run: npm run audit:runtime

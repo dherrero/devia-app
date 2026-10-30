@@ -1,6 +1,6 @@
 {
   "root": true,
-  "ignorePatterns": ["**/*"],
+  "ignorePatterns": ["dist/**/*", "release/**/*", "coverage/**/*", "node_modules/**/*"],
   "plugins": ["@nx"],
   "overrides": [
     {
@@ -18,6 +18,33 @@
       "env": {
         "jest": true
       },
+      "rules": {}
+    },
+    {
+      "files": ["src/renderer/**/*.ts"],
+      "extends": [
+        "plugin:@nx/angular",
+        "plugin:@angular-eslint/template/process-inline-templates"
+      ],
+      "rules": {
+        "@angular-eslint/directive-selector": [
+          "error",
+          { "type": "attribute", "prefix": "ds", "style": "camelCase" }
+        ],
+        "@angular-eslint/component-selector": [
+          "error",
+          { "type": "element", "prefix": "ds", "style": "kebab-case" }
+        ]
+      }
+    },
+    {
+      "files": ["src/renderer/**/*.html"],
+      "extends": ["plugin:@nx/angular-template"],
+      "rules": {}
+    },
+    {
+      "files": ["src/main/**/*.ts", "src/shared/**/*.ts", "tools/**/*.ts"],
+      "extends": ["plugin:@nx/typescript"],
       "rules": {}
     }
   ]

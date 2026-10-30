@@ -20,15 +20,17 @@ Download the installer from the [downloads page](https://dherrero.github.io/devi
 
 ```bash
 nvm use && npm install
-npm run build:desktop && npm run dev:desktop
+npm run build && npm run dev
 ```
 
 | Path | What |
 | --- | --- |
-| [`apps/desktop`](apps/desktop) | The app: Electron main process + Angular 21 renderer |
-| [`libs/ui`](libs/ui), [`libs/styles`](libs/styles) | Shared components and design tokens |
+| [`src/main`](src/main) | Electron main process (Node, CommonJS) |
+| [`src/renderer`](src/renderer) | Angular 21 UI |
+| [`src/shared`](src/shared) | Shared IPC contracts and domain types |
+| [`src/libs`](src/libs) | `@devia/ui` and `@devia/styles` |
 
-Guides: [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) · [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) · [SECURITY.md](SECURITY.md).
+Guides: [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) · [docs/](docs/README.md) · [SECURITY.md](SECURITY.md).
 
 ## License
 

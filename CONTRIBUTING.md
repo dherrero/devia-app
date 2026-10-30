@@ -7,23 +7,23 @@ Thanks for helping. Devia is licensed under Apache-2.0; by contributing you agre
 ```bash
 nvm use            # Node from .nvmrc
 npm install
-npm run build:desktop
-npm run dev:desktop
+npm run build
+npm run dev
 ```
 
 ## Before opening a pull request
 
 ```bash
-npm run typecheck:desktop
-npm run build:desktop      # the only step that compiles Angular templates
-npm run test:desktop
-npm run lint:desktop
+npm run typecheck
+npm run build      # the only step that compiles Angular templates
+npm test
+npm run lint
 ```
 
 - Branch from `main`: `feat/…`, `fix/…`, `refactor/…`, `docs/…`, `chore/…`.
 - One logical change per PR, with tests for new behaviour. Main-process tests use in-memory fakes, never real CLIs.
-- UI strings go through the i18n JSON files; keep all languages in parity (`apps/desktop/tools/i18n-parity.test.ts`).
-- Read `AGENTS.md` and `apps/desktop/AGENTS.md` first — they document the architecture and the security guards you must not relax.
+- UI strings go through the i18n JSON files; keep all languages in parity (`tools/i18n-parity.test.ts`).
+- Read `AGENTS.md` first — it documents the architecture and the security guards you must not relax.
 
 ## Reporting bugs and ideas
 
