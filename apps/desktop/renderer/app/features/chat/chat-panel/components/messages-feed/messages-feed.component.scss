@@ -1,0 +1,82 @@
+// Messages feed (HT-CH-03). Tokens per `DESKTOP-PART-03-CHAT-PANEL.md`
+// sub-3.2: 880px max-width centred, 1.25rem top padding, gap 0.875rem
+// between bubbles. The FAB lives on the chat-panel side because it
+// positions against `.dsm-chat` (above the input bar), not against the
+// scroller.
+
+:host {
+  display: block;
+  min-height: 0;
+  min-width: 0;
+
+}
+
+.ds-messages-feed__scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1.5rem 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  min-height: 0;
+  min-width: 0;
+}
+
+// V1 refinement: a slightly narrower reading column (50rem vs 55rem) with
+// more breathing room between turns — long sessions read as a conversation,
+// not a log dump.
+.ds-messages-feed__inner {
+  max-width: 50rem;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  min-width: 0;
+}
+
+.ds-messages-feed__sentinel {
+  height: 1px;
+  pointer-events: none;
+}
+
+// ── Empty state ───────────────────────────────────────────────────────
+.ds-messages-feed__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.ds-messages-feed__empty-ic {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--dv-r-xl);
+  background: var(--dv-acc-lo);
+  color: var(--dv-acc);
+  margin-bottom: 0.625rem;
+}
+
+.ds-messages-feed__empty-title {
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--dv-fg);
+  margin: 0;
+}
+
+.ds-messages-feed__empty-hint {
+  font-size: var(--dv-fs-sm);
+  color: var(--dv-muted);
+  line-height: 1.55;
+  max-width: 24rem;
+  margin: 0;
+}

@@ -1,0 +1,153 @@
+{
+  "name": "desktop",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/desktop",
+  "tags": ["scope:desktop", "type:app", "platform:electron"],
+  "targets": {
+    "build:main": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p apps/desktop/tsconfig.main.json"
+      },
+      "outputs": ["{workspaceRoot}/apps/desktop/dist/main"]
+    },
+    "build:renderer": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ng build --project devia-renderer --configuration=production",
+        "cwd": "apps/desktop"
+      },
+      "outputs": ["{workspaceRoot}/apps/desktop/dist/renderer"]
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx run desktop:build:main",
+          "nx run desktop:build:renderer"
+        ],
+        "parallel": false
+      },
+      "dependsOn": []
+    },
+    "watch:main": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p apps/desktop/tsconfig.main.json --watch --preserveWatchOutput"
+      }
+    },
+    "watch:renderer": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ng build --project devia-renderer --configuration=development --watch",
+        "cwd": "apps/desktop"
+      }
+    },
+    "serve:renderer": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ng serve --project devia-renderer --configuration=development",
+        "cwd": "apps/desktop"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx run desktop:watch:main",
+          "nx run desktop:watch:renderer",
+          "wait-on file:apps/desktop/dist/main/src-main/shell/main.js file:apps/desktop/dist/renderer/browser/index.html && cross-env ELECTRON_ENABLE_LOGGING=1 electron --remote-debugging-port=9222 apps/desktop --dev"
+        ],
+        "parallel": true
+      }
+    },
+    "serve:live": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx run desktop:watch:main",
+          "nx run desktop:serve:renderer",
+          "wait-on file:apps/desktop/dist/main/src-main/shell/main.js tcp:4300 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:4300 ELECTRON_ENABLE_LOGGING=1 electron --remote-debugging-port=9222 apps/desktop --dev"
+        ],
+        "parallel": true
+      }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "electron apps/desktop"
+      },
+      "dependsOn": ["build"]
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "tsc --noEmit -p apps/desktop/tsconfig.main.json",
+          "tsc --noEmit -p apps/desktop/tsconfig.app.json"
+        ],
+        "parallel": false
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": [
+          "apps/desktop/src-main/**/*.ts",
+          "apps/desktop/shared/**/*.ts",
+          "apps/desktop/tools/**/*.ts",
+          "apps/desktop/renderer/**/*.ts",
+          "apps/desktop/renderer/**/*.html"
+        ]
+      },
+      "outputs": ["{options.outputFile}"]
+    },
+    "test:main": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config apps/desktop/vitest.config.ts"
+      }
+    },
+    "test:renderer": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config apps/desktop/vitest.angular.config.ts"
+      }
+    },
+    "test:coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --coverage --config apps/desktop/vitest.config.ts"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx run desktop:test:main",
+          "nx run desktop:test:renderer"
+        ],
+        "parallel": false
+      }
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "electron-builder --projectDir apps/desktop"
+      },
+      "dependsOn": ["build"],
+      "configurations": {
+        "win": {
+          "command": "electron-builder --projectDir apps/desktop --win"
+        },
+        "mac": {
+          "command": "electron-builder --projectDir apps/desktop --mac"
+        },
+        "linux": {
+          "command": "electron-builder --projectDir apps/desktop --linux"
+        }
+      }
+    }
+  }
+}

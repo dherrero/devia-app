@@ -1,0 +1,34 @@
+@if (!state.appReady()) {
+  <ds-splash-screen />
+}
+<div class="dsm-app" [class.dsm-app--hidden]="!state.appReady()">
+  <ds-titlebar
+    (status)="openStatus()"
+    (stopAll)="stopAll()"
+    (editBases)="openBasesEditor()"
+    (settings)="openSettings()" />
+  <div class="dsm-main" [style.gridTemplateColumns]="mainGridTemplate()">
+    @if (!isKanbanRoute()) {
+      <ds-sidebar (newProject)="openNewProject()" />
+    <div class="dsm-vsplitter"
+         role="separator"
+         aria-orientation="vertical"
+         [class.is-active]="layout.isResizingSidebar()"
+         [class.is-collapsed]="layout.sidebarCollapsed()"
+         (mousedown)="layout.startSidebarDrag($event)"
+         (dblclick)="layout.resetSidebarWidth()"
+         title="Arrastra para redimensionar · doble click para restablecer">
+      <span class="dsm-vsplitter-handle"></span>
+    </div>
+    }
+    <main class="dsm-outlet">
+      <router-outlet />
+    </main>
+    @if (state.selectedProject() && !isKanbanRoute()) {
+      <ds-right-rail />
+    }
+  </div>
+  <ds-statusbar />
+  <ds-toasts />
+  <ds-upgrade-toast />
+</div>

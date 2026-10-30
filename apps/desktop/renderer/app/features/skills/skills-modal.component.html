@@ -1,0 +1,94 @@
+<ds-modal-shell
+  [heading]="'modals.skills.title' | translate"
+  [headingIcon]="LucidePuzzle"
+  [sections]="sections()"
+  [(active)]="active"
+>
+  @switch (active()) {
+    <!-- -- Instaladas ---------------------------------------------- -->
+    @case ('installed') {
+      <div class="ds-skills-tab-content">
+        <ds-skills-installed-tab
+          [projectSkills]="projectSkills()"
+          [globalSkills]="globalSkills()"
+          [loading]="loading()"
+          [busy]="busy()"
+          (removeRequested)="remove($event.skill, $event.agent, $event.scope)"
+          (refreshRequested)="refresh()"
+        />
+      </div>
+    }
+    <!-- -- Instalar ------------------------------------------------ -->
+    @case ('install') {
+      <div class="ds-skills-tab-content">
+        @if (stage() === 'form') {
+          <ds-skills-install-form
+            [(source)]="installSource"
+            [(skillName)]="installSkillName"
+            [(scope)]="installScope"
+            [(agents)]="selectedAgents"
+            [busy]="busy()"
+            [log]="log()"
+            [errorMessage]="errorMessage()"
+            (submitted)="onPrimaryAction()"
+          />
+        } @else {
+          <!-- -- Stage: pick ------------------------------------------- -->
+          <ds-skills-pick-stage
+            [skills]="discoveredSkills()"
+            [committedSource]="committedSource()"
+            [installing]="installing()"
+            [log]="log()"
+            [errorMessage]="errorMessage()"
+            [(query)]="discoverQuery"
+            [(selected)]="selectedDiscovered"
+          />
+        }
+      </div>
+    }
+  }
+
+  <!-- Action buttons live in the shell footer (outside the scroll area).
+       The set changes with the active section / install stage so the user
+       only ever sees the buttons that make sense from where they are. -->
+  <div shellActions>
+  @if (active() === 'installed') {
+    <dv-button variant="secondary" [disabled]="busy()" (clicked)="dialogRef?.close()">
+      {{ 'modals.skills.close' | translate }}
+    </dv-button>
+  } @else if (stage() === 'form') {
+    <dv-button variant="secondary" [disabled]="busy()" (clicked)="dialogRef?.close()">
+      {{ 'modals.skills.close' | translate }}
+    </dv-button>
+    <dv-button variant="primary"
+            [disabled]="!canPrimary()"
+            (clicked)="onPrimaryAction()">
+      @if (discovering()) {
+        <dv-spinner />
+        {{ 'modals.skills.discovering' | translate }}
+      } @else if (installing()) {
+        <dv-spinner />
+        {{ 'modals.skills.installing' | translate }}
+      } @else if (willDiscover()) {
+        {{ 'modals.skills.discover_button' | translate }}
+      } @else {
+        {{ 'modals.skills.install_button' | translate }}
+      }
+    </dv-button>
+  } @else {
+    <dv-button variant="secondary" (clicked)="backToForm()" [disabled]="installing()">
+      {{ 'modals.skills.cancel' | translate }}
+    </dv-button>
+    <dv-button variant="primary"
+            [disabled]="!canInstallSelection()"
+            (clicked)="installSelected()">
+      @if (installing()) {
+        <dv-spinner />
+        {{ 'modals.skills.installing' | translate }}
+      } @else {
+        {{ 'modals.skills.install_selected' | translate:{ count: selectedDiscoveredCount() } }}
+      }
+    </dv-button>
+  }
+  </div>
+</ds-modal-shell>

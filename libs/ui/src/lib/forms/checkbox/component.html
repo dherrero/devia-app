@@ -1,0 +1,33 @@
+<label
+  class="dv-checkbox__label"
+  [class.dv-checkbox__label--disabled]="disabled() || isDisabled()"
+>
+  <input
+    type="checkbox"
+    class="dv-checkbox__input"
+    [id]="uid"
+    [checked]="checked()"
+    [disabled]="disabled() || isDisabled()"
+    [required]="required()"
+    (change)="toggle()"
+  />
+  <span class="dv-checkbox__box" aria-hidden="true">
+    <svg
+      class="dv-checkbox__check"
+      viewBox="0 0 12 12"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M2.25 6.5 4.75 9 9.75 3.25"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+  </span>
+  @if (label()) {
+  <span class="dv-checkbox__text">{{ label() }}</span>
+  }
+</label>

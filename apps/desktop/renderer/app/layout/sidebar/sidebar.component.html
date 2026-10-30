@@ -1,0 +1,283 @@
+<aside class="dsm-sidebar" [class.is-collapsed]="sizes.sidebarCollapsed()">
+
+  @if (!sizes.sidebarCollapsed()) {
+
+  <!-- ── Pinned panel (Fijados) — hidden when nothing is pinned. -->
+  @if (state.pinnedPaths().length > 0) {
+    <section #pinnedSection
+             class="dsm-panel dsm-pinned-panel"
+             [class.is-collapsed]="layout.pinnedCollapsed()"
+             [style.flex]="layout.pinnedFlex()">
+      <div class="dsm-panel-head">
+        <button type="button"
+                class="dsm-head-toggle dsm-head-toggle--full"
+                (click)="layout.togglePinnedCollapsed()"
+                [attr.aria-expanded]="!layout.pinnedCollapsed()"
+                [dvTooltip]="(layout.pinnedCollapsed() ? 'sidebar.show_pinned' : 'sidebar.hide_pinned') | translate">
+          <dv-icon class="chev"
+                   [icon]="layout.pinnedCollapsed() ? LucideChevronUp : LucideChevronDown"
+                   size="sm" />
+          <span>{{ 'sidebar.pinned_header' | translate }}</span>
+          <span class="count">{{ state.pinnedPaths().length }}</span>
+        </button>
+      </div>
+      @if (!layout.pinnedCollapsed()) {
+      <div class="dsm-list dsm-pinned-list dsm-scroll">
+        @for (path of state.pinnedPaths(); track path) {
+          <div class="dsm-pinned"
+               [attr.data-active]="path === state.selectedProject() ? 'true' : null"
+               (click)="selectPath(path)"
+               (contextmenu)="onContextMenuPath($event, path)">
+            <span class="proj-icon"
+                  [attr.data-tech]="state.pinnedTech().get(path) ?? 'folder'"
+                  aria-hidden="true">{{ techBadge(state.pinnedTech().get(path) ?? 'folder') }}</span>
+            <div class="proj-text">
+              <div class="proj-name">{{ leafOf(path) }}</div>
+              @if (sublineOf(path); as sl) {
+                <div class="proj-sub mono">{{ sl }}</div>
+              }
+            </div>
+            @if (state.isRunning(path)) {
+              <span class="running" [title]="'sidebar.pinned_tooltip' | translate"></span>
+            }
+            <span class="pin-btn-slot" (click)="$event.stopPropagation()">
+              <dv-button iconOnly
+                         variant="danger-soft"
+                         size="sm"
+                         [dvTooltip]="'sidebar.unpin' | translate"
+                         [ariaLabel]="'sidebar.unpin' | translate"
+                         (clicked)="unpinPath(path)">
+              <dv-icon [icon]="LucidePin" size="sm" />
+              </dv-button>
+            </span>
+          </div>
+        }
+      </div>
+      }
+    </section>
+
+    <!-- Drag handle between Fijados and Proyectos. Hidden when no pinned
+         projects, or when either neighbour is collapsed, so the layout
+         collapses cleanly. -->
+    @if (!layout.pinnedCollapsed() && !layout.projectsCollapsed()) {
+    <div class="dsm-splitter"
+         role="separator"
+         aria-orientation="horizontal"
+         [class.is-active]="layout.isResizingPinned()"
+         (mousedown)="startPinnedSplitterDrag($event)"
+         (dblclick)="layout.resetPinnedSplitter()"
+         [title]="'sidebar.splitter_title' | translate">
+      <span class="dsm-splitter-handle"></span>
+    </div>
+    }
+  }
+
+  <!-- ── Top panel: Projects ──────────────────────────────────────────── -->
+  <section #projectsSection
+           class="dsm-panel"
+           [class.is-collapsed]="layout.projectsCollapsed()"
+           [style.flex]="layout.projectsFlex()">
+    <div class="dsm-panel-head">
+      <button type="button"
+              class="dsm-head-toggle"
+              (click)="layout.toggleProjectsCollapsed()"
+              [attr.aria-expanded]="!layout.projectsCollapsed()"
+              [dvTooltip]="(layout.projectsCollapsed() ? 'sidebar.show_projects' : 'sidebar.hide_projects') | translate">
+        <dv-icon class="chev"
+                 [icon]="layout.projectsCollapsed() ? LucideChevronUp : LucideChevronDown"
+                 size="sm" />
+        <span class="title-text">{{ 'sidebar.projects_header' | translate }}</span>
+        <span class="count">{{ state.projects().length }}</span>
+      </button>
+      <span class="head-actions">
+        <dv-button variant="ghost" size="sm" [iconOnly]="true"
+                   [loading]="reloading()"
+                   [dvTooltip]="'sidebar.reload_workspace' | translate"
+                   [ariaLabel]="'sidebar.reload_workspace' | translate"
+                   (clicked)="reloadWorkspace()">
+          <dv-icon [icon]="LucideRefreshCw" size="sm" />
+        </dv-button>
+        <dv-menu [items]="newMenuItems()" (itemActivated)="onNewMenuItem($event)">
+          <button dsMenuTriggerButton
+                  [ariaLabel]="'sidebar.new_aria' | translate"
+                  [tooltip]="'sidebar.new_tooltip' | translate">
+            <dv-icon [icon]="LucidePlus" size="sm" />
+          </button>
+        </dv-menu>
+      </span>
+    </div>
+
+    @if (!layout.projectsCollapsed()) {
+    <!-- Search box (HT-SB-03) -->
+    <ds-search-box [placeholder]="'sidebar.search_placeholder' | translate"
+                   [clearTooltip]="'sidebar.clear_search' | translate"
+                   [clearAriaLabel]="'sidebar.clear_search' | translate"
+                   (queryChange)="search.setQuery($event)"
+                   (cleared)="search.clear()" />
+
+    <!-- Optional "back" row when navigating inside a folder. -->
+    @if (state.navPath()) {
+      <div class="dsm-back"
+           [class.dnd-over]="dropTarget() === '__parent__'"
+           (click)="back()"
+           (dragover)="onDragOver($event, '__parent__')"
+           (dragleave)="onDragLeave($event, '__parent__')"
+           (drop)="onDrop($event, '__parent__')">
+        <dv-icon class="ic" [icon]="LucideArrowLeft" size="sm" />
+        <span class="path">{{ state.navPath() }}</span>
+      </div>
+    }
+
+    <!-- Project list -->
+    <div class="dsm-list dsm-scroll">
+      @for (p of visible(); track p.path) {
+        <div class="dsm-proj"
+             [attr.data-active]="p.path === state.selectedProject() ? 'true' : null"
+             [class.dnd-dragging]="dragging() === p.path"
+             [class.dnd-over]="dropTarget() === p.path && p.tech === 'folder'"
+             [attr.draggable]="p.tech !== 'folder' && !search.query() ? 'true' : null"
+             [title]="p.path"
+             (click)="onClick(p)"
+             (dblclick)="onDoubleClick(p)"
+             (contextmenu)="onContextMenu($event, p)"
+             (dragstart)="p.tech !== 'folder' ? onDragStart($event, p) : null"
+             (dragend)="onDragEnd()"
+             (dragover)="p.tech === 'folder' ? onDragOver($event, p.path) : null"
+             (dragleave)="p.tech === 'folder' ? onDragLeave($event, p.path) : null"
+             (drop)="p.tech === 'folder' ? onDrop($event, p.path) : null">
+          <span class="proj-icon" [attr.data-tech]="p.tech" aria-hidden="true">{{ techBadge(p.tech) }}</span>
+          <span class="name">{{ p.name }}</span>
+          @if (state.isRunning(p.path)) {
+            <span class="running" [title]="'sidebar.pinned_tooltip' | translate"></span>
+          } @else if (p.tech === 'folder') {
+            <span class="folder-arrow">›</span>
+          } @else {
+            <span class="meta"></span>
+          }
+        </div>
+      } @empty {
+        @if (search.query()) {
+          <div class="empty">
+            @if (search.searching()) { {{ 'sidebar.searching' | translate }} }
+            @else { {{ 'sidebar.no_matches' | translate }} }
+          </div>
+        } @else {
+          <div class="empty">{{ 'sidebar.no_projects' | translate }}</div>
+        }
+      }
+    </div>
+    }
+  </section>
+
+  <!-- Drag handle between Proyectos and Sesiones. Only meaningful when
+       both neighbours are expanded; collapsing either hides it. -->
+  @if (!layout.sessionsCollapsed() && !layout.projectsCollapsed()) {
+    <div class="dsm-splitter"
+         role="separator"
+         aria-orientation="horizontal"
+         [class.is-active]="layout.isResizingSessions()"
+         (mousedown)="startSessionsSplitterDrag($event)"
+         (dblclick)="layout.resetSessionsSplitter()"
+         [title]="'sidebar.splitter_title' | translate">
+      <span class="dsm-splitter-handle"></span>
+    </div>
+  }
+
+  <!-- ── Bottom panel: Sessions for the active project ─────────────────── -->
+  <section #sessionsSection
+           class="dsm-panel sessions-panel"
+           [class.is-collapsed]="layout.sessionsCollapsed()"
+           [style.flex]="layout.sessionsFlex()">
+    <button type="button"
+            class="dsm-panel-head dsm-panel-head--toggle"
+            (click)="layout.toggleSessionsCollapsed()"
+            [attr.aria-expanded]="!layout.sessionsCollapsed()"
+            [dvTooltip]="(layout.sessionsCollapsed() ? 'sidebar.show_sessions' : 'sidebar.hide_sessions') | translate">
+      <dv-icon class="chev"
+               [icon]="layout.sessionsCollapsed() ? LucideChevronUp : LucideChevronDown"
+               size="sm" />
+      <span>{{ ('sidebar.sessions_label' | translate:{ project: activeProjectLabel() }) }}</span>
+      <span class="count">{{ state.availableSessions().length }}</span>
+    </button>
+    @if (!layout.sessionsCollapsed()) {
+      <div class="dsm-sessions dsm-scroll">
+        @if (state.availableSessions().length === 0) {
+          <div class="empty">
+            @if (state.selectedProject()) {
+              <div [innerHTML]="'sidebar.no_sessions' | translate"></div>
+            } @else {
+              {{ 'sidebar.select_project' | translate }}
+            }
+          </div>
+        } @else {
+          @for (s of state.availableSessions(); track s.id) {
+            <div class="dsm-session"
+                 [attr.data-active]="state.isSessionFocused(s) ? 'true' : null"
+                 [class.in-split-accent]="sessionAccent(s)"
+                 [class.is-blocked]="isSessionBlocked(s)"
+                 (click)="openSession(s)"
+                 [title]="isSessionBlocked(s) ? ('sidebar.session_switch_blocked_running' | translate) : s.preview">
+              <div class="preview">{{ s.preview }}</div>
+              <div class="when">{{ formatDate(s.updatedAt) }}</div>
+              <span class="session-delete-slot" (click)="$event.stopPropagation()">
+                <dv-button iconOnly
+                           variant="danger-soft"
+                           size="sm"
+                           [dvTooltip]="'sidebar.delete_session_tooltip' | translate"
+                           [ariaLabel]="'sidebar.delete_session_tooltip' | translate"
+                           (clicked)="deleteSession(state.selectedProject()!, s)">
+                  <dv-icon [icon]="LucideTrash2" size="sm" />
+                </dv-button>
+              </span>
+              <div class="footer">
+                @if (state.isSessionFocused(s)) { <span class="dot-active" [title]="'sidebar.active_indicator' | translate"></span> }
+                <span class="msgs">{{ 'sidebar.session_msgs' | translate:{ count: s.messageCount } }}</span>
+                @if (agentBadge(s); as badge) {
+                  <span class="agent-badge"
+                        [class.is-mismatch]="agentMismatch(s)"
+                        [title]="(agentMismatch(s) ? 'sidebar.session_agent_mismatch_tooltip' : 'sidebar.session_agent_tooltip') | translate: { agent: badge }">
+                    {{ badge }}
+                  </span>
+                }
+                @if (state.isSessionMounted(s.id)) {
+                  <span class="pane-badge" [title]="'sidebar.session_mounted_badge' | translate">
+                    <dv-icon [icon]="LucideColumns2" size="sm" />
+                    {{ 'sidebar.session_mounted_label' | translate }}
+                  </span>
+                }
+                @if (state.isSessionFocused(s)) { <span class="active-label">{{ 'sidebar.session_active_label' | translate }}</span> }
+              </div>
+            </div>
+          }
+        }
+      </div>
+    }
+  </section>
+
+  }
+
+  <!-- Invisible anchor for right-click context menu (always mounted so the
+       required viewChild ref resolves regardless of collapsed state). -->
+  <dv-menu #ctxMenuComp [items]="ctxMenuItems()" (itemActivated)="onCtxItem($event)">
+    <div dvMenuTrigger
+         class="ctx-anchor"
+         [style.left.px]="ctxX()"
+         [style.top.px]="ctxY()"></div>
+  </dv-menu>
+</aside>
+
+<!-- Floating collapse/expand handle: straddles the sidebar's right edge
+     (half over the sidebar, half over the chat) at 80% of the column
+     height. Works in both states — the chevron flips with the state.
+     Same dv-button recipe as the chat's scroll-to-bottom FAB for
+     visual coherence. -->
+<span class="dsm-collapse-toggle">
+  <dv-button iconOnly
+             variant="secondary"
+             size="sm"
+             [ariaLabel]="collapseTooltip()"
+             [dvTooltip]="collapseTooltip()"
+             (clicked)="sizes.toggleSidebarCollapse()">
+    <dv-icon [icon]="sizes.sidebarCollapsed() ? LucideChevronRight : LucideChevronLeft" size="sm" />
+  </dv-button>
+</span>

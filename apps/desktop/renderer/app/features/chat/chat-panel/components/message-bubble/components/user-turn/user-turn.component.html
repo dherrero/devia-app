@@ -1,0 +1,8 @@
+<div class="msg-user">
+  <div class="col">
+    <dv-user-bubble [content]="msg().text ?? ''" />
+    @if (when()) {
+      <div class="meta">{{ 'message_bubble.user_label' | translate:{ when: when() } }}</div>
+    }
+  </div>
+</div>

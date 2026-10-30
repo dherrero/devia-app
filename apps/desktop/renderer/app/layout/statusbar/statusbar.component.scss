@@ -1,0 +1,141 @@
+    :host { display: block; }
+
+    .dsm-statusbar {
+      display: flex; align-items: center;
+      height: var(--dv-statusbar-h);
+      padding: 0 0.875rem;
+      gap: 0.875rem;
+      background: var(--dv-surf-2);
+      border-top: 0.5px solid var(--dv-divider);
+      font-size: var(--dv-fs-xs);
+      color: var(--dv-muted);
+      font-family: var(--dv-mono);
+      letter-spacing: 0.02em;
+      user-select: none;
+    }
+    .group {
+      display: inline-flex; align-items: center; gap: 0.375rem;
+      color: var(--dv-muted);
+    }
+    .group.dirty { color: var(--dv-warn); }
+    .git-branch-btn {
+      background: none;
+      border: 0;
+      padding: 0.0625rem 0.25rem;
+      margin: 0 -0.25rem;
+      border-radius: 0.25rem;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+    .git-branch-btn:hover:not([disabled]) { background: var(--dv-hover, rgba(255, 255, 255, 0.08)); }
+    .git-branch-btn[disabled] { cursor: default; }
+    .group .ic { width: 0.6875rem; height: 0.6875rem; }
+    .project { font-weight: 500; color: var(--dv-fg); font-family: var(--dv-font); }
+    .sep { color: var(--dv-dim); }
+    .muted { color: var(--dv-muted); }
+    .dot { color: var(--dv-warn); }
+    .spacer { flex: 1; min-width: 0.25rem; }
+    .git-ab {
+      color: var(--dv-muted);
+      font-variant-numeric: tabular-nums;
+      gap: 0.125rem;
+    }
+    .git-pull-btn {
+      background: none;
+      border: 0;
+      padding: 0.0625rem 0.25rem;
+      margin: 0 -0.25rem;
+      border-radius: 0.25rem;
+      font: inherit;
+      color: var(--dv-muted);
+      cursor: pointer;
+      gap: 0.25rem;
+    }
+    .git-pull-btn:hover:not([disabled]) { background: var(--dv-hover, rgba(255, 255, 255, 0.08)); color: var(--dv-fg); }
+    .git-pull-btn[disabled] { cursor: default; }
+    .git-changes {
+      color: var(--dv-dim);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .center-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-family: var(--dv-mono);
+      color: var(--dv-dim);
+      min-width: 0;
+    }
+    .model {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      min-width: 0;
+    }
+    .model-label {
+      color: var(--dv-fg);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 14rem;
+    }
+    .ctx {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+    .ctx .bar {
+      display: inline-block;
+      width: 5rem;
+      height: 0.25rem;
+      border-radius: 999px;
+      background: var(--dv-surf-3);
+      overflow: hidden;
+    }
+    .ctx .bar .fill {
+      display: block;
+      height: 100%;
+      background: var(--dv-acc, var(--dv-dim));
+      transition: width 200ms ease;
+    }
+    .ctx .bar.warn .fill { background: var(--dv-warn); }
+    .ctx .pct {
+      font-size: var(--dv-fs-2xs);
+      color: var(--dv-muted);
+    }
+    .ctx .pct.warn { color: var(--dv-warn); }
+    .cost { color: var(--dv-fg); font-weight: 500; }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 0.3125rem;
+      padding: 1px 0.4375rem;
+      border-radius: 999px;
+      background: var(--dv-surf-3);
+      color: var(--dv-dim);
+      font-size: var(--dv-fs-2xs);
+      font-family: var(--dv-font);
+      letter-spacing: 0;
+      border: none;
+    }
+    .pill[data-tone="warn"] { background: var(--dv-warn-lo); color: var(--dv-warn); }
+    .pill[data-tone="info"] { background: var(--dv-info-lo); color: var(--dv-info); }
+
+    .mode-text {
+      font-family: var(--dv-font);
+      font-size: var(--dv-fs-2xs);
+      color: var(--dv-muted);
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+    .mode-text[data-tone="danger"] {
+      color: var(--dv-danger);
+      font-weight: 600;
+    }
+
+    .version { color: var(--dv-dim); }
+
+    @keyframes ds-spin { to { transform: rotate(360deg); } }
+    .ic.spinning { animation: ds-spin 1s linear infinite; }
+  

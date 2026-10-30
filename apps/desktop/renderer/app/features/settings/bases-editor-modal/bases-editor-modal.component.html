@@ -1,0 +1,63 @@
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="be-title">
+      <div class="modal-head">
+        <div class="modal-title-wrap">
+          <div class="modal-icon" aria-hidden="true">
+            <svg viewBox="0 0 14 14">
+              <path d="M3 2h8v10H3zM5 5h4M5 7h4M5 9h2" />
+            </svg>
+          </div>
+          <span class="modal-title" id="be-title">{{ 'modals.bases_editor.title' | translate }}</span>
+        </div>
+        <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Cerrar" (clicked)="cancel()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      </div>
+
+      <div class="editor-body">
+        <div class="editor-info">
+          <div class="editor-path">{{ filePath() }}</div>
+          <div class="editor-hint" [innerHTML]="'modals.bases_editor.hint' | translate"></div>
+        </div>
+
+        @if (loading()) {
+          <div class="status">{{ 'modals.bases_editor.loading' | translate }}</div>
+        } @else {
+          <div class="editor-area">
+            <dv-code-textarea
+              class="json-editor"
+              fill
+              resize="none"
+              ariaLabel="Editor JSON de bases"
+              [valid]="isValid()"
+              [invalid]="isInvalid()"
+              [ngModel]="text()"
+              (ngModelChange)="text.set($event)"
+              [disabled]="saving()"
+              (keydown.tab)="onTab($any($event))"
+            />
+          </div>
+          <div class="validation" aria-live="polite">
+            @if (isEmpty()) {
+              <span class="val-neutral">El objeto est&aacute; vac&iacute;o</span>
+            } @else if (parseError(); as err) {
+              <span class="val-err">&#10005; SyntaxError: {{ err }}</span>
+            } @else {
+              <span class="val-ok">&#10003; JSON v&aacute;lido &middot; {{ entryCount() }} entrada{{ entryCount() === 1 ? '' : 's' }}</span>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="modal-footer">
+        <span class="footer-left">Tab: indentar - Ctrl+S: guardar</span>
+        <div class="footer-actions">
+          <dv-button variant="ghost" type="button" [disabled]="saving()" (clicked)="cancel()">
+            {{ 'modals.bases_editor.cancel' | translate }}
+          </dv-button>
+          <dv-button variant="primary" type="button" [disabled]="!canSave()" [loading]="saving()" (clicked)="save()">
+            {{ saving() ? ('modals.bases_editor.saving' | translate) : ('modals.bases_editor.save' | translate) }}
+          </dv-button>
+        </div>
+      </div>
+    </div>
+  

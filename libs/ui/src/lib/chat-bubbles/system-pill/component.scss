@@ -1,0 +1,23 @@
+:host {
+  display: block;
+}
+
+.dv-msg-system {
+  display: flex;
+  justify-content: center;
+  padding: 0.25rem 0;
+}
+
+.dv-bubble-system {
+  width: fit-content;
+  max-width: 30rem;
+  padding: 0.1875rem 0.75rem;
+  background: var(--dv-surf2);
+  border: 1px var(--dv-bd-style) var(--dv-bor);
+  border-radius: var(--dv-r-pill);
+  color: var(--dv-dim);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-xs);
+  letter-spacing: 0.02em;
+  text-align: center;
+}

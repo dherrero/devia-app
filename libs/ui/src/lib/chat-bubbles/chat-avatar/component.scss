@@ -1,0 +1,379 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: var(--dv-r-sm);
+  font-size: var(--dv-fs-xs);
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  border: 1px solid var(--dv-acc-bor);
+}
+
+:host(.dv-chat-avatar--user) {
+  background: var(--dv-acc-lo);
+  color: var(--dv-acc);
+}
+
+:host(.dv-chat-avatar--ai) {
+  width: 2.4rem;
+  height: 2.4rem;
+  background: var(--dv-surf2);
+  color: var(--dv-muted);
+  font-size: var(--dv-fs-md);
+  // Anchor for the stacked mascot frames + the status ring. The host stays
+  // overflow-visible so the ring (box-shadow) can show; the breathe scale is
+  // clipped by .dv-chat-avatar__face instead.
+  position: relative;
+}
+
+.dv-chat-avatar__label {
+  display: inline-block;
+}
+
+// Clip wrapper for the mascot frames: keeps the breathe scale from spilling
+// past the rounded corners without forcing overflow:hidden on the host.
+.dv-chat-avatar__face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.dv-chat-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+// Pixel-art mascot (assistant avatar): keep the sprite crisp when scaled up
+// instead of browser-smoothing it into a blur, and give it a subtle idle life
+// so the agent reads as present rather than a frozen icon. The open-eye and
+// blink frames are stacked; both share the same breathe so they stay aligned.
+:host(.dv-chat-avatar--ai[data-active='true']) .dv-chat-avatar__img {
+  image-rendering: pixelated;
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 80%;
+  animation: dv-avatar-breathe 3.4s ease-in-out infinite;
+}
+
+// Closed-eye frame layered on top: invisible most of the cycle, flashed for a
+// blink. Carries the same breathe so it tracks the base frame exactly.
+:host(.dv-chat-avatar--ai[data-active='true']) .dv-chat-avatar__img--blink {
+  opacity: 0;
+  animation:
+    dv-avatar-breathe 3.4s ease-in-out infinite,
+    dv-avatar-blink 4.8s steps(1, end) infinite;
+}
+
+@keyframes dv-avatar-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-0.09375rem) scale(1.07);
+  }
+}
+
+// Two quick blinks near the end of each cycle, eyes open the rest of the time.
+@keyframes dv-avatar-blink {
+  0%,
+  90%,
+  96%,
+  100% {
+    opacity: 0;
+  }
+  92%,
+  94%,
+  98% {
+    opacity: 1;
+  }
+}
+
+// Respect users who ask for less motion: hold the open-eye frame, no breathe.
+@media (prefers-reduced-motion: reduce) {
+  :host(.dv-chat-avatar--ai) .dv-chat-avatar__img {
+    animation: none;
+  }
+  :host(.dv-chat-avatar--ai) .dv-chat-avatar__img--blink {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+// ── Agent-state feedback ─────────────────────────────────────────────────
+// [data-state] paints the 15-state avatar contract from the prototype:
+// rest, input, reasoning, work, and result states all get distinct cues.
+:host(.dv-chat-avatar--ai) {
+  --avatar-ring: var(--dv-acc);
+  --avatar-ring-soft: var(--dv-acc-bor);
+}
+
+:host(.dv-chat-avatar--ai[data-state='idle']) {
+  --avatar-ring: var(--dv-dim);
+  --avatar-ring-soft: transparent;
+}
+
+:host(.dv-chat-avatar--ai[data-state='paused']),
+:host(.dv-chat-avatar--ai[data-state='offline']) {
+  --avatar-ring: var(--dv-muted);
+  --avatar-ring-soft: var(--dv-acc-bor);
+  filter: saturate(0.55) brightness(0.95);
+}
+
+:host(.dv-chat-avatar--ai[data-state='offline']) {
+  filter: grayscale(1) brightness(0.85);
+  opacity: 0.72;
+}
+
+:host(.dv-chat-avatar--ai[data-state='asking']),
+:host(.dv-chat-avatar--ai[data-state='warning']) {
+  --avatar-ring: var(--dv-warn);
+  --avatar-ring-soft: var(--dv-warn-bor);
+}
+
+:host(.dv-chat-avatar--ai[data-state='planning']) {
+  --avatar-ring: var(--dv-info);
+  --avatar-ring-soft: var(--dv-info-bor);
+}
+
+:host(.dv-chat-avatar--ai[data-state='success']) {
+  --avatar-ring: var(--dv-success);
+  --avatar-ring-soft: var(--dv-success-bor);
+}
+
+:host(.dv-chat-avatar--ai[data-state='error']) {
+  --avatar-ring: var(--dv-danger);
+  --avatar-ring-soft: var(--dv-danger-bor);
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='thinking']),
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='asking']),
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='warning']) {
+  animation: dv-avatar-ring-pulse 1.15s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-state='planning']),
+:host(.dv-chat-avatar--ai[data-state='searching']),
+:host(.dv-chat-avatar--ai[data-state='tool']),
+:host(.dv-chat-avatar--ai[data-state='writing']),
+:host(.dv-chat-avatar--ai[data-state='terminal']),
+:host(.dv-chat-avatar--ai[data-state='streaming']),
+:host(.dv-chat-avatar--ai[data-state='success']),
+:host(.dv-chat-avatar--ai[data-state='error']) {
+  box-shadow:
+    0 0 0 2px var(--avatar-ring),
+    0 0 0 5px color-mix(in oklab, var(--avatar-ring), transparent 74%);
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='searching'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-scan 1.05s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='planning'])
+  .dv-chat-avatar__img,
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='tool'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-nod 1.35s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='writing'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-type 0.56s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='terminal'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-terminal 0.72s steps(2, end) infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='streaming'])
+  .dv-chat-avatar__img,
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='listening'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-talk 0.44s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='success'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-hop 0.72s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='error'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-shake 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='warning'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-wobble 1.15s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-active='true'][data-state='asking'])
+  .dv-chat-avatar__img {
+  animation: dv-avatar-tilt 1.25s ease-in-out infinite;
+}
+
+:host(.dv-chat-avatar--ai[data-state='listening']) {
+  box-shadow: 0 0 0 2px var(--avatar-ring-soft);
+}
+
+:host(.dv-chat-avatar--ai[data-state='paused']) {
+  box-shadow: 0 0 0 1px var(--avatar-ring-soft);
+}
+
+:host(.dv-chat-avatar--ai[data-state='offline']) {
+  box-shadow: 0 0 0 1px var(--avatar-ring-soft);
+  border-style: dashed;
+}
+
+:host(.dv-chat-avatar--ai[data-active='false']) {
+  animation: none;
+  box-shadow: none;
+  filter: none;
+  opacity: 1;
+}
+
+:host(.dv-chat-avatar--ai[data-active='false']) .dv-chat-avatar__img,
+:host(.dv-chat-avatar--ai[data-active='false']) .dv-chat-avatar__img--blink {
+  animation: none;
+  transform: none;
+}
+
+:host(.dv-chat-avatar--ai[data-active='false']) .dv-chat-avatar__img--blink {
+  opacity: 0;
+}
+
+@keyframes dv-avatar-ring-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--avatar-ring-soft),
+      0 0 0 4px transparent;
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px var(--avatar-ring),
+      0 0 0 7px color-mix(in oklab, var(--avatar-ring), transparent 76%);
+  }
+}
+
+@keyframes dv-avatar-scan {
+  0%,
+  100% {
+    transform: translateX(-0.125rem) scale(1.035);
+  }
+  50% {
+    transform: translateX(0.125rem) scale(1.065);
+  }
+}
+
+@keyframes dv-avatar-nod {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1.03);
+  }
+  50% {
+    transform: translateY(0.125rem) rotate(-4deg) scale(1.065);
+  }
+}
+
+@keyframes dv-avatar-type {
+  0%,
+  100% {
+    transform: translateY(0.0625rem) scale(1.03);
+  }
+  50% {
+    transform: translateY(-0.15625rem) scale(1.075);
+  }
+}
+
+@keyframes dv-avatar-terminal {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-0.125rem) scale(1.08);
+  }
+}
+
+@keyframes dv-avatar-talk {
+  0%,
+  100% {
+    transform: translateY(0.0625rem) scale(1.03);
+  }
+  50% {
+    transform: translateY(-0.15625rem) scale(1.09);
+  }
+}
+
+@keyframes dv-avatar-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1.03);
+  }
+  45% {
+    transform: translateY(-0.25rem) scale(1.1);
+  }
+}
+
+@keyframes dv-avatar-shake {
+  0%,
+  100% {
+    transform: translateX(0) scale(1.035);
+  }
+  25% {
+    transform: translateX(-0.15625rem) scale(1.035);
+  }
+  75% {
+    transform: translateX(0.15625rem) scale(1.035);
+  }
+}
+
+@keyframes dv-avatar-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1.03);
+  }
+  35% {
+    transform: rotate(-6deg) scale(1.055);
+  }
+  70% {
+    transform: rotate(6deg) scale(1.055);
+  }
+}
+
+@keyframes dv-avatar-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1.03);
+  }
+  50% {
+    transform: rotate(-8deg) scale(1.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host(.dv-chat-avatar--ai) {
+    animation: none;
+  }
+
+  :host(.dv-chat-avatar--ai) .dv-chat-avatar__img,
+  :host(.dv-chat-avatar--ai) .dv-chat-avatar__img--blink {
+    animation: none;
+  }
+
+  :host(.dv-chat-avatar--ai[data-state='thinking']),
+  :host(.dv-chat-avatar--ai[data-state='asking']),
+  :host(.dv-chat-avatar--ai[data-state='warning']) {
+    box-shadow: 0 0 0 2px var(--avatar-ring-soft);
+  }
+}

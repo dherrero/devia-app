@@ -1,0 +1,46 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+}
+
+.dv-pill-nav__list {
+  display: inline-flex;
+  gap: 0.25rem;
+  background: var(--dv-surf-2);
+  border-radius: var(--dv-r-pill);
+  padding: 0.25rem;
+}
+
+.dv-pill-nav__item {
+  @include dv.dv-button-reset;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dv-muted);
+  border-radius: var(--dv-r-pill);
+  text-decoration: none;
+  transition:
+    color var(--dv-dur-quick) var(--dv-ease-out),
+    background var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover:not(:disabled) {
+    color: var(--dv-fg);
+  }
+  &:focus-visible {
+    @include dv.dv-focus-ring;
+  }
+
+  &--active {
+    background: var(--dv-surf);
+    color: var(--dv-fg);
+    box-shadow: var(--dv-shadow-sm);
+  }
+
+  &--disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}

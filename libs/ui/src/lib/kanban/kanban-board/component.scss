@@ -1,0 +1,17 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+}
+
+.dv-kanban-board__inner {
+  display: flex;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+  min-height: 60vh;
+  align-items: flex-start;
+}
+
+.dv-kanban-board__col-wrapper {
+  flex-shrink: 0;
+}

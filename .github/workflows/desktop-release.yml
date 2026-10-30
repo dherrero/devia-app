@@ -1,0 +1,193 @@
+name: 🖥️ Desktop Release
+
+# Builds apps/desktop for macOS, Windows and Linux and publishes the installers
+# + the electron-updater feeds (latest*.yml) as a GitHub Release of the PUBLIC
+# distribution repo `dherrero/devia` (the landing site). Installed apps
+# auto-update from there, so the target must not change. A final job
+# regenerates the landing's updates/latest.json.
+#
+# Runs AFTER "🏷️ Release" (release.yml) via `workflow_run`, because a tag pushed
+# with the default GITHUB_TOKEN would not trigger an `on: push: tags` workflow.
+# The version is read from package.json at the release commit; publishing only
+# happens if that version has no installers in the distribution repo yet
+# (idempotent).
+on:
+  workflow_run:
+    workflows: ['🏷️ Release']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Republish even if the version already has installers'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  PUBLIC_REPO: dherrero/devia
+
+jobs:
+  gate:
+    name: Decide publication
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      should_publish: ${{ steps.decide.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # main TIP, not workflow_run.head_sha: the upstream Release run is
+          # triggered by the feature/fix merge commit (pre-bump), but the
+          # version bump + tag land in a LATER commit pushed by release.yml.
+          # Reading head_sha would publish the OLD version.
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+      - id: v
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+      - id: decide
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          COUNT=$(gh release view "v${{ steps.v.outputs.version }}" --repo "$PUBLIC_REPO" --json assets \
+            --jq '[.assets[] | select(.name | test("\\.(exe|dmg|AppImage|deb)$"))] | length' 2>/dev/null || echo 0)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "Version v${{ steps.v.outputs.version }} already has installers — skipping."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build & publish (${{ matrix.os }})
+    needs: gate
+    if: needs.gate.outputs.should_publish == 'true'
+    runs-on: ${{ matrix.os }}
+    # Sequential: the first job creates the Release; the others upload their
+    # assets to the same Release without racing.
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            ebflag: --mac
+          - os: windows-latest
+            ebflag: --win
+          - os: ubuntu-latest
+            ebflag: --linux
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+
+      # electron-updater compares the binary's version with the published
+      # latest*.yml, so the binary must carry the tag's version (not the
+      # historic 1.0.0 in apps/desktop/package.json).
+      - name: Sync apps/desktop version with the tag
+        shell: bash
+        run: |
+          node -e "const f='apps/desktop/package.json',p=require('./'+f);p.version='${{ needs.gate.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+
+      - name: Build renderer + main
+        run: npx nx build desktop
+
+      - name: Package
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --projectDir apps/desktop ${{ matrix.ebflag }} --publish never
+
+      - name: Create the Release in the distribution repo (if missing)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          TAG="v${{ needs.gate.outputs.version }}"
+          if ! gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
+            echo "Creating release $TAG in $PUBLIC_REPO..."
+            gh release create "$TAG" --repo "$PUBLIC_REPO" --title "$TAG" --generate-notes
+          else
+            echo "Release $TAG already exists."
+          fi
+
+      - name: Upload assets to the Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          TAG="v${{ needs.gate.outputs.version }}"
+          cd apps/desktop/release
+          find . -maxdepth 1 -type f | while IFS= read -r f; do
+            asset="${f#./}"
+            echo "Uploading $asset..."
+            gh release upload "$TAG" "$asset" --repo "$PUBLIC_REPO" --clobber
+          done
+
+  manifest:
+    name: Regenerate updates/latest.json (landing)
+    needs: [gate, build]
+    # always(): run even if one platform failed, so a partial release still
+    # updates the website with the platforms that did publish. The script skips
+    # the "0 installers" case without overwriting a good latest.json.
+    if: ${{ always() && needs.gate.outputs.should_publish == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repository (script)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+          path: source
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: source/.nvmrc
+      - name: Checkout the distribution repo
+        uses: actions/checkout@v7
+        with:
+          repository: dherrero/devia
+          token: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          path: public-site
+      - name: Read the Release assets
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        # If the Release does not exist (total build failure) do not abort: an
+        # empty release.json leaves the manifest untouched.
+        run: |
+          gh release view "${{ needs.gate.outputs.tag }}" --repo "$PUBLIC_REPO" --json assets,body > release.json \
+            || echo '{"assets":[],"body":""}' > release.json
+      - name: Generate the manifest
+        run: |
+          node source/scripts/gen-update-manifest.mjs \
+            --release-json release.json \
+            --tag "${{ needs.gate.outputs.tag }}" \
+            --version "${{ needs.gate.outputs.version }}" \
+            --out public-site/updates/latest.json
+      - name: Commit and push if changed
+        working-directory: public-site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- updates/latest.json; then
+            echo "No changes in updates/latest.json"
+          else
+            git add updates/latest.json
+            git commit -m "release: manifiesto web v${{ needs.gate.outputs.version }}"
+            git push
+          fi

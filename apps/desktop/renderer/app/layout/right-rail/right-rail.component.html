@@ -1,0 +1,122 @@
+    <!-- Splitter on the LEFT edge, present only while the panel is open.
+         Hidden when collapsed because the panel has zero width and there's
+         nothing to resize. -->
+    @if (rail.isOpen()) {
+      <div class="dsr-splitter"
+           role="separator"
+           aria-orientation="vertical"
+           [class.is-active]="rail.isResizing()"
+           (mousedown)="startDrag($event)"
+           (dblclick)="resetWidth()"
+           [title]="'rightRail.splitter_tooltip' | translate">
+        <span class="dsr-splitter-handle"></span>
+      </div>
+    }
+
+    <!-- Panel content. The rail is only rendered while a project is
+         selected (gated by app.component), so we don't need to handle the
+         no-project case here. Both panes stay mounted with [hidden] so
+         the xterm.js scrollback survives tab switches. -->
+    @if (rail.isOpen()) {
+      <div class="dsr-panel">
+        @if (!state.splitActive()) {
+          <div class="dsr-pane" [hidden]="rail.activeTab() !== 'terminal'">
+            <ds-terminal-panel #terminal [project]="state.selectedProject()!" />
+          </div>
+        }
+        <div class="dsr-pane" [hidden]="rail.activeTab() !== 'tree'">
+          <!-- Follows the focused split pane's worktree (S-13 T-143); falls back
+               to the selected project for the single/primary pane. -->
+          <ds-project-tree [project]="state.workdir()!" />
+        </div>
+        @if (state.dockerAvailable()) {
+          <div class="dsr-pane" [hidden]="rail.activeTab() !== 'docker'">
+            <ds-docker-panel [project]="state.selectedProject()!" />
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Activity bar, always visible. -->
+    <div class="dsr-rail" role="toolbar" [attr.aria-label]="'rightRail.toolbar_aria' | translate">
+      <ds-notification-center />
+      <button class="dsr-rail-btn"
+              type="button"
+              (click)="openKanban()"
+              [dvTooltip]="'sdd.kanban_title' | translate"
+              dvTooltipPosition="left"
+              [attr.aria-label]="'sdd.kanban_title' | translate">
+        <dv-icon [icon]="LucideLayoutDashboard" size="sm" />
+      </button>
+      <div class="dsr-rail-divider" aria-hidden="true"></div>
+      <button class="dsr-rail-btn"
+              type="button"
+              (click)="openSkills()"
+              [dvTooltip]="'chat.menu_skills' | translate"
+              dvTooltipPosition="left"
+              [attr.aria-label]="'chat.menu_skills' | translate">
+        <dv-icon [icon]="LucidePuzzle" size="sm" />
+        @if (assets.skillCount() > 0) {
+          <span class="dsr-count">{{ assets.skillCount() }}</span>
+        }
+      </button>
+      <button class="dsr-rail-btn"
+              type="button"
+              (click)="openMcp()"
+              [dvTooltip]="'chat.menu_mcp' | translate"
+              dvTooltipPosition="left"
+              [attr.aria-label]="'chat.menu_mcp' | translate">
+        <dv-icon [icon]="LucideZap" size="sm" />
+        @if (assets.mcpCount() > 0) {
+          <span class="dsr-count">{{ assets.mcpCount() }}</span>
+        }
+      </button>
+      <button class="dsr-rail-btn"
+              type="button"
+              (click)="openSubAgents()"
+              [dvTooltip]="'chat.menu_sub_agents' | translate"
+              dvTooltipPosition="left"
+              [attr.aria-label]="'chat.menu_sub_agents' | translate">
+        <dv-icon [icon]="LucideUsers" size="sm" />
+        @if (assets.subAgentCount() > 0) {
+          <span class="dsr-count">{{ assets.subAgentCount() }}</span>
+        }
+      </button>
+      <div class="dsr-rail-divider" aria-hidden="true"></div>
+      @if (state.dockerAvailable()) {
+        <button class="dsr-rail-btn"
+                type="button"
+                [attr.data-active]="rail.activeTab() === 'docker' ? 'true' : null"
+                (click)="onTab('docker')"
+                [dvTooltip]="'rightRail.docker_tooltip' | translate"
+                dvTooltipPosition="left"
+                [attr.aria-label]="'rightRail.docker_tooltip' | translate"
+                [attr.aria-pressed]="rail.activeTab() === 'docker'">
+          <dv-icon [icon]="LucideContainer" size="sm" />
+        </button>
+      }
+      <button class="dsr-rail-btn"
+              type="button"
+              [attr.data-active]="rail.activeTab() === 'tree' ? 'true' : null"
+              (click)="onTab('tree')"
+              [dvTooltip]="'rightRail.tree_tooltip' | translate:{ shortcut: treeShortcut }"
+              dvTooltipPosition="left"
+              [attr.aria-label]="'rightRail.tree_aria' | translate"
+              [attr.aria-pressed]="rail.activeTab() === 'tree'">
+        <dv-icon [icon]="LucideFolderOpen" size="sm" />
+      </button>
+      <!-- S-13 T-158: Terminal runs on the base project, not per-pane, so it's
+           hidden while a split is active to avoid ambiguity. -->
+      @if (!state.splitActive()) {
+        <button class="dsr-rail-btn"
+                type="button"
+                [attr.data-active]="rail.activeTab() === 'terminal' ? 'true' : null"
+                (click)="onTab('terminal')"
+                [dvTooltip]="'rightRail.terminal_tooltip' | translate:{ shortcut: terminalShortcut }"
+                dvTooltipPosition="left"
+                [attr.aria-label]="'rightRail.terminal_aria' | translate"
+                [attr.aria-pressed]="rail.activeTab() === 'terminal'">
+          <dv-icon [icon]="LucideTerminal" size="sm" />
+        </button>
+      }
+    </div>

@@ -1,0 +1,21 @@
+<nav class="dv-breadcrumb" aria-label="Breadcrumb">
+  <ol class="dv-breadcrumb__list">
+    @for (item of items(); track $index; let last = $last) {
+    <li class="dv-breadcrumb__item" [class.dv-breadcrumb__item--current]="last">
+      @if (!last) { @if (item.routerLink) {
+      <a [routerLink]="item.routerLink" class="dv-breadcrumb__link"
+        >{{ item.label }}</a
+      >
+      } @else if (item.href) {
+      <a [href]="item.href" class="dv-breadcrumb__link">{{ item.label }}</a>
+      } @else {
+      <span class="dv-breadcrumb__link">{{ item.label }}</span>
+      }
+      <span class="dv-breadcrumb__sep" aria-hidden="true">/</span>
+      } @else {
+      <span aria-current="page">{{ item.label }}</span>
+      }
+    </li>
+    }
+  </ol>
+</nav>

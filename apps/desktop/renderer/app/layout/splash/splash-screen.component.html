@@ -1,0 +1,16 @@
+<div class="splash" [class.splash--leaving]="leaving()">
+  <div class="splash__content">
+    <div class="splash__logo" aria-hidden="true">
+      <img class="splash__avatar" src="assets/images/Devia.PNG" alt="" />
+      <span class="splash__wordmark">DevIA</span>
+    </div>
+
+    <p class="splash__label">
+      {{ 'splash.preparing' | translate }}<span class="splash__dots" aria-hidden="true"></span>
+    </p>
+
+    <div class="splash__progress" role="progressbar" aria-label="Cargando" aria-valuetext="Indeterminado">
+      <div class="splash__progress-bar"></div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,64 @@
+@use '_index' as dv;
+
+:host {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--dv-r-md);
+  border: 1px solid;
+}
+
+:host(.dv-alert--success) {
+  background: var(--dv-success-lo);
+  border-color: var(--dv-success-bor);
+  color: var(--dv-success);
+}
+
+:host(.dv-alert--warn) {
+  background: var(--dv-warn-lo);
+  border-color: var(--dv-warn-bor);
+  color: var(--dv-warn);
+}
+
+:host(.dv-alert--danger) {
+  background: var(--dv-danger-lo);
+  border-color: var(--dv-danger-bor);
+  color: var(--dv-danger);
+}
+
+:host(.dv-alert--info) {
+  background: var(--dv-info-lo);
+  border-color: var(--dv-info-bor);
+  color: var(--dv-info);
+}
+
+:host(.dv-alert--neutral) {
+  background: var(--dv-surf-2);
+  border-color: var(--dv-bor);
+  color: var(--dv-fg);
+}
+
+.dv-alert__content {
+  flex: 1;
+}
+.dv-alert__title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+  margin-top: 0;
+}
+
+.dv-alert__dismiss {
+  @include dv.dv-button-reset;
+  color: currentColor;
+  opacity: 0.7;
+  padding: 0.125rem;
+
+  &:hover {
+    opacity: 1;
+  }
+  &:focus-visible {
+    @include dv.dv-focus-ring;
+  }
+}

@@ -1,0 +1,10 @@
+:host { display: block; height: 100%; }
+
+/* O3 — Tab switch animation */
+.ds-skills-tab-content {
+  animation: ds-skills-tab-enter var(--dv-dur-normal) var(--dv-ease-out);
+}
+@keyframes ds-skills-tab-enter {
+  from { opacity: 0; transform: translateX(0.75rem); }
+  to   { opacity: 1; transform: none; }
+}

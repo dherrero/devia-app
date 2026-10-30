@@ -1,0 +1,48 @@
+    <div class="nf-modal" role="dialog" aria-modal="true" aria-labelledby="nf-title">
+      <header class="nf-head">
+        <span class="nf-icon-badge" aria-hidden="true">
+          <dv-icon [icon]="LucideFolderPlus" size="sm" />
+        </span>
+        <h2 class="nf-title" id="nf-title">{{ 'modals.new_folder.title' | translate }}</h2>
+        <dv-button variant="secondary" size="sm" iconOnly ariaLabel="Cerrar" (clicked)="cancel()" [disabled]="creating()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      </header>
+
+      <section class="nf-body">
+        @if (state.navPath()) {
+          <p class="nf-hint" [innerHTML]="'modals.new_folder.location' | translate:{ path: state.navPath() }"></p>
+        } @else {
+          <p class="nf-hint">{{ 'modals.new_folder.location_root' | translate }}</p>
+        }
+
+        <div class="nf-field">
+          <div class="nf-input-wrap">
+            <dv-input #inputRef
+                   [ngModel]="name()"
+                   (ngModelChange)="onNameChange($event)"
+                   [placeholder]="'modals.new_folder.placeholder' | translate"
+                   [disabled]="creating()"
+                   [spellcheck]="false"
+                   ariaLabel="Nombre de la carpeta"
+                   [attr.aria-invalid]="errorMessage() !== null"
+                   [attr.aria-describedby]="errorMessage() ? 'nf-error-msg' : null"
+                   (keydown.enter)="create()" />
+          </div>
+          <div class="nf-error" [class.hidden]="errorMessage() === null" id="nf-error-msg" role="alert">
+            <span class="nf-error-dot" aria-hidden="true">!</span>
+            {{ errorMessage() }}
+          </div>
+        </div>
+      </section>
+
+      <footer class="nf-footer">
+        <dv-button variant="ghost" size="sm" shape="pill" (clicked)="cancel()" [disabled]="creating()">
+          {{ 'modals.new_folder.cancel' | translate }}
+        </dv-button>
+        <dv-button size="sm" shape="pill" [disabled]="!canCreate()" [loading]="creating()" (clicked)="create()">
+          {{ 'modals.new_folder.create' | translate }}
+        </dv-button>
+      </footer>
+    </div>
+  

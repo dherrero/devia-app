@@ -1,0 +1,20 @@
+<div class="dv-radio-group__options">
+  @for (opt of options(); track opt.value) {
+  <label
+    class="dv-radio__label"
+    [class.dv-radio__label--disabled]="opt.disabled || disabled() || isDisabled()"
+  >
+    <input
+      type="radio"
+      class="dv-radio__input"
+      [name]="name()"
+      [value]="opt.value"
+      [checked]="selected() === opt.value"
+      [disabled]="opt.disabled || disabled() || isDisabled()"
+      (change)="select(opt.value, opt)"
+    />
+    <span class="dv-radio__circle" aria-hidden="true"></span>
+    <span class="dv-radio__text">{{ opt.label }}</span>
+  </label>
+  }
+</div>

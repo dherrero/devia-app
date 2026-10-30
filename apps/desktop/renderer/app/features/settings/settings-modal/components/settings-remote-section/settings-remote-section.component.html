@@ -1,0 +1,86 @@
+<section>
+  <h4>{{ 'modals.settings.remote_heading' | translate }}</h4>
+  <p class="hint inline">{{ 'modals.settings.remote_hint' | translate }}</p>
+</section>
+
+<div class="hr"></div>
+
+<section class="remote-integration">
+  <div class="remote-int-head">
+    <dv-icon [icon]="LucideSend" size="sm" />
+    <span class="remote-int-name">Telegram</span>
+    <span class="remote-status" [attr.data-state]="remoteStatus().state">{{ remoteStatusLabel() }}</span>
+  </div>
+
+  <label class="toggle-row">
+    <dv-toggle
+      [ngModel]="remoteForm().enabled"
+      (ngModelChange)="updateRemoteForm('enabled', $event)"
+    />
+    {{ 'modals.settings.remote_enable' | translate }}
+  </label>
+
+  <label>{{ 'modals.settings.remote_token' | translate }}</label>
+  <dv-input type="password" autocomplete="off" [spellcheck]="false"
+         [ngModel]="remoteForm().botToken"
+         (ngModelChange)="updateRemoteForm('botToken', $event)"
+         [placeholder]="'modals.settings.remote_token_placeholder' | translate" />
+
+  <label>{{ 'modals.settings.remote_chat_id' | translate }} <span class="hint">{{ 'modals.settings.remote_chat_id_hint' | translate }}</span></label>
+  <dv-input inputmode="numeric"
+         [ngModel]="remoteForm().chatId"
+         (ngModelChange)="updateRemoteForm('chatId', $event)"
+         [placeholder]="'modals.settings.remote_chat_id_placeholder' | translate" />
+
+  <div class="row">
+    <dv-button variant="secondary" type="button"
+               size="sm"
+               shape="pill"
+               [disabled]="remoteTesting() || !remoteForm().botToken"
+               (clicked)="testRemote()">
+      <dv-icon [icon]="LucideWifiHigh" size="sm" />
+      {{ 'modals.settings.remote_test' | translate }}
+    </dv-button>
+    @if (remoteTesting()) {
+      <dv-spinner />
+    }
+  </div>
+  @if (remoteTestResult(); as r) {
+    @if (r.ok) {
+      <p class="test-result ok">{{ 'modals.settings.remote_test_ok' | translate:{ bot: r.botUsername ?? '' } }}</p>
+    } @else {
+      <p class="test-result fail">{{ 'modals.settings.remote_test_fail' | translate }}</p>
+    }
+  }
+
+  <label class="toggle-row mt">
+    <dv-toggle
+      [ngModel]="remoteForm().allowShell"
+      (ngModelChange)="updateRemoteForm('allowShell', $event)"
+    />
+    {{ 'modals.settings.remote_allow_shell' | translate }}
+  </label>
+  <p class="hint inline">{{ 'modals.settings.remote_allow_shell_hint' | translate }}</p>
+
+  <label class="toggle-row mt">
+    <dv-toggle
+      data-testid="remote-allow-file-send"
+      [disabled]="!remoteForm().enabled"
+      [ngModel]="remoteForm().allowFileSend"
+      (ngModelChange)="updateRemoteForm('allowFileSend', $event)"
+    />
+    {{ 'modals.settings.remote_allow_file_send' | translate }}
+  </label>
+  <p class="hint inline">{{ 'modals.settings.remote_allow_file_send_hint' | translate }}</p>
+  <p class="hint inline">{{ 'modals.settings.remote_allow_file_send_privacy' | translate }}</p>
+
+  <label class="toggle-row mt">
+    <dv-toggle
+      [ngModel]="remoteForm().mirrorDesktop"
+      (ngModelChange)="updateRemoteForm('mirrorDesktop', $event)"
+    />
+    {{ 'modals.settings.remote_mirror_desktop' | translate }}
+  </label>
+  <p class="hint inline">{{ 'modals.settings.remote_mirror_desktop_hint' | translate }}</p>
+  <p class="hint inline">{{ 'modals.settings.remote_more_soon' | translate }}</p>
+</section>

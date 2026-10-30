@@ -1,0 +1,23 @@
+<div class="ds-handoff" role="separator" [attr.aria-label]="ariaLabel()">
+  <div class="ds-handoff__chip">
+    <dv-icon class="ds-handoff__icon" [icon]="LucideArrowLeftRight" size="sm" />
+    <span class="ds-handoff__label">
+      {{ 'chat.handoff_title' | translate: { from: fromLabel(), to: toLabel() } }}
+    </span>
+    <button type="button"
+            class="ds-handoff__toggle"
+            [attr.aria-expanded]="expanded()"
+            (click)="toggle()">
+      {{ (expanded() ? 'chat.handoff_toggle_hide' : 'chat.handoff_toggle') | translate }}
+    </button>
+  </div>
+  @if (expanded()) {
+    <div class="ds-handoff__summary md-body">
+      @if (summaryHtml().plainTextFallback) {
+        <pre class="ds-handoff__plain">{{ msg().text }}</pre>
+      } @else {
+        <div [innerHTML]="summaryHtml().html"></div>
+      }
+    </div>
+  }
+</div>

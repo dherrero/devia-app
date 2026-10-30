@@ -1,0 +1,143 @@
+@if (label()) {
+<label [id]="uid + '-label'" [for]="controlId()" class="dv-datepicker__label">
+  {{ label() }} @if (required()) {
+  <span class="dv-datepicker__required" aria-hidden="true">*</span>
+  }
+</label>
+}
+<div class="dv-datepicker__wrapper" cdkOverlayOrigin #origin="cdkOverlayOrigin">
+  <div
+    class="dv-datepicker__control"
+    [class.dv-datepicker__control--open]="isOpen()"
+    [class.dv-datepicker__control--empty]="!value()"
+    [class.dv-datepicker__control--disabled]="disabledState()"
+    [class.dv-datepicker__control--readonly]="readonly()"
+    [class.dv-datepicker__control--error]="!!error()"
+    (click)="open()"
+  >
+    <input
+      #trigger
+      [id]="controlId()"
+      class="dv-datepicker__input"
+      type="text"
+      readonly
+      [disabled]="disabledState()"
+      [required]="required()"
+      [placeholder]="placeholder()"
+      [value]="displayValue()"
+      role="combobox"
+      aria-haspopup="dialog"
+      [attr.aria-expanded]="isOpen()"
+      [attr.aria-controls]="isOpen() ? dialogId : null"
+      [attr.aria-required]="required() ? 'true' : null"
+      [attr.aria-invalid]="error() ? 'true' : null"
+      [attr.aria-describedby]="ariaDescribedBy()"
+      [attr.aria-labelledby]="label() ? uid + '-label ' + uid : null"
+      [attr.aria-label]="label() ? null : ariaLabel()"
+      data-testid="dv-datepicker-input"
+      (keydown)="onTriggerKeydown($event)"
+    />
+    @if (value() && !disabledState() && !readonly()) {
+    <button
+      type="button"
+      class="dv-datepicker__clear"
+      aria-label="Limpiar fecha"
+      (click)="clear(); $event.stopPropagation()"
+    >
+      ×
+    </button>
+    }
+    <button
+      type="button"
+      class="dv-datepicker__trigger"
+      aria-label="Abrir calendario"
+      [disabled]="disabledState() || readonly()"
+      [attr.aria-expanded]="isOpen()"
+      [attr.aria-controls]="isOpen() ? dialogId : null"
+      (click)="toggle(); $event.stopPropagation()"
+      (keydown)="onTriggerKeydown($event)"
+    >
+      <span class="dv-datepicker__calendar-icon" aria-hidden="true"></span>
+    </button>
+  </div>
+
+  <ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="origin"
+    [cdkConnectedOverlayOpen]="isOpen()"
+    [cdkConnectedOverlayPositions]="positions"
+    [cdkConnectedOverlayMinWidth]="overlayMinWidth()"
+    [cdkConnectedOverlayHasBackdrop]="true"
+    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+    [cdkConnectedOverlayPush]="true"
+    (backdropClick)="close()"
+    (detach)="close(false)"
+  >
+    <div
+      #dialog
+      [id]="dialogId"
+      class="dv-datepicker__panel"
+      role="dialog"
+      tabindex="-1"
+      [style.min-width.px]="overlayMinWidth()"
+      [attr.aria-labelledby]="uid + '-month'"
+      (keydown)="onDialogKeydown($event)"
+    >
+      <div class="dv-datepicker__panel-header">
+        <button
+          type="button"
+          class="dv-datepicker__nav"
+          aria-label="Mes anterior"
+          (click)="previousMonth()"
+        >
+          ‹
+        </button>
+        <span [id]="uid + '-month'" class="dv-datepicker__month">
+          {{ monthLabel() }}
+        </span>
+        <button
+          type="button"
+          class="dv-datepicker__nav"
+          aria-label="Mes siguiente"
+          (click)="nextMonth()"
+        >
+          ›
+        </button>
+      </div>
+
+      <div class="dv-datepicker__weekdays" aria-hidden="true">
+        @for (weekday of weekdays; track weekday) {
+        <span>{{ weekday }}</span>
+        }
+      </div>
+
+      <div [id]="gridId" class="dv-datepicker__grid" role="grid">
+        @for (day of days(); track day.key) {
+        <button
+          type="button"
+          class="dv-datepicker__day"
+          role="gridcell"
+          [disabled]="day.isDisabled"
+          [attr.aria-selected]="day.isSelected"
+          [attr.aria-current]="day.isToday ? 'date' : null"
+          [class.dv-datepicker__day--outside]="!day.inCurrentMonth"
+          [class.dv-datepicker__day--selected]="day.isSelected"
+          [class.dv-datepicker__day--today]="day.isToday"
+          [class.dv-datepicker__day--active]="activeIso() === day.iso"
+          (click)="selectDay(day)"
+          (mouseenter)="setActive(day)"
+        >
+          {{ day.label }}
+        </button>
+        }
+      </div>
+    </div>
+  </ng-template>
+</div>
+@if (error()) {
+<span [id]="uid + '-error'" class="dv-datepicker__error" role="alert">
+  {{ error() }}
+</span>
+} @else if (hint()) {
+<span [id]="uid + '-hint'" class="dv-datepicker__hint">{{ hint() }}</span>
+}

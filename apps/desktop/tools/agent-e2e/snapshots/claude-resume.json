@@ -1,0 +1,64 @@
+{
+  "agent": "claude",
+  "scenario": "resume",
+  "wiring": {
+    "command": "claude",
+    "argv": [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
+      "--verbose",
+      "--model",
+      "haiku",
+      "--permission-mode",
+      "acceptEdits",
+      "--disallowedTools",
+      "WebSearch,WebFetch,Workflow",
+      "--append-system-prompt",
+      "<TEXT>",
+      "--resume",
+      "<UUID>",
+      "--mcp-config",
+      "<DEVIA>/tmp/mcp-<ID>.json",
+      "--strict-mcp-config"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "user"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "argv",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": {
+      "skillsDirs": 0,
+      "subagentsDir": false
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "raw",
+      "session_started",
+      "status",
+      "text_delta",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [],
+    "uiCards": [],
+    "recalled": true
+  }
+}

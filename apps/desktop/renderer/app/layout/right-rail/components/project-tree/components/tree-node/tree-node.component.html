@@ -1,0 +1,45 @@
+    <button
+      class="row"
+      type="button"
+      [class.is-dir]="node().isDir"
+      [class.has-changes]="node().isDir && node().hasChanges"
+      [attr.data-status]="node().status ?? null"
+      [style.--depth]="depth()"
+      (click)="onRowClick()"
+      [title]="rowTooltip()">
+      @if (node().isDir) {
+        <dv-icon class="caret" aria-hidden="true"
+          [icon]="expanded() ? LucideChevronDown : LucideChevronRight" size="sm" />
+      } @else {
+        <span class="caret" aria-hidden="true"></span>
+      }
+      <dv-icon class="icon" aria-hidden="true"
+        [icon]="node().isDir ? (expanded() ? LucideFolderOpen : LucideFolder) : LucideFileText"
+        size="sm" />
+      <span class="name">{{ node().name }}</span>
+      @if (node().status) {
+        <span class="badge" aria-hidden="true">{{ statusLetter() }}</span>
+      }
+    </button>
+
+    @if (node().isDir && expanded()) {
+      @if (loading()) {
+        <div class="loading" [style.--depth]="depth() + 1">
+          {{ 'rightRail.loading' | translate }}
+        </div>
+      } @else if (error()) {
+        <div class="error" [style.--depth]="depth() + 1">
+          {{ 'rightRail.error' | translate }}
+        </div>
+      } @else {
+        @for (child of children(); track child.path) {
+          <ds-tree-node
+            [node]="child"
+            [project]="project()"
+            [depth]="depth() + 1"
+            [refreshToken]="refreshToken()"
+            (fileOpen)="fileOpen.emit($event)" />
+        }
+      }
+    }
+  

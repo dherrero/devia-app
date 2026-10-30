@@ -1,0 +1,69 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+}
+
+.dv-option-card__button {
+  width: 100%;
+  height: 100%;
+  min-height: 4.75rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    background var(--dv-dur-quick) var(--dv-ease-out),
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    box-shadow var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover:not(:disabled) {
+    border-color: var(--dv-acc-bor);
+    background: var(--dv-surf-2);
+  }
+
+  &:focus-visible {
+    @include dv.dv-focus-ring();
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+:host(.dv-option-card--selected) .dv-option-card__button {
+  border-color: var(--dv-acc);
+  background: var(--dv-acc-lo);
+  box-shadow: inset 0 0 0 1px var(--dv-acc-bor);
+}
+
+.dv-option-card__icon {
+  flex: 0 0 auto;
+  color: var(--dv-acc);
+}
+
+.dv-option-card__content {
+  min-width: 0;
+  display: grid;
+  gap: 0.1875rem;
+}
+
+.dv-option-card__label {
+  color: var(--dv-fg);
+  font-size: var(--dv-fs-sm);
+  font-weight: 600;
+}
+
+.dv-option-card__description {
+  color: var(--dv-muted);
+  font-size: var(--dv-fs-xs);
+  line-height: 1.35;
+}

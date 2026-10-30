@@ -1,0 +1,8 @@
+<div class="dv-toast-host" aria-live="polite" aria-atomic="false">
+  @for (toast of toastService.toasts(); track toast.id) {
+    <dv-toast-item
+      [options]="toast.options"
+      (dismissed)="toastService.dismiss(toast.id)"
+    />
+  }
+</div>

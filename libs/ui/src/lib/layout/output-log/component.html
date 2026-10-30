@@ -1,0 +1,14 @@
+@if (visibleLines().length > 0) {
+<pre
+  class="dv-output-log"
+  role="log"
+  aria-live="polite"
+  [attr.aria-label]="ariaLabel()"
+>
+{{ text() }}</pre
+>
+} @else if (emptyText()) {
+<div class="dv-output-log dv-output-log--empty" role="status">
+  {{ emptyText() }}
+</div>
+}

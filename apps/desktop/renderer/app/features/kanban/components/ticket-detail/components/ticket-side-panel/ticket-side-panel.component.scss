@@ -1,0 +1,67 @@
+/* Before: tinted side panel (surf-2 58%). Mockup's .drawer-side is
+   transparent — the .drawer-main border-right alone divides the columns. */
+:host {
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+.side-lbl {
+  font-family: var(--dv-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dv-muted);
+}
+.done-check { font-size: 0.8125rem; }
+.mono-input,
+.side-mono {
+  font-family: var(--dv-mono);
+  font-size: 0.75rem;
+}
+.is-overdue { color: var(--dv-danger); }
+.side-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.side-val {
+  color: var(--dv-fg);
+  font-size: 0.8125rem;
+}
+.side-accent {
+  color: var(--dv-acc);
+  font-size: 0.6875rem;
+}
+.side-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.hr {
+  height: 1px;
+  margin: 0.125rem 0;
+  background: var(--dv-bor);
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  border: 1px solid;
+  border-radius: var(--dv-r-pill);
+  white-space: nowrap;
+  padding: 0.1875rem 0.4375rem;
+  font-size: 0.625rem;
+  font-weight: 500;
+}
+.tag-spec {
+  background: oklch(56% 0.20 250 / 0.14);
+  border-color: oklch(56% 0.20 250 / 0.30);
+  color: oklch(62% 0.20 250);
+}
+.tag-dep {
+  background: oklch(52% 0.18 145 / 0.12);
+  border-color: oklch(52% 0.18 145 / 0.28);
+  color: oklch(55% 0.18 145);
+}

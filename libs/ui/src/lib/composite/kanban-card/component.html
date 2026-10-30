@@ -1,0 +1,83 @@
+<!-- Row 1: priority pill + due date (space-between) -->
+@if ((item().priority && item().priority !== 'none') || item().dueDate) {
+<div class="dv-kanban-card__top">
+  @if (item().priority && item().priority !== 'none') {
+  <span
+    class="dv-kanban-card__priority"
+    [class.dv-kanban-card__priority--alta]="item().priority === 'alta'"
+    [class.dv-kanban-card__priority--media]="item().priority === 'media'"
+    >{{ item().priority === 'alta' ? 'Alta' : 'Media' }}</span
+  >
+  } @else {
+  <span></span>
+  } @if (item().dueDate) {
+  <span
+    class="dv-kanban-card__due"
+    [class.dv-kanban-card__due--today]="dueDateClass() === 'dv-kanban-card__due--today'"
+    [class.dv-kanban-card__due--overdue]="dueDateClass() === 'dv-kanban-card__due--overdue'"
+    [class.dv-kanban-card__due--upcoming]="dueDateClass() === 'dv-kanban-card__due--upcoming'"
+    >{{ dueDateLabel() }}</span
+  >
+  }
+</div>
+}
+
+<!-- Row 2: labels (only when data available) -->
+@if (item().labels?.length) {
+<div class="dv-kanban-card__labels">
+  @for (key of item().labels!; track key) { @if (labelMap[key]; as lb) {
+  <span
+    class="dv-kanban-card__label"
+    [style.background]="lb.bg"
+    [style.color]="lb.fg"
+    >{{ lb.text }}</span
+  >
+  } }
+</div>
+}
+
+<!-- Row 3: title -->
+<p class="dv-kanban-card__title">{{ item().title }}</p>
+
+<!-- Row 4: description (2-line clamp) -->
+@if (item().description) {
+<p class="dv-kanban-card__desc">{{ item().description }}</p>
+}
+
+<!-- Row 5: footer — version + assignee left, comments right -->
+@if (item().version || item().assignee || item().commentsCount) {
+<div class="dv-kanban-card__foot">
+  <div class="dv-kanban-card__foot-left">
+    @if (item().version) {
+    <span class="dv-kanban-card__version">{{ item().version }}</span>
+    } @if (item().assignee?.initials) {
+    <span
+      class="dv-kanban-card__avatar"
+      [attr.aria-label]="'Asignado a ' + item().assignee!.initials"
+      >{{ item().assignee!.initials }}</span
+    >
+    }
+  </div>
+  @if (item().commentsCount) {
+  <div class="dv-kanban-card__foot-right">
+    <span class="dv-kanban-card__comments">
+      <svg
+        width="9"
+        height="9"
+        viewBox="0 0 9 9"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M1 1h7v5H5L3 8V6H1V1z"
+          stroke="currentColor"
+          stroke-width="1.1"
+          stroke-linejoin="round"
+        />
+      </svg>
+      {{ item().commentsCount }}
+    </span>
+  </div>
+  }
+</div>
+}

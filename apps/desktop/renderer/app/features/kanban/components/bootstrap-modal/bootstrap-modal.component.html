@@ -1,0 +1,89 @@
+    <div class="boot-modal" role="dialog" aria-modal="true" aria-labelledby="boot-title">
+      <div class="boot-head">
+        <div class="boot-icon" aria-hidden="true">
+          <dv-icon [icon]="isExisting() ? LucideFolder : LucideRocket" size="sm" />
+        </div>
+        <span class="boot-title" id="boot-title">
+          @if (isExisting()) {
+            Continuar con Devia
+          } @else {
+            &iexcl;Configura este proyecto!
+          }
+        </span>
+      </div>
+
+      @if (busy()) {
+        <div class="boot-body">
+          <p class="body-desc">Analizando el proyecto y preparando el entorno...</p>
+          <div class="loading-center" aria-hidden="true">
+            <span class="boot-spinner"></span>
+          </div>
+        </div>
+      } @else {
+        <div class="boot-body">
+          <p class="body-desc">
+            @if (isExisting()) {
+              Este proyecto ya tiene una especificaci&oacute;n guardada. Devia la cargar&aacute; autom&aacute;ticamente y estar&aacute; lista para continuar.
+            } @else {
+              Cu&eacute;ntale a Devia qu&eacute; quieres construir. Con esta descripci&oacute;n generar&aacute; el plan inicial del proyecto y configurar&aacute; el agente para tu stack.
+            }
+          </p>
+
+          @if (isExisting()) {
+            <div class="spec-callout">
+              <svg viewBox="0 0 14 14" aria-hidden="true">
+                <circle cx="7" cy="7" r="5.5" />
+                <path d="M7 6.5v3M7 4.5v.25" />
+              </svg>
+              <div class="spec-callout-text">
+                Spec detectada: <strong>devia-spec.md</strong> &middot; lista para continuar.
+              </div>
+            </div>
+          }
+
+          <div class="field">
+            <label for="dsb-intent">
+              @if (isExisting()) {
+                A&ntilde;ade contexto adicional <span class="opt">(opcional)</span>
+              } @else {
+                &iquest;Qu&eacute; quieres construir?
+              }
+            </label>
+            @if (isExisting()) {
+              <dv-textarea #intentInput
+                        ariaLabel="Añade contexto adicional"
+                        [rows]="4"
+                        placeholder="Ej.: hoy quiero enfocarme en el módulo de autenticación..."
+                        [ngModel]="intent"
+                        (ngModelChange)="intent = $event" />
+            } @else {
+              <dv-textarea #intentInput
+                        ariaLabel="Qué quieres construir"
+                        [rows]="5"
+                        placeholder="Ej.: una app de tareas con login OAuth, sincronización en tiempo real y notificaciones push. Stack: React + Node.js + PostgreSQL."
+                        [ngModel]="intent"
+                        (ngModelChange)="intent = $event" />
+            }
+          </div>
+        </div>
+      }
+
+      <div class="boot-footer">
+        <dv-button variant="ghost" type="button" [disabled]="busy()" (clicked)="closeLater()">
+          {{ 'sdd.later' | translate }}
+        </dv-button>
+        @if (busy()) {
+          <dv-button variant="primary" type="button" [disabled]="true" (clicked)="start()">
+            Cargando...
+          </dv-button>
+        } @else {
+          <dv-button variant="primary" type="button"
+                  [disabled]="!canStart()"
+                  (clicked)="start()">
+            {{ isExisting() ? 'Continuar' : ('sdd.start' | translate) }}
+            <dv-icon class="cta-arrow" [icon]="LucideArrowRight" size="sm" />
+          </dv-button>
+        }
+      </div>
+    </div>
+  

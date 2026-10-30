@@ -1,0 +1,16 @@
+<div class="dv-alert__content">
+  @if (title()) {
+  <p class="dv-alert__title">{{ title() }}</p>
+  }
+  <ng-content />
+</div>
+@if (dismissible()) {
+<button
+  type="button"
+  class="dv-alert__dismiss"
+  aria-label="Cerrar alerta"
+  (click)="dismissed.emit()"
+>
+  ✕
+</button>
+}

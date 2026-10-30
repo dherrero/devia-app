@@ -1,0 +1,15 @@
+<button
+  type="button"
+  role="switch"
+  class="dv-toggle__track"
+  [attr.aria-checked]="checked()"
+  [attr.aria-label]="ariaLabel() ?? label()"
+  [disabled]="disabled() || isDisabled()"
+  (click)="toggle()"
+  (keydown)="onKeydown($event)"
+>
+  <span class="dv-toggle__thumb"></span>
+</button>
+@if (label()) {
+<span class="dv-toggle__label" (click)="toggle()">{{ label() }}</span>
+}

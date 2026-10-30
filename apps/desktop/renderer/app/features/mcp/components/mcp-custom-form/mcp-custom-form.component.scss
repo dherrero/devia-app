@@ -1,0 +1,17 @@
+/* The tab host renders no box of its own so the projected layout keeps
+   participating directly in the modal-shell content area (pre-split DOM). */
+:host { display: contents; }
+
+.custom-form { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.875rem 1rem; }
+.agents-fs, .scope-fs {
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  padding: 0.625rem;
+}
+.scope-radio {
+  display: block;
+  margin-top: 0.375rem;
+}
+.agents-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem;
+}

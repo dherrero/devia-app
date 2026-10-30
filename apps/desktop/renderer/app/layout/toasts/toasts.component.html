@@ -1,0 +1,37 @@
+    <div class="dsm-toasts" role="status" aria-live="polite">
+      @for (t of toasts.toasts(); track t.id) {
+        <div class="dsm-toast"
+             [attr.data-kind]="t.kind"
+             [attr.data-clickable]="t.onClick ? 'true' : null"
+             (click)="onClick(t)">
+          <span class="ic">
+            <dv-icon [icon]="iconLucideFor(t.kind)" size="sm" />
+          </span>
+          <div class="content">
+            <div class="title">{{ t.text }}</div>
+            @if (t.action; as action) {
+              <dv-button class="action"
+                         variant="secondary"
+                         size="sm"
+                         (clicked)="$event.stopPropagation(); onAction(t)">
+                {{ action.label }}
+              </dv-button>
+            }
+          </div>
+          @if (t.onClick) {
+            <span class="arrow" aria-hidden="true">
+              <dv-icon [icon]="LucideArrowRight" size="sm" />
+            </span>
+          } @else {
+            <dv-button iconOnly
+                       variant="ghost"
+                       size="sm"
+                       (clicked)="$event.stopPropagation(); toasts.dismiss(t.id)"
+                       [ariaLabel]="'toasts.close_aria' | translate">
+              <dv-icon [icon]="LucideX" size="sm" />
+            </dv-button>
+          }
+        </div>
+      }
+    </div>
+  

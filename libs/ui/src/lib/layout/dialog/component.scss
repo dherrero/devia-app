@@ -1,0 +1,16 @@
+// Structural .dv-dialog__* rules are defined globally in libs/styles/src/lib/_dialog.scss
+// (re-exported via _reset.scss for the web app; `@use`d directly by the desktop renderer)
+// so they apply to both dv-dialog and any CDK dialog panel that uses the dv-dialog class.
+
+@use '_index' as dv;
+
+:host {
+  // Override close button with mixin-based focus ring for dv-dialog's own template.
+  // Inner dialog components (ExportDialog, DeleteDialog, etc.) inherit the global rules.
+
+  .dv-dialog__close {
+    &:focus-visible {
+      @include dv.dv-focus-ring;
+    }
+  }
+}

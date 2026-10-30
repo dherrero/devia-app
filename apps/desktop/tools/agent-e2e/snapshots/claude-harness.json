@@ -1,0 +1,74 @@
+{
+  "agent": "claude",
+  "scenario": "harness",
+  "wiring": {
+    "command": "claude",
+    "argv": [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
+      "--verbose",
+      "--model",
+      "haiku",
+      "--permission-mode",
+      "acceptEdits",
+      "--disallowedTools",
+      "WebSearch,WebFetch,Workflow",
+      "--append-system-prompt",
+      "<TEXT>",
+      "--resume",
+      "<UUID>",
+      "--mcp-config",
+      "<DEVIA>/tmp/mcp-<ID>.json",
+      "--strict-mcp-config",
+      "--agents",
+      "<DEVIA>/tmp/claude-agents-<UUID>.json"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "user"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui",
+      "e2e-echo"
+    ],
+    "systemPrompt": {
+      "channel": "argv",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": {
+      "skillsDirs": 1,
+      "subagentsDir": true
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "raw",
+      "session_started",
+      "status",
+      "text_delta",
+      "tool_use",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [
+      "mcp__devia-ui__devia_skill"
+    ],
+    "uiCards": [],
+    "quoted": {
+      "mcp": true,
+      "skill": true,
+      "subagent": true
+    }
+  }
+}

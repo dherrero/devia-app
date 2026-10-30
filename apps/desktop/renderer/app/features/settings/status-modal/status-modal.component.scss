@@ -1,0 +1,156 @@
+    :host { display: block; width: min(26rem, 95vw); }
+    .status-modal {
+      width: 100%;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--dv-surf);
+      border: 1px solid var(--dv-bor);
+      border-radius: var(--dv-r-xl);
+      color: var(--dv-fg);
+      box-shadow: var(--dv-shadow-lg);
+    }
+    .modal-header {
+      height: 3.125rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0 1rem;
+      border-bottom: 1px solid var(--dv-bor);
+      flex-shrink: 0;
+    }
+    .modal-header-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+    .modal-icon {
+      width: 1.5rem;
+      height: 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border-radius: var(--dv-r-md);
+      background: var(--dv-acc-lo); /* before: var(--dv-acc-med) — match mockup softer badge */
+      border: 1px solid var(--dv-acc-bor);
+      color: var(--dv-acc);
+    }
+    .modal-title {
+      margin: 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--dv-fg);
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+    .modal-body {
+      min-height: 0;
+      max-height: calc(80vh - 6.25rem);
+      overflow-y: auto;
+      padding: 1.125rem 1rem;
+    }
+    .summary-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3125rem;
+      height: 1.5rem;
+      padding: 0 0.5625rem;
+      border: 1px solid var(--dv-bor);
+      border-radius: var(--dv-r-pill);
+      color: var(--dv-muted);
+      background: var(--dv-surf-3);
+      font-family: var(--dv-mono);
+      font-size: 0.6875rem;
+      font-weight: 500;
+    }
+    .status-pill.accent {
+      background: var(--dv-acc-med);
+      border-color: var(--dv-acc-bor);
+      color: var(--dv-acc);
+    }
+    .pill-dot { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: currentColor; }
+    .project-list { display: flex; flex-direction: column; gap: 0.4375rem; }
+    .project-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.875rem;
+      padding: 0.5625rem 0.75rem;
+      border: 1px solid var(--dv-bor);
+      border-radius: var(--dv-r-lg);
+      background: var(--dv-surf-3);
+    }
+    .project-row-left,
+    .project-row-right { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+    .project-row-right { flex-shrink: 0; gap: 0.375rem; }
+    .project-dot { width: 0.5rem; height: 0.5rem; flex-shrink: 0; border-radius: 50%; background: var(--dv-dim); }
+    .project-dot.running { background: var(--dv-success); animation: pill-pulse 1.8s ease-in-out infinite; }
+    .project-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--dv-fg);
+      font-size: 0.8125rem;
+      font-weight: 500;
+    }
+    .git-ref {
+      max-width: 7rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--dv-dim);
+      font-family: var(--dv-mono);
+      font-size: 0.6875rem;
+    }
+    .state-badge,
+    .git-dirty {
+      padding: 0.125rem 0.4375rem;
+      border: 1px solid var(--dv-bor);
+      border-radius: var(--dv-r-pill);
+      font-family: var(--dv-mono);
+      font-size: 0.625rem;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .state-badge.running {
+      background: var(--dv-success-lo);
+      border-color: var(--dv-success-bor);
+      color: var(--dv-success);
+    }
+    .state-badge.stopped { background: transparent; border-color: var(--dv-bor); color: var(--dv-dim); }
+    .git-dirty {
+      background: var(--dv-warn-lo);
+      border-color: var(--dv-warn-bor);
+      color: var(--dv-warn);
+    }
+    .empty-state {
+      min-height: 9rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 2rem;
+      text-align: center;
+    }
+    .empty-icon { color: var(--dv-dim); }
+    .empty-title { color: var(--dv-muted); font-size: 0.875rem; font-weight: 600; }
+    .empty-body { max-width: 18rem; margin: 0; color: var(--dv-dim); font-size: 0.8125rem; line-height: 1.6; }
+    .loading-state { padding: 2rem; color: var(--dv-muted); text-align: center; font-size: 0.8125rem; }
+    .modal-footer {
+      min-height: 3.125rem;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--dv-bor);
+      flex-shrink: 0;
+    }
+    @keyframes pill-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.25); opacity: 0.65; }
+    }
+  

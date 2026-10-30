@@ -1,0 +1,16 @@
+@if (imageSrc(); as src) {
+<span class="dv-chat-avatar__face">
+  <img class="dv-chat-avatar__img" [src]="src" alt="" draggable="false" />
+  @if (blinkSrc(); as bsrc) {
+  <img
+    class="dv-chat-avatar__img dv-chat-avatar__img--blink"
+    [src]="bsrc"
+    alt=""
+    draggable="false"
+    aria-hidden="true"
+  />
+  }
+</span>
+} @else {
+<span class="dv-chat-avatar__label">{{ label() }}</span>
+}

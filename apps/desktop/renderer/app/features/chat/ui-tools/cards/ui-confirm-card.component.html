@@ -1,0 +1,30 @@
+@if (confirm(); as c) {
+  <section class="dsm-confirm"
+           [class.is-danger]="danger()"
+           [attr.aria-label]="'ui_tools.confirm.aria' | translate">
+    <header class="dsm-confirm__head">
+      <span class="dsm-confirm__badge">
+        {{ (danger() ? 'ui_tools.confirm.badge_danger' : 'ui_tools.confirm.badge') | translate }}
+      </span>
+      <code class="dsm-confirm__action">{{ c.action }}</code>
+    </header>
+
+    @if (c.detail) {
+      <p class="dsm-confirm__detail">{{ c.detail }}</p>
+    }
+
+    <div class="dsm-confirm__actions">
+      <dv-button variant="secondary" size="sm" (clicked)="answer('no')">
+        {{ 'ui_tools.confirm.no' | translate }}
+      </dv-button>
+      @if (canAlwaysAllow()) {
+        <dv-button variant="secondary" size="sm" (clicked)="answer('always')">
+          {{ 'ui_tools.confirm.always' | translate }}
+        </dv-button>
+      }
+      <dv-button variant="primary" size="sm" (clicked)="answer('yes')">
+        {{ 'ui_tools.confirm.yes' | translate }}
+      </dv-button>
+    </div>
+  </section>
+}

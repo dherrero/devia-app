@@ -1,0 +1,61 @@
+<section class="dsm-ui-tools-section">
+  <header class="dsm-ui-tools-section__head">
+    <h3>{{ 'modals.settings.ui_tools.title' | translate }}</h3>
+    <p class="hint">{{ 'modals.settings.ui_tools.hint' | translate }}</p>
+    <p class="dsm-ui-tools-section__budget">
+      {{ 'modals.settings.ui_tools.total' | translate:{ tokens: activeTokens() } }}
+    </p>
+    @if (!agentSupported()) {
+      <p class="dsm-ui-tools-section__warn">
+        {{ 'modals.settings.ui_tools.agent_unsupported' | translate:{ agent: selectedAgentId() } }}
+      </p>
+    }
+  </header>
+
+  <ul class="dsm-ui-tools-section__list">
+    @for (tool of catalog(); track tool.name) {
+      <li class="dsm-ui-tools-section__item" [class.is-off]="!isOn(tool.name)">
+        <button type="button"
+                class="dsm-ui-tools-section__toggle"
+                role="switch"
+                [attr.aria-checked]="isOn(tool.name)"
+                [disabled]="!agentSupported()"
+                (click)="toggle(tool.name)">
+          <span class="dsm-ui-tools-section__mark" aria-hidden="true"></span>
+          <span class="dsm-ui-tools-section__body">
+            <code class="dsm-ui-tools-section__name">{{ tool.publicName }}</code>
+            <span class="dsm-ui-tools-section__desc">{{ tool.description }}</span>
+          </span>
+          <span class="dsm-ui-tools-section__cost">
+            {{ 'modals.settings.ui_tools.cost' | translate:{ tokens: tokensOf(tool) } }}
+          </span>
+        </button>
+      </li>
+    }
+  </ul>
+
+  <hr />
+
+  <header class="dsm-ui-tools-section__head">
+    <h3>{{ 'modals.settings.ui_tools.grants_title' | translate }}</h3>
+    <p class="hint">{{ 'modals.settings.ui_tools.grants_hint' | translate }}</p>
+  </header>
+
+  @if (grants().length === 0) {
+    <p class="hint">{{ 'modals.settings.ui_tools.grants_empty' | translate }}</p>
+  } @else {
+    <ul class="dsm-ui-tools-section__grants">
+      @for (grant of grants(); track grant.action) {
+        <li class="dsm-ui-tools-section__grant">
+          <code>{{ grant.label }}</code>
+          <dv-button variant="ghost" size="sm" (clicked)="revoke(grant.action)">
+            {{ 'modals.settings.ui_tools.revoke' | translate }}
+          </dv-button>
+        </li>
+      }
+    </ul>
+    <dv-button variant="secondary" size="sm" (clicked)="revokeAll()">
+      {{ 'modals.settings.ui_tools.revoke_all' | translate }}
+    </dv-button>
+  }
+</section>

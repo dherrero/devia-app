@@ -1,0 +1,32 @@
+<div class="section-lbl">Conversación</div>
+@for (m of task().thread; track m.id) {
+  <article class="thread-msg" [ngClass]="messageClass(m)">
+    <div class="msg-author">
+      @if (m.author === 'system') {
+        <span class="sys-icon">
+          <dv-icon [icon]="sysIcon(m.systemEvent)" size="sm" />
+          sistema
+        </span>
+      } @else if (m.author === 'agent') {
+        <span class="sys-icon">
+          <dv-icon [icon]="LucideInfo" size="sm" />
+          {{ 'sdd.author_agent' | translate }}
+        </span>
+      } @else {
+        <span>{{ 'sdd.author_user' | translate }}</span>
+      }
+      <span>·</span>
+      <time>{{ timeLabel(m.createdAt) }}</time>
+      @if (isQuestionMessage(m)) {
+        <span>· pregunta</span>
+      }
+    </div>
+    <p class="msg-text">
+      @if (m.author === 'system') {
+        {{ m.body | translate: m.systemParams }}
+      } @else {
+        {{ m.body }}
+      }
+    </p>
+  </article>
+}

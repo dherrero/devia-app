@@ -1,0 +1,21 @@
+<textarea
+  #textareaEl
+  class="dv-code-textarea"
+  [class.dv-code-textarea--focused]="isFocused()"
+  [class.dv-code-textarea--valid]="valid()"
+  [class.dv-code-textarea--invalid]="invalid()"
+  [class.dv-code-textarea--fill]="fill()"
+  [rows]="rows()"
+  [placeholder]="placeholder()"
+  [disabled]="controlDisabled()"
+  [readOnly]="readonly()"
+  [attr.aria-label]="ariaLabel()"
+  [style.resize]="resize()"
+  [style.min-height]="minHeight()"
+  [value]="value()"
+  spellcheck="false"
+  autocomplete="off"
+  (input)="handleInput($event)"
+  (focus)="handleFocus()"
+  (blur)="handleBlur()"
+></textarea>

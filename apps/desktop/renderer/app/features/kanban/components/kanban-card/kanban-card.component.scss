@@ -1,0 +1,74 @@
+:host {
+  display: block;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition:
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    box-shadow   var(--dv-dur-quick) var(--dv-ease-out);
+}
+:host(:hover) {
+  border-color: var(--dv-acc-bor);
+  box-shadow: var(--dv-shadow-sm);
+}
+:host(:active) { box-shadow: var(--dv-shadow-sm); }
+/* N1 — drag visual feedback */
+:host(.cdk-drag-preview) {
+  box-shadow: var(--dv-shadow-lg);
+  border: 1px solid var(--dv-acc-bor);
+  border-radius: var(--dv-r-md);
+  transform: rotate(1.2deg) scale(1.02);
+  cursor: grabbing;
+}
+:host(.cdk-drag-placeholder) {
+  background: var(--dv-acc-lo);
+  border: 1px dashed var(--dv-acc-bor);
+  min-height: 4rem;
+  opacity: 1;
+  box-shadow: none;
+}
+:host(.cdk-drag-placeholder) * { visibility: hidden; }
+.dsk-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--dv-fg);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dsk-card-foot { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.dsk-id { font-size: 0.6875rem; color: var(--dv-muted); font-variant-numeric: tabular-nums; }
+.dsk-spec-tag {
+  font-size: 0.625rem; font-weight: 600; color: var(--dv-acc);
+  background: var(--dv-acc-lo); border-radius: var(--dv-r-sm); padding: 0 0.3125rem;
+  letter-spacing: .02em; white-space: nowrap;
+}
+.dsk-priority {
+  font-size: 0.625rem;
+  font-weight: 700;
+  border-radius: var(--dv-r-sm);
+  padding: 0 0.3125rem;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.dsk-priority[data-priority="high"] {
+  background: var(--dv-warn-lo);
+  color: var(--dv-warn);
+}
+.dsk-priority[data-priority="medium"] {
+  background: var(--dv-info-lo);
+  color: var(--dv-info);
+}
+.dsk-priority[data-priority="low"] {
+  background: var(--dv-surf-2);
+  color: var(--dv-muted);
+}
+.dsk-badge {
+  display: inline-flex; align-items: center; gap: 2px; font-size: 0.6875rem; color: var(--dv-muted);
+}
+.dsk-unread { color: var(--dv-acc); font-weight: 600; }

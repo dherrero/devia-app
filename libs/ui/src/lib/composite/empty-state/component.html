@@ -1,0 +1,10 @@
+<div class="dv-empty-state__icon">
+  <ng-content select="[dvEmptyIcon]" />
+</div>
+<p class="dv-empty-state__title">{{ title() }}</p>
+@if (body()) {
+<p class="dv-empty-state__body">{{ body() }}</p>
+}
+<div class="dv-empty-state__action">
+  <ng-content select="[dvEmptyAction]" />
+</div>

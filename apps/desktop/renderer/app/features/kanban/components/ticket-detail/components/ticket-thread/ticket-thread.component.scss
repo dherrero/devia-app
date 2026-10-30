@@ -1,0 +1,55 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.section-lbl {
+  margin-bottom: 0.375rem;
+  font-family: var(--dv-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dv-muted);
+}
+.thread-msg {
+  border-radius: var(--dv-r-md);
+  padding: 0.5rem 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+.msg-user {
+  background: color-mix(in oklch, var(--dv-acc) 10%, transparent);
+  border: 1px solid var(--dv-acc-bor);
+}
+.msg-agent {
+  background: var(--dv-surf-2);
+  border: 1px solid var(--dv-bor);
+}
+.msg-system {
+  background: transparent;
+  border: 1px dashed var(--dv-bor);
+}
+.msg-question {
+  background: var(--dv-warn-lo);
+  border: 1px solid var(--dv-warn-bor);
+}
+.msg-author {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.1875rem;
+  color: var(--dv-dim);
+  font-family: var(--dv-mono);
+  font-size: 0.5625rem;
+}
+.sys-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--dv-muted);
+}
+.msg-text {
+  margin: 0;
+  color: var(--dv-fg);
+  white-space: pre-wrap;
+}

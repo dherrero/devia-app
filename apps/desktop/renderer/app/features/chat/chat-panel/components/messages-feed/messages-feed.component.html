@@ -1,0 +1,49 @@
+<div #scrollEl
+     class="ds-messages-feed__scroll dsm-scroll"
+     (scroll)="onScroll()">
+  <div #innerEl class="ds-messages-feed__inner">
+    @if (messages().length === 0 && !stream()) {
+      <div class="ds-messages-feed__empty" role="status">
+        <dv-icon class="ds-messages-feed__empty-ic"
+                 [icon]="LucideMessageSquare"
+                 size="lg" />
+        <p class="ds-messages-feed__empty-title">{{ 'chat.empty_title' | translate }}</p>
+        <p class="ds-messages-feed__empty-hint">{{ 'chat.empty_hint' | translate }}</p>
+      </div>
+    }
+    @if (hasOlder()) {
+      <div #topSentinelEl class="ds-messages-feed__sentinel" aria-hidden="true"></div>
+    }
+    @for (msg of messages(); track msg.id) {
+      @if (msg.kind === 'handoff') {
+        <ds-handoff-divider [msg]="msg" />
+      } @else if (msg.kind === 'todo') {
+        <!-- S-25 F2.1b: the persisted step list. Same card as the live one
+             above the composer, so the thread and the in-flight view agree. -->
+        <ds-ui-todo-card [input]="{ items: msg.todo ?? [] }" />
+      } @else if (msg.kind === 'plan') {
+        <ds-plan-message [msg]="msg" />
+      } @else {
+        <ds-message-bubble
+          [msg]="msg"
+          [isLatest]="!stream() && $last"
+          (retry)="onRetry()"
+          (continueRun)="onContinueRun()"
+        />
+      }
+    }
+    @if (stream(); as streamMsg) {
+      <ds-message-bubble
+        [msg]="streamMsg"
+        [isLatest]="true"
+        (retry)="onRetry()"
+        (continueRun)="onContinueRun()"
+      />
+    }
+    @if (pendingQuestion(); as q) {
+      <ds-question-card [question]="q"
+                        (answer)="answer.emit($event)"
+                        (freeform)="freeform.emit()" />
+    }
+  </div>
+</div>

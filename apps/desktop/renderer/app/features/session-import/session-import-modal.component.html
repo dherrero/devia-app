@@ -1,0 +1,105 @@
+<div class="modal-head">
+  <div class="modal-title-wrap">
+    <div class="modal-icon">
+      <dv-icon [icon]="LucideDownload" size="sm" />
+    </div>
+    <span class="modal-title">{{ 'modals.session_import.title' | translate }}</span>
+  </div>
+  <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Cerrar" (clicked)="cancel()">
+    <dv-icon [icon]="LucideX" size="sm" />
+  </dv-button>
+</div>
+
+<div class="modal-body">
+  @if (loading()) {
+    <div class="ci-state">
+      <dv-spinner />
+      <p>{{ 'modals.session_import.scanning' | translate }}</p>
+    </div>
+  } @else if (empty()) {
+    <div class="ci-state">
+      <dv-alert variant="info" [title]="'modals.session_import.empty_title' | translate" />
+      <p class="ci-hint">{{ 'modals.session_import.empty_hint' | translate }}</p>
+    </div>
+  } @else {
+    <p class="ci-intro">{{ 'modals.session_import.intro' | translate }}</p>
+
+    <div class="ci-selectall">
+      <dv-checkbox [ngModel]="isAllSelected()" (valueChange)="toggleAll()" />
+      <span>{{ 'modals.session_import.select_all' | translate }}</span>
+    </div>
+
+    @for (agent of agents(); track agent.agentId) {
+      <section class="ci-agent">
+        <header class="ci-agent-head">
+          <span class="ci-agent-name">{{ agentLabel(agent.agentId) }}</span>
+        </header>
+
+        @for (project of agent.projects; track project.projectPath) {
+          <section class="ci-project">
+            <header class="ci-project-head">
+              <dv-checkbox
+                [ngModel]="isProjectAllSelected(agent.agentId, project)"
+                (valueChange)="toggleProject(agent.agentId, project)"
+              />
+              <span class="ci-project-name">{{ project.projectName }}</span>
+              <span class="ci-project-path">{{ project.projectPath }}</span>
+            </header>
+
+            <ul class="ci-sessions">
+              @for (session of project.sessions; track session.sessionId) {
+                <li class="ci-session" [class.locked]="isLocked(session.alreadyImported)">
+                  <dv-checkbox
+                    [ngModel]="isSelected(agent.agentId, project.projectPath, session.sessionId)"
+                    [disabled]="isLocked(session.alreadyImported)"
+                    (valueChange)="toggle(agent.agentId, project.projectPath, session.sessionId, session.alreadyImported)"
+                  />
+                  <div class="ci-session-main">
+                    <span class="ci-session-title">{{ session.title || session.preview }}</span>
+                    <span class="ci-session-meta">
+                      {{ formatDate(session.updatedAt) }}
+                      · {{ 'modals.session_import.message_count' | translate:{ count: session.messageCount } }}
+                      @if (session.resumable) {
+                        <span class="ci-badge ci-badge-resume"
+                          [dvTooltip]="'modals.session_import.resumable_hint' | translate">
+                          {{ 'modals.session_import.resumable_badge' | translate }}
+                        </span>
+                      } @else {
+                        <span class="ci-badge ci-badge-replay"
+                          [dvTooltip]="'modals.session_import.replay_hint' | translate">
+                          {{ 'modals.session_import.replay_badge' | translate }}
+                        </span>
+                      }
+                      @if (session.alreadyImported) {
+                        <span class="ci-badge">{{ 'modals.session_import.already_imported' | translate }}</span>
+                      }
+                    </span>
+                  </div>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      </section>
+    }
+  }
+</div>
+
+<div class="modal-footer">
+  @if (!loading() && !empty()) {
+    <label class="ci-force">
+      <dv-checkbox [ngModel]="force()" (valueChange)="onForceChange($event)" />
+      {{ 'modals.session_import.force' | translate }}
+    </label>
+  }
+  <div class="footer-actions">
+    <dv-button variant="ghost" (clicked)="cancel()">{{ 'modals.session_import.cancel' | translate }}</dv-button>
+    <dv-button
+      variant="primary"
+      [disabled]="importing() || selectedCount() === 0"
+      (clicked)="runImport()"
+    >
+      {{ 'modals.session_import.import' | translate:{ count: selectedCount() } }}
+    </dv-button>
+  </div>
+</div>

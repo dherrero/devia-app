@@ -1,0 +1,145 @@
+@if (state.selectedProject()) {
+  <div class="dsm-chat"
+       [class.drop-target]="dropActive()"
+       (dragover)="onDragOver($event)"
+       (dragleave)="onDragLeave($event)"
+       (drop)="onDrop($event)">
+
+    <!-- ── Header (HT-CH-02) ────────────────────────────────────────
+         The kebab "acciones del proyecto" menu used to live in the
+         title column; it's been retired in favour of the refresh
+         icon in the input bar (nueva sesión) and the inline stop
+         button that appears when a process is running. The Skills
+         and Docker Compose actions now live in the right-rail
+         activity bar. -->
+    <ds-chat-header [projectName]="leafName()"
+                    [projectPath]="state.selectedProject()!"
+                    [view]="view()"
+                    [running]="currentRunning()"
+                    [changesCount]="state.gitInfo()?.changedCount ?? 0"
+                    [unisolated]="unisolated()"
+                    (viewChange)="view.set($event)" />
+
+    <!-- ── Body: messages / diff ────────────────────────────────
+         Terminal lives in the right-rail (see ds-right-rail). The
+         rail keeps the xterm instance mounted while a project is
+         selected so the scrollback survives panel hide/show. -->
+    @if (view() === 'chat') {
+      <ds-messages-feed [messages]="windowedMessages()"
+                        [stream]="currentStream()"
+                        [hasOlder]="firstVisibleIdx() > 0"
+                        [pendingQuestion]="currentPendingQuestion()"
+                        (loadOlder)="onLoadOlder($event)"
+                        (answer)="onAnswerQuestion($event)"
+                        (freeform)="onFreeform()"
+                        (retry)="retryFromBubble()"
+                        (continueRun)="continueFromBubble()" />
+      @if (scroll.showScrollFab()) {
+        <!-- Positioned absolutely against the relative .dsm-chat grid so
+             it sits anchored above the input bar regardless of how the
+             messages container scrolls underneath. -->
+        <span class="dsm-scroll-fab-slot">
+          <dv-button iconOnly
+                     variant="secondary"
+                     size="sm"
+                     [ariaLabel]="'chat.jump_to_last_aria' | translate"
+                     [dvTooltip]="'chat.jump_to_last' | translate"
+                     (clicked)="scrollToBottomSmooth()">
+            <dv-icon [icon]="LucideChevronDown" size="sm" />
+          </dv-button>
+        </span>
+      }
+    } @else if (view() === 'changes') {
+      <ds-diff-viewer [project]="effectiveProject()!"
+                      [commentable]="true"
+                      [toolMode]="!!pendingReview()"
+                      [limitToPaths]="pendingReviewPaths()"
+                      (reviewResolved)="onReviewResolved($event)"
+                      (nothingToReview)="onNothingToReview()"
+                      (requestChatView)="view.set('chat')" />
+    }
+
+    <!-- ── devia-ui cards (S-25) ───────────────────────────────
+         Mounted OUTSIDE the windowed message feed on purpose: it must
+         not affect the bottom anchoring or the top sentinel's
+         IntersectionObserver (S-4 T-75). -->
+    @if (view() === 'chat') {
+      <ds-ui-tool-host [sessionKey]="sessionKey()"
+                       [project]="effectiveProject() ?? ''"
+                       (followUp)="runFollowUp($event)" />
+    }
+
+    @if (view() === 'chat') {
+      <ds-auto-resume-banner [sessionKey]="sessionKey()" />
+    }
+
+    <!-- ── Queue panel (per-project parking lot) ────────────── -->
+    @if (view() === 'chat') {
+      <ds-queue-panel [project]="sessionKey()" />
+    }
+
+    <!-- ── Attachments (HT-CH-04) ───────────────────────────── -->
+    @if (view() === 'chat' && attachments.items().length > 0) {
+      <ds-attachments-bar [items]="attachments.items()"
+                          (removed)="attachments.remove($event)" />
+    }
+
+    <!-- AskUserQuestion now renders as a question bubble inside the feed
+         (ds-messages-feed), so there is no separate card above the input. -->
+
+    <!-- ── Input bar ────────────────────────────────────────── -->
+    @if (view() === 'chat') {
+      <!-- REV-AGENT-CORE-006 / HT-MD-01: run-mode segmented control, with the
+           quick-actions toggle + chips projected into its right slot. Clicking
+           a chip sends it immediately as a user message. -->
+      <ds-mode-bar [mode]="state.runMode(sessionKey())"
+                   (modeChange)="state.setRunMode(sessionKey(), $event)">
+        @if (showQuickActions()) {
+          <span class="dsm-quick-actions">
+            <button type="button"
+                    class="dsm-icon-btn dsm-qa-toggle"
+                    [class.is-open]="quickActionsOpen()"
+                    [disabled]="currentRunning()"
+                    [dvTooltip]="'quick_replies.actions' | translate"
+                    [attr.aria-label]="'quick_replies.actions' | translate"
+                    [attr.aria-expanded]="quickActionsOpen()"
+                    (click)="quickActionsOpen.set(!quickActionsOpen())">
+              <dv-icon [icon]="LucideZap" size="sm" />
+            </button>
+            @if (quickActionsOpen() && !currentRunning()) {
+              <span class="dsm-qa-chips dsm-scroll"
+                    role="toolbar"
+                    [attr.aria-label]="'quick_replies.actions' | translate">
+                @for (chip of quickReplies; track chip.labelKey) {
+                  <button type="button"
+                          class="dsm-qa-chip"
+                          (click)="onQuickReply(chip.textKey)">
+                    {{ chip.labelKey | translate }}
+                  </button>
+                }
+              </span>
+            }
+          </span>
+        }
+      </ds-mode-bar>
+      <ds-input-bar #inputBar
+                    [(draft)]="draft"
+                    [canSend]="canSend()"
+                    [running]="currentRunning()"
+                    [micState]="micState()"
+                    [micTooltip]="micTooltip()"
+                    (submitted)="send()"
+                    (stop)="stopProject()"
+                    (resetRequested)="resetSession()"
+                    (voice)="toggleMic()"
+                    (pasted)="onPaste($event)"
+                    (filesPicked)="attachFiles($event)" />
+    }
+
+    @if (dropActive()) {
+      <div class="dsm-drop">{{ 'chat.drop_to_attach' | translate }}</div>
+    }
+  </div>
+} @else {
+  <ds-empty-state />
+}

@@ -1,0 +1,70 @@
+<div class="side-field">
+  <span class="side-lbl">Columna</span>
+  <dv-select
+    ariaLabel="Columna"
+    [ngModel]="form().column"
+    (ngModelChange)="setColumn($event)">
+    @for (col of columnOptions; track col) {
+      <dv-select-option [value]="col" [label]="('sdd.col_' + col) | translate">
+        {{ ('sdd.col_' + col) | translate }}
+      </dv-select-option>
+    }
+  </dv-select>
+</div>
+
+@if (task().column !== 'blocked') {
+  <dv-checkbox
+    class="done-check"
+    [ngModel]="form().column === 'done'"
+    (valueChange)="toggleDone($event)"
+    label="Marcar como hecha" />
+}
+
+<div class="hr"></div>
+
+<div class="side-field">
+  <span class="side-lbl">Prioridad</span>
+  <dv-select
+    ariaLabel="Prioridad"
+    [disabled]="true"
+    [ngModel]="priorityValue"
+    [options]="priorityOptions"
+  />
+</div>
+
+<label class="side-field">
+  <span class="side-lbl">Vencimiento</span>
+  <dv-datepicker
+    [ngModel]="form().dueDate"
+    [class.is-overdue]="isDueDateOverdue(form().dueDate)"
+    (ngModelChange)="setDueDate($event)" />
+</label>
+
+<label class="side-field">
+  <span class="side-lbl">Versión</span>
+  <dv-input class="mono-input" placeholder="v0.0.0" disabled />
+</label>
+
+<div class="side-field">
+  <span class="side-lbl">Spec ID</span>
+  <span class="side-val side-mono">{{ task().specId }}</span>
+</div>
+
+<div class="side-field">
+  <span class="side-lbl">Dependencias</span>
+  <span class="side-val side-mono side-accent">
+    {{ task().dependsOn.length ? task().dependsOn.join(', ') : '—' }}
+  </span>
+</div>
+
+<div class="hr"></div>
+
+<div class="side-field">
+  <span class="side-lbl">Etiquetas</span>
+  <div class="side-tags">
+    <span class="tag-chip tag-spec">{{ task().specId }}</span>
+    @for (dep of task().dependsOn; track dep) {
+      <span class="tag-chip tag-dep">{{ dep }}</span>
+    }
+  </div>
+</div>

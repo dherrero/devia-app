@@ -1,0 +1,43 @@
+:host {
+  display: block;
+}
+
+.dv-msg-ai {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+}
+
+.dv-bubble-ai {
+  // De-boxed (design/desktop-workbench-palette): the assistant turn reads as a
+  // transcript directly on the chat canvas, not a filled chat bubble. Elevation
+  // is reserved for the tool-calls / diffs nested inside; the user bubble keeps
+  // its fill as the "what I said" anchor.
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 1px 0 0;
+  background: transparent;
+  color: var(--dv-fg);
+  border: 0;
+  font-size: var(--dv-fs-md);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.dv-bubble-ai p {
+  margin: 0;
+}
+
+.dv-bubble-ai ul,
+.dv-bubble-ai ol {
+  margin: 0.375rem 0 0 1.1rem;
+}
+
+.dv-bubble-ai li {
+  margin-bottom: 0.125rem;
+}
+
+.dv-bubble-ai > * + * {
+  margin-top: 0.5rem;
+}

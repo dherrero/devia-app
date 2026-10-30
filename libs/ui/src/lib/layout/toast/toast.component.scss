@@ -1,0 +1,54 @@
+@use '_index' as dv;
+
+:host {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--dv-r-lg);
+  border: 1px solid var(--dv-bor);
+  background: var(--dv-surf);
+  box-shadow: var(--dv-shadow-md);
+  min-width: 16rem;
+  max-width: 24rem;
+  animation: dv-toast-in var(--dv-dur-quick) var(--dv-ease-spring) both;
+}
+
+:host(.dv-toast--success) {
+  border-color: var(--dv-success-bor);
+  background: var(--dv-success-lo);
+}
+
+:host(.dv-toast--warn) {
+  border-color: var(--dv-warn-bor);
+  background: var(--dv-warn-lo);
+}
+
+:host(.dv-toast--danger) {
+  border-color: var(--dv-danger-bor);
+  background: var(--dv-danger-lo);
+}
+
+:host(.dv-toast--info) {
+  border-color: var(--dv-info-bor);
+  background: var(--dv-info-lo);
+}
+
+.dv-toast__message {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--dv-fg);
+}
+
+.dv-toast__close {
+  @include dv.dv-button-reset;
+  color: var(--dv-muted);
+  padding: 0.125rem;
+
+  &:hover {
+    color: var(--dv-fg);
+  }
+  &:focus-visible {
+    @include dv.dv-focus-ring;
+  }
+}

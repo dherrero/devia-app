@@ -1,0 +1,151 @@
+@use '_index' as dv;
+
+:host {
+  display: flex;
+  flex-direction: column;
+}
+
+.dv-tabs__list {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--dv-bor);
+}
+
+.dv-tabs__tab {
+  @include dv.dv-button-reset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dv-muted);
+  border-radius: var(--dv-r-md) var(--dv-r-md) 0 0;
+  position: relative;
+  transition: color var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover:not(:disabled) {
+    color: var(--dv-fg);
+  }
+
+  &--active {
+    color: var(--dv-acc);
+
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--dv-acc);
+      border-radius: 1px 1px 0 0;
+    }
+  }
+
+  &--disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    @include dv.dv-focus-ring;
+  }
+}
+
+// Accent count chip (e.g. number of pending changes on the "Cambios" tab).
+// Same family as the right-rail asset counter, sized a touch larger.
+.dv-tabs__badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
+  border-radius: var(--dv-r-pill);
+  background: var(--dv-acc);
+  color: var(--dv-acc-fg);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dv-tabs__panels {
+  padding-top: 1rem;
+}
+
+:host(.dv-tabs--vertical) {
+  flex-direction: row;
+
+  .dv-tabs__list {
+    flex-direction: column;
+    border-bottom: none;
+    border-right: 1px solid var(--dv-bor);
+    padding-right: 0;
+  }
+
+  .dv-tabs__tab--active::after {
+    top: 0;
+    bottom: 0;
+    left: auto;
+    right: -1px;
+    width: 2px;
+    height: auto;
+  }
+
+  .dv-tabs__panels {
+    padding-top: 0;
+    padding-left: 1rem;
+    flex: 1;
+  }
+}
+
+// ── Pill variant (HT-C-01) ──────────────────────────────────────────────
+// Segmented control with the active tab elevated. Matches
+// `DESKTOP-PART-03-CHAT-PANEL.md` sub-3.1 — Chat | Cambios container.
+:host(.dv-tabs--pill) {
+  display: inline-flex;
+  flex-direction: column;
+
+  .dv-tabs__list {
+    display: inline-flex;
+    gap: 0;
+    background: var(--dv-surf-2);
+    border: 0.5px solid var(--dv-bor);
+    border-radius: var(--dv-r-md);
+    padding: 0.1875rem;
+    border-bottom: 0.5px solid var(--dv-bor);
+  }
+
+  .dv-tabs__tab {
+    height: 1.5rem;
+    padding: 0 0.875rem;
+    border-radius: var(--dv-r-sm);
+    color: var(--dv-muted);
+    transition:
+      background var(--dv-dur-quick) var(--dv-ease-out),
+      color var(--dv-dur-quick) var(--dv-ease-out),
+      box-shadow var(--dv-dur-quick) var(--dv-ease-out);
+
+    &:hover:not(:disabled):not(.dv-tabs__tab--active) {
+      color: var(--dv-fg);
+    }
+
+    // Suppress the underline marker — the elevated background is the
+    // active indicator for the pill variant.
+    &--active {
+      background: var(--dv-surf);
+      color: var(--dv-fg);
+      box-shadow: var(--dv-shadow-sm);
+
+      &::after {
+        display: none;
+      }
+    }
+  }
+
+  .dv-tabs__panels {
+    padding-top: 0;
+  }
+}

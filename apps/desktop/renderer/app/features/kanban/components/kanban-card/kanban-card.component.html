@@ -1,0 +1,32 @@
+<div class="dsk-card-title">{{ card().title }}</div>
+<div class="dsk-card-foot">
+  @if (showSpecTag()) {
+    <span class="dsk-spec-tag" [dvTooltip]="specTitle()">{{ card().specId }}</span>
+  }
+  <span class="dsk-id">{{ card().id }}</span>
+  @if (priority() !== 'none') {
+    <span class="dsk-priority" [attr.data-priority]="priority()">
+      {{ priorityText() }}
+    </span>
+  }
+  @if (card().unreadCount > 0) {
+    <span class="dsk-badge dsk-unread" [dvTooltip]="'sdd.unread' | translate">
+      <dv-icon [icon]="LucideMessageSquare" size="sm" />{{ card().unreadCount }}
+    </span>
+  }
+  @if (card().dependsOn.length > 0) {
+    <span class="dsk-badge" [dvTooltip]="card().dependsOn.join(', ')">
+      <dv-icon [icon]="LucideLink" size="sm" />{{ card().dependsOn.length }}
+    </span>
+  }
+  @if (card().subagentNames.length > 0) {
+    <span class="dsk-badge" [dvTooltip]="card().subagentNames.join(', ')">
+      <dv-icon [icon]="LucideUsers" size="sm" />
+    </span>
+  }
+  @if (card().hasCommit) {
+    <span class="dsk-badge" [dvTooltip]="'sdd.has_commit' | translate">
+      <dv-icon [icon]="LucideGitCommitHorizontal" size="sm" />
+    </span>
+  }
+</div>

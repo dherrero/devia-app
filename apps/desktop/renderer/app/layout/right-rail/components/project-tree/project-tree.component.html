@@ -1,0 +1,73 @@
+    <header class="header">
+      <span class="title">{{ 'rightRail.tree_header' | translate }}</span>
+      <div class="actions">
+        <dv-button iconOnly
+                   variant="ghost"
+                   size="sm"
+                   (clicked)="openInExplorer()"
+                   [dvTooltip]="'sidebar.menu_open_explorer' | translate"
+                   [ariaLabel]="'sidebar.menu_open_explorer' | translate">
+          <dv-icon [icon]="LucideFolderOpen" size="sm" />
+        </dv-button>
+        @if (ides().length > 0) {
+          <span class="ide-split">
+            <dv-button variant="ghost"
+                       size="sm"
+                       (clicked)="openPreferredIde()"
+                       [dvTooltip]="'rightRail.open_in_ide' | translate:{ ide: preferredIdeLabel() }"
+                       [ariaLabel]="'rightRail.open_in_ide' | translate:{ ide: preferredIdeLabel() }">
+              @if (preferredIdeIcon(); as src) {
+                <img class="ide-icon" [src]="src" alt="" />
+              } @else {
+                <dv-icon [icon]="LucideCode" size="sm" />
+              }
+            </dv-button>
+            @if (ides().length > 1) {
+              <dv-menu [items]="ideMenuItems()" (itemActivated)="onIdeMenuSelect($event)">
+                <button dsMenuTriggerButton
+                        [ariaLabel]="'rightRail.choose_ide' | translate"
+                        [tooltip]="'rightRail.choose_ide' | translate">
+                  <dv-icon [icon]="LucideChevronDown" size="sm" />
+                </button>
+              </dv-menu>
+            }
+          </span>
+        }
+        <dv-button iconOnly
+                   variant="ghost"
+                   size="sm"
+                   (clicked)="copyPath()"
+                   [dvTooltip]="'sidebar.menu_copy_path' | translate"
+                   [ariaLabel]="'sidebar.menu_copy_path' | translate">
+          <dv-icon [icon]="LucideCopy" size="sm" />
+        </dv-button>
+        <dv-button iconOnly
+                   variant="ghost"
+                   size="sm"
+                   (clicked)="refresh(true)"
+                   [dvTooltip]="'rightRail.tree_refresh' | translate"
+                   [ariaLabel]="'rightRail.tree_refresh' | translate">
+          <dv-icon [icon]="LucideRefreshCw" size="sm" />
+        </dv-button>
+      </div>
+    </header>
+
+    <div class="body">
+      @if (loading() && roots().length === 0) {
+        <div class="loading">{{ 'rightRail.loading' | translate }}</div>
+      } @else if (error()) {
+        <div class="error">{{ 'rightRail.error' | translate }}</div>
+      } @else if (roots().length === 0) {
+        <div class="empty">{{ 'rightRail.empty' | translate }}</div>
+      } @else {
+        @for (node of roots(); track node.path) {
+          <ds-tree-node
+            [node]="node"
+            [project]="project()"
+            [depth]="0"
+            [refreshToken]="refreshToken()"
+            (fileOpen)="onFileOpen($event)" />
+        }
+      }
+    </div>
+  

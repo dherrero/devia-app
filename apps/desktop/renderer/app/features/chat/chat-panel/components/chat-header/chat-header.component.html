@@ -1,0 +1,29 @@
+<div class="ds-chat-header__title">
+  <div class="ds-chat-header__name-row">
+    <div class="ds-chat-header__name" [title]="projectPath()">{{ projectName() }}</div>
+    @if (unisolated()) {
+      <span class="ds-chat-header__no-isolation"
+            [dvTooltip]="'panes.no_isolation_chip' | translate"
+            [attr.aria-label]="'panes.no_isolation_chip' | translate"
+            role="img">
+        <dv-icon [icon]="LucideTriangleAlert" size="sm" />
+      </span>
+    }
+  </div>
+  <div class="ds-chat-header__path" [title]="projectPath()">{{ projectSubtitle() }}</div>
+</div>
+
+<dv-tabs variant="pill"
+         class="ds-chat-header__tabs"
+         [tabs]="tabs()"
+         [value]="view()"
+         (valueChange)="onTabChange($event)" />
+
+<div class="ds-chat-header__badges">
+  @if (running()) {
+    <dv-badge variant="accent" size="sm">
+      <span class="ds-chat-header__working-dot" aria-hidden="true"></span>
+      {{ 'chat.working_badge' | translate }}
+    </dv-badge>
+  }
+</div>

@@ -1,0 +1,16 @@
+<div class="dv-choice-card">
+  <div class="dv-choice-label">{{ label() }}</div>
+  <p class="dv-choice-question">{{ question() }}</p>
+  <div class="dv-choice-opts">
+    @for (option of options(); track option.label) {
+    <button
+      class="dv-choice-opt"
+      type="button"
+      [class.dv-choice-opt--primary]="option.isPrimary"
+      (click)="selected.emit(option)"
+    >
+      {{ option.label }}
+    </button>
+    }
+  </div>
+</div>

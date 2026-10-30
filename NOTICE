@@ -1,0 +1,12 @@
+Devia
+Copyright 2024-2026 Daniel Herrero Tomás and Ruben Sanz Rosa
+
+This product includes software developed by the Devia authors.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components keep their own licenses; see each package under
+node_modules after installing, or package-lock.json for the exact versions.
+
+The optional image dependency sharp (pulled in by @xenova/transformers) ships
+prebuilt libvips binaries licensed under LGPL-3.0-or-later. They are used as
+separate, dynamically loaded libraries and are not modified.

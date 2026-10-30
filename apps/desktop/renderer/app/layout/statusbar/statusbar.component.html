@@ -1,0 +1,98 @@
+    <footer class="dsm-statusbar">
+      @if (state.selectedProject()) {
+        <div class="group" [title]="state.selectedProject()">
+          <dv-icon class="ic" [icon]="LucideFolder" size="sm" />
+          <span class="project">{{ leafName() }}</span>
+        </div>
+        <span class="sep">·</span>
+        @if (state.gitInfo(); as g) {
+          <button type="button"
+                  class="group git-branch-btn"
+                  [class.dirty]="g.dirty"
+                  [disabled]="!canSwitchBranch()"
+                  [dvTooltip]="(canSwitchBranch() ? 'statusbar.switch_branch' : (g.dirty ? 'statusbar.uncommitted' : 'statusbar.clean')) | translate"
+                  [attr.aria-label]="'statusbar.switch_branch' | translate"
+                  (click)="openBranchSwitcher()">
+            <dv-icon class="ic" [icon]="LucideGitBranch" size="sm" />
+            <span>{{ g.branch }}</span>
+            @if (g.dirty) { <span class="dot">*</span> }
+          </button>
+          @if (g.behind > 0) {
+            <button type="button"
+                    class="group git-ab git-pull-btn"
+                    [disabled]="!canPull() || state.pullingGit()"
+                    [dvTooltip]="(canPull() ? 'statusbar.pull_behind' : 'statusbar.behind') | translate:{ count: g.behind }"
+                    [attr.aria-label]="'statusbar.pull_behind' | translate:{ count: g.behind }"
+                    (click)="onPull()">
+              <dv-icon class="ic" [icon]="LucideArrowDownToLine" size="sm" [class.spinning]="state.pullingGit()" />
+              behind {{ g.behind }}
+            </button>
+          }
+          @if (g.ahead > 0) {
+            <span class="group git-ab" [dvTooltip]="'statusbar.ahead' | translate:{ count: g.ahead }">
+              ahead {{ g.ahead }}
+            </span>
+          }
+          @if (g.changedCount > 0) {
+            <span class="sep">·</span>
+            <span class="group git-changes" [dvTooltip]="'statusbar.changes_tooltip' | translate:{ count: g.changedCount }">
+              {{ 'statusbar.changes_label' | translate:{ count: g.changedCount } }}
+            </span>
+          }
+          @if (canSync()) {
+            <dv-button iconOnly
+                       variant="ghost"
+                       size="sm"
+                       [disabled]="state.syncingGit()"
+                       [dvTooltip]="'statusbar.pull' | translate:{ branch: g.defaultBranch }"
+                       [ariaLabel]="'statusbar.pull' | translate:{ branch: g.defaultBranch }"
+                       (clicked)="onSync()">
+              <dv-icon class="ic" [icon]="LucideRefreshCw" size="sm" [class.spinning]="state.syncingGit()" />
+            </dv-button>
+          }
+        } @else {
+          <span class="muted">{{ 'statusbar.no_git' | translate }}</span>
+        }
+      } @else {
+        <span class="muted">{{ 'statusbar.no_project' | translate }}</span>
+      }
+
+      <span class="spacer"></span>
+
+      @if (state.activeModel(); as model) {
+        <div class="center-group">
+          <span class="model" [dvTooltip]="'statusbar.model_tooltip' | translate">
+            <dv-icon class="ic" [icon]="LucideCpu" size="sm" />
+            <span class="model-label">{{ shortModel(model) }}</span>
+          </span>
+
+          @if (state.contextPct(); as pct) {
+            <span class="ctx" [dvTooltip]="contextTooltip()">
+              <span class="bar" [class.warn]="pct >= 0.8">
+                <span class="fill" [style.width.%]="pct * 100"></span>
+              </span>
+              <span class="pct" [class.warn]="pct >= 0.8">{{ pct * 100 | number:'1.0-0' }}%</span>
+            </span>
+          }
+
+          @if (showCost()) {
+            <span class="cost" [dvTooltip]="costTooltip()">
+              &#36;{{ state.sessionCostUsd() | number:'1.2-2' }}
+            </span>
+          }
+        </div>
+      }
+
+      <span class="spacer"></span>
+
+      <span class="mode-text"
+            [attr.data-tone]="mode() === 'apply-yolo' ? 'danger' : 'info'">
+        {{ modeLabel() | translate }} {{ 'statusbar.mode_suffix' | translate }}
+      </span>
+
+      @if (currentRunning()) {
+        <span class="pill" data-tone="warn">{{ 'statusbar.agent_working' | translate }}</span>
+      }
+      @if (version()) { <span class="version">{{ version() }}</span> }
+    </footer>
+  

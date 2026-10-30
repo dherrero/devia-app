@@ -1,0 +1,35 @@
+@switch (message().type) { @case ('user') {
+<dv-user-bubble [content]="message().content ?? ''" />
+} @case ('ai') {
+<dv-ai-bubble [content]="message().content ?? ''" />
+} @case ('tool') {
+<dv-tool-call-card
+  [name]="message().toolName ?? ''"
+  [arg]="message().toolArg ?? ''"
+  [status]="message().toolStatus ?? 'pending'"
+  [body]="message().toolBody ?? ''"
+/>
+} @case ('diff') {
+<dv-diff-view
+  [fileName]="message().diffFileName ?? ''"
+  [lines]="message().diffLines ?? []"
+/>
+} @case ('choice') {
+<dv-choice-card
+  [question]="message().choiceQuestion ?? ''"
+  [options]="message().choiceOptions ?? []"
+  (selected)="choiceSelected.emit($event)"
+/>
+} @case ('thinking') {
+<dv-thinking-block [content]="message().content ?? ''" />
+} @case ('streaming') {
+<dv-streaming-indicator [label]="message().content || 'Claude trabajando'" />
+} @case ('error') {
+<dv-error-bubble
+  [message]="message().errorMessage ?? ''"
+  [detail]="message().errorDetail ?? ''"
+  (retry)="retry.emit()"
+/>
+} @case ('system') {
+<dv-system-pill [content]="message().content ?? ''" />
+} }

@@ -1,0 +1,25 @@
+@use '_index' as dv;
+
+:host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dv-spinner__svg {
+  animation: dv-spin var(--dv-dur-slow) linear infinite;
+}
+
+.dv-spinner__track {
+  stroke: var(--dv-bor-2);
+}
+
+.dv-spinner__arc {
+  stroke: var(--dv-acc);
+  stroke-linecap: round;
+}
+
+.dv-visually-hidden {
+  @include dv.dv-visually-hidden;
+}

@@ -1,0 +1,49 @@
+:host {
+  display: block;
+}
+
+:host(:has(.dv-code-textarea--fill)) {
+  height: 100%;
+}
+
+.dv-code-textarea {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+  font-family: var(--dv-font-mono);
+  font-size: 0.75rem;
+  line-height: 1.7;
+  outline: none;
+  padding: 0.75rem;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  transition:
+    border-color var(--dv-dur-fast) var(--dv-ease-out),
+    box-shadow var(--dv-dur-fast) var(--dv-ease-out);
+}
+
+.dv-code-textarea--fill {
+  height: 100%;
+}
+
+.dv-code-textarea--focused {
+  border-color: var(--dv-acc);
+  box-shadow: 0 0 0 3px var(--dv-acc-lo);
+}
+
+.dv-code-textarea--valid {
+  border-color: var(--dv-success);
+}
+
+.dv-code-textarea--invalid {
+  border-color: var(--dv-danger);
+}
+
+.dv-code-textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

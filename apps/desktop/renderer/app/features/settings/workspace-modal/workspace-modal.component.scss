@@ -1,0 +1,89 @@
+    :host { display: block; width: min(30rem, calc(100vw - 2rem)); }
+    .ws-modal {
+      width: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: var(--dv-surf);
+      border: 1px solid var(--dv-bor);
+      border-radius: var(--dv-r-xl);
+      color: var(--dv-fg);
+      box-shadow: var(--dv-shadow-lg);
+    }
+    .ws-head {
+      min-height: 3.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.625rem 1rem;
+      border-bottom: 1px solid var(--dv-bor);
+      flex-shrink: 0;
+    }
+    .ws-icon-badge {
+      width: 2rem;
+      height: 2rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border-radius: var(--dv-r-md);
+      background: var(--dv-acc-lo); /* before: var(--dv-acc-med) — match mockup softer badge */
+      border: 1px solid var(--dv-acc-bor);
+      color: var(--dv-acc);
+    }
+    .ws-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem; }
+    .ws-title {
+      margin: 0;
+      color: var(--dv-fg);
+      font-size: 0.9375rem;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    .ws-subtitle {
+      margin: 0;
+      color: var(--dv-muted);
+      font-size: 0.8125rem;
+      line-height: 1.35;
+    }
+    .ws-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+    .ws-body.loading { opacity: 0.6; pointer-events: none; }
+    .path-row { display: flex; align-items: center; gap: 0.5rem; }
+    .path-input-wrap { flex: 1; min-width: 0; position: relative; }
+    .path-input {
+      width: 100%;
+    }
+    :host ::ng-deep .path-input .dv-field__control {
+      padding-right: 2rem;
+      background: var(--dv-surf-3);
+      border-color: var(--dv-bor);
+    }
+    :host ::ng-deep .path-input .dv-field__input {
+      font-family: var(--dv-mono);
+      font-size: 0.8125rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .check-icon {
+      position: absolute;
+      top: 50%;
+      right: 0.625rem;
+      transform: translateY(-50%);
+      color: var(--dv-success);
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .check-icon.visible { opacity: 1; }
+    dv-button { flex-shrink: 0; }
+    .ws-footer {
+      height: 3.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0 1rem;
+      border-top: 1px solid var(--dv-bor);
+      background: var(--dv-surf-3);
+      flex-shrink: 0;
+    }
+  

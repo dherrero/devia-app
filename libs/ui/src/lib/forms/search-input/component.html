@@ -1,0 +1,36 @@
+<div
+  class="dv-search"
+  [class.dv-search--sm]="size() === 'sm'"
+  [class.dv-search--focused]="isFocused()"
+  [class.dv-search--disabled]="controlDisabled()"
+>
+  @if (!hasValue()) {
+  <dv-icon class="dv-search__icon" [icon]="LucideSearch" size="sm" />
+  }
+  <input
+    #inputEl
+    type="search"
+    class="dv-search__input"
+    autocomplete="off"
+    [disabled]="controlDisabled()"
+    [placeholder]="placeholder()"
+    [attr.aria-label]="ariaLabel()"
+    [value]="value()"
+    (input)="handleInput($event)"
+    (keydown)="handleKeydown($event)"
+    (focus)="handleFocus()"
+    (blur)="handleBlur()"
+  />
+  @if (hasValue()) {
+  <button
+    type="button"
+    class="dv-search__clear"
+    [disabled]="controlDisabled()"
+    [dvTooltip]="clearTooltip()"
+    [attr.aria-label]="clearAriaLabel()"
+    (click)="clear()"
+  >
+    <dv-icon [icon]="LucideX" size="sm" />
+  </button>
+  }
+</div>

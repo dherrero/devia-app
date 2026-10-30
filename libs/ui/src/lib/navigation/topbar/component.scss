@@ -1,0 +1,28 @@
+@use '_index' as dv;
+
+:host {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  height: 3.25rem;
+  padding: 0 1.75rem;
+  background: var(--dv-surf);
+  border-bottom: 1px solid var(--dv-bor);
+}
+
+:host(.dv-topbar--sticky) {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.dv-topbar__leading,
+.dv-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dv-topbar__center {
+  flex: 1;
+}

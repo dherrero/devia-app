@@ -1,0 +1,334 @@
+:root {
+  --dv-bg: oklch(98.5% 0.003 270);
+  --dv-surf: oklch(100% 0 0);
+  --dv-surf-2: oklch(96.5% 0.005 270);
+  --dv-surf-3: oklch(94% 0.007 270);
+  --dv-surf2: var(--dv-surf-2);
+  --dv-surf3: var(--dv-surf-3);
+  --dv-fg: oklch(12% 0.015 270);
+  --dv-muted: oklch(48% 0.014 270);
+  --dv-dim: oklch(68% 0.01 270);
+  --dv-bor: oklch(88% 0.008 270);
+  --dv-bor-2: oklch(80% 0.01 270);
+  --dv-bor2: var(--dv-bor-2);
+  --dv-divider: oklch(0% 0 0 / 0.06);
+  --dv-acc: oklch(55% 0.24 280);
+  --dv-acc-lo: oklch(55% 0.24 280 / 0.08);
+  --dv-acc-med: oklch(55% 0.24 280 / 0.18);
+  --dv-acc-bor: oklch(55% 0.24 280 / 0.3);
+  --dv-acc-fg: oklch(100% 0 0);
+  --dv-success: oklch(52% 0.18 145);
+  --dv-success-lo: oklch(52% 0.18 145 / 0.1);
+  --dv-success-bor: oklch(52% 0.18 145 / 0.3);
+  --dv-warn: oklch(68% 0.16 80);
+  --dv-warn-lo: oklch(68% 0.16 80 / 0.1);
+  --dv-warn-bor: oklch(68% 0.16 80 / 0.3);
+  --dv-danger: oklch(58% 0.19 25);
+  --dv-danger-lo: oklch(58% 0.19 25 / 0.1);
+  --dv-danger-bor: oklch(58% 0.19 25 / 0.3);
+  --dv-info: oklch(56% 0.18 230);
+  --dv-info-lo: oklch(56% 0.18 230 / 0.1);
+  --dv-info-bor: oklch(56% 0.18 230 / 0.3);
+  --dv-bubble-user: oklch(55% 0.24 280 / 0.08);
+  --dv-bubble-user-tx: oklch(12% 0.015 270);
+  --dv-bubble-user-bd: oklch(55% 0.24 280 / 0.3);
+  --dv-bubble-ai: oklch(100% 0 0);
+  --dv-diff-add-fg: oklch(45% 0.16 145);
+  --dv-diff-add-soft: oklch(92% 0.06 145);
+  --dv-diff-del-fg: oklch(50% 0.17 25);
+  --dv-diff-del-soft: oklch(94% 0.04 25);
+  --dv-tech-bg: oklch(96.5% 0.004 270);
+  --dv-tech-bg-2: oklch(92.5% 0.006 270);
+  --dv-tech-head: oklch(91% 0.006 270);
+  --dv-tech-gutter: oklch(89.5% 0.005 270);
+  --dv-tech-bor: oklch(77% 0.008 270);
+  --dv-tech-fg: oklch(19% 0.012 270);
+  --dv-tech-muted: oklch(45% 0.012 270);
+  --dv-syntax-keyword: oklch(48% 0.22 285);
+  --dv-syntax-string: oklch(42% 0.16 145);
+  --dv-syntax-comment: oklch(54% 0.012 270);
+  --dv-syntax-number: oklch(48% 0.16 230);
+  --dv-syntax-tag: oklch(48% 0.18 25);
+  --dv-syntax-attr: oklch(48% 0.16 80);
+  --dv-diff-add-bg: oklch(94% 0.025 145);
+  --dv-diff-del-bg: oklch(95% 0.022 25);
+  --dv-diff-hunk-bg: oklch(93% 0.018 230);
+  --dv-pri-alta-bg: oklch(22% 0.04 25);
+  --dv-pri-alta-fg: oklch(70% 0.18 25);
+  --dv-pri-med-bg: oklch(22% 0.03 75);
+  --dv-pri-med-fg: oklch(72% 0.14 75);
+  --dv-pri-media-bg: oklch(22% 0.03 75);
+  --dv-pri-media-fg: oklch(72% 0.14 75);
+  --dv-pri-none-bg: oklch(96% 0.005 270);
+  --dv-pri-none-fg: oklch(48% 0.01 270);
+  --dv-r-sm: 0.3125rem;
+  --dv-r-md: 0.5rem;
+  --dv-r-lg: 0.75rem;
+  --dv-r-xl: 1rem;
+  --dv-r-pill: 62.5rem;
+  --dv-bd-style: solid;
+  --dv-bd-width: 1px;
+  --dv-bd-thin: 0.5px;
+  --dv-fs-xs: 0.6875rem;
+  --dv-fs-sm: 0.8125rem;
+  --dv-fs-md: 0.875rem;
+  --dv-fs-lg: 1rem;
+  --dv-shadow-sm: 0 1px 4px oklch(0% 0 0 / 0.06);
+  --dv-shadow-md: 0 4px 16px oklch(0% 0 0 / 0.08);
+  --dv-shadow-lg: 0 12px 40px oklch(0% 0 0 / 0.1);
+  --dv-dur-fast: 80ms;
+  --dv-dur-quick: 150ms;
+  --dv-dur-base: 180ms;
+  --dv-dur-calm: 280ms;
+  --dv-dur-slow: 340ms;
+  --dv-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dv-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --dv-ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+  --dv-ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --dv-font: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --dv-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --dv-backdrop: oklch(0% 0 0 / 0.55);
+}
+
+[data-theme='dark'] {
+  --dv-bg: oklch(9% 0.012 270);
+  --dv-surf: oklch(14% 0.016 270);
+  --dv-surf-2: oklch(19% 0.022 270);
+  --dv-surf-3: oklch(23% 0.025 270);
+  --dv-surf2: var(--dv-surf-2);
+  --dv-surf3: var(--dv-surf-3);
+  --dv-fg: oklch(96% 0.004 270);
+  --dv-muted: oklch(52% 0.012 270);
+  --dv-dim: oklch(33% 0.012 270);
+  --dv-bor: oklch(22% 0.016 270);
+  --dv-bor-2: oklch(30% 0.018 270);
+  --dv-bor2: var(--dv-bor-2);
+  --dv-acc: oklch(68% 0.3 295);
+  --dv-acc-lo: oklch(68% 0.3 295 / 0.1);
+  --dv-acc-med: oklch(68% 0.3 295 / 0.22);
+  --dv-acc-bor: oklch(68% 0.3 295 / 0.3);
+  --dv-acc-fg: oklch(9% 0.012 270);
+  --dv-divider: oklch(100% 0 0 / 0.06);
+  --dv-success: oklch(62% 0.18 145);
+  --dv-success-lo: oklch(62% 0.18 145 / 0.12);
+  --dv-success-bor: oklch(62% 0.18 145 / 0.3);
+  --dv-warn: oklch(74% 0.14 80);
+  --dv-warn-lo: oklch(74% 0.14 80 / 0.12);
+  --dv-warn-bor: oklch(74% 0.14 80 / 0.3);
+  --dv-danger: oklch(66% 0.18 25);
+  --dv-danger-lo: oklch(66% 0.18 25 / 0.12);
+  --dv-danger-bor: oklch(66% 0.18 25 / 0.3);
+  --dv-info: oklch(66% 0.16 230);
+  --dv-info-lo: oklch(66% 0.16 230 / 0.12);
+  --dv-info-bor: oklch(66% 0.16 230 / 0.3);
+  --dv-bubble-user: oklch(68% 0.3 295 / 0.12);
+  --dv-bubble-user-tx: oklch(96% 0.004 270);
+  --dv-bubble-user-bd: oklch(68% 0.3 295 / 0.35);
+  --dv-bubble-ai: oklch(14% 0.016 270);
+  --dv-diff-add-fg: oklch(72% 0.18 145);
+  --dv-diff-add-soft: oklch(72% 0.18 145 / 0.14);
+  --dv-diff-del-fg: oklch(70% 0.18 25);
+  --dv-diff-del-soft: oklch(70% 0.18 25 / 0.14);
+  --dv-tech-bg: oklch(11.5% 0.006 270);
+  --dv-tech-bg-2: oklch(15.5% 0.008 270);
+  --dv-tech-head: oklch(18% 0.01 270);
+  --dv-tech-gutter: oklch(13.5% 0.007 270);
+  --dv-tech-bor: oklch(34% 0.012 270);
+  --dv-tech-fg: oklch(91% 0.006 270);
+  --dv-tech-muted: oklch(62% 0.01 270);
+  --dv-syntax-keyword: oklch(77% 0.18 295);
+  --dv-syntax-string: oklch(76% 0.16 145);
+  --dv-syntax-comment: oklch(56% 0.014 270);
+  --dv-syntax-number: oklch(76% 0.13 230);
+  --dv-syntax-tag: oklch(76% 0.15 25);
+  --dv-syntax-attr: oklch(78% 0.12 80);
+  --dv-diff-add-bg: oklch(18% 0.035 145);
+  --dv-diff-del-bg: oklch(18% 0.034 25);
+  --dv-diff-hunk-bg: oklch(17% 0.026 230);
+  --dv-pri-none-bg: oklch(22% 0.015 270);
+  --dv-pri-none-fg: oklch(50% 0.01 270);
+  --dv-shadow-sm: 0 1px 4px oklch(0% 0 0 / 0.2);
+  --dv-shadow-md: 0 4px 16px oklch(0% 0 0 / 0.28);
+  --dv-shadow-lg: 0 12px 40px oklch(0% 0 0 / 0.4);
+}
+
+// ── Navy Light ──────────────────────────────────────────────────
+[data-theme='navy'] {
+  // Superficies
+  --dv-bg: oklch(97% 0.01 215);
+  --dv-surf: oklch(99.5% 0.005 215);
+  --dv-surf-2: oklch(94.5% 0.012 215);
+  --dv-surf-3: oklch(91% 0.015 215);
+  --dv-surf2: var(--dv-surf-2);
+  --dv-surf3: var(--dv-surf-3);
+
+  // Texto
+  --dv-fg: oklch(13% 0.025 230);
+  --dv-muted: oklch(42% 0.02 220);
+  --dv-dim: oklch(62% 0.016 215);
+
+  // Bordes
+  --dv-bor: oklch(72% 0.018 215);
+  --dv-bor-2: oklch(60% 0.022 215);
+  --dv-bor2: var(--dv-bor-2);
+  --dv-divider: oklch(13% 0.025 230 / 0.18);
+
+  // Acento — Teal
+  --dv-acc: oklch(50% 0.15 178);
+  --dv-acc-lo: oklch(50% 0.15 178 / 0.1);
+  --dv-acc-med: oklch(50% 0.15 178 / 0.2);
+  --dv-acc-bor: oklch(50% 0.15 178 / 0.45);
+  --dv-acc-fg: oklch(100% 0 0);
+
+  // Semánticos
+  --dv-success: oklch(52% 0.18 145);
+  --dv-success-lo: oklch(52% 0.18 145 / 0.1);
+  --dv-success-bor: oklch(52% 0.18 145 / 0.3);
+  --dv-warn: oklch(68% 0.16 80);
+  --dv-warn-lo: oklch(68% 0.16 80 / 0.1);
+  --dv-warn-bor: oklch(68% 0.16 80 / 0.3);
+  --dv-danger: oklch(58% 0.19 25);
+  --dv-danger-lo: oklch(58% 0.19 25 / 0.1);
+  --dv-danger-bor: oklch(58% 0.19 25 / 0.3);
+  --dv-info: oklch(56% 0.18 230);
+  --dv-info-lo: oklch(56% 0.18 230 / 0.1);
+  --dv-info-bor: oklch(56% 0.18 230 / 0.3);
+  --dv-bubble-user: oklch(50% 0.15 178 / 0.1);
+  --dv-bubble-user-tx: oklch(13% 0.025 230);
+  --dv-bubble-user-bd: oklch(50% 0.15 178 / 0.4);
+  --dv-bubble-ai: oklch(99.5% 0.005 215);
+  --dv-diff-add-fg: oklch(38% 0.16 145);
+  --dv-diff-add-soft: oklch(90% 0.07 145);
+  --dv-diff-del-fg: oklch(45% 0.17 25);
+  --dv-diff-del-soft: oklch(92% 0.05 25);
+  --dv-tech-bg: oklch(95.5% 0.006 230);
+  --dv-tech-bg-2: oklch(91% 0.008 230);
+  --dv-tech-head: oklch(89% 0.009 230);
+  --dv-tech-gutter: oklch(88% 0.008 230);
+  --dv-tech-bor: oklch(70% 0.012 230);
+  --dv-tech-fg: oklch(17% 0.012 230);
+  --dv-tech-muted: oklch(39% 0.012 230);
+  --dv-syntax-keyword: oklch(39% 0.17 230);
+  --dv-syntax-string: oklch(35% 0.14 145);
+  --dv-syntax-comment: oklch(47% 0.018 215);
+  --dv-syntax-number: oklch(42% 0.15 178);
+  --dv-syntax-tag: oklch(43% 0.16 25);
+  --dv-syntax-attr: oklch(42% 0.13 80);
+  --dv-diff-add-bg: oklch(92% 0.028 145);
+  --dv-diff-del-bg: oklch(93% 0.024 25);
+  --dv-diff-hunk-bg: oklch(90% 0.018 215);
+
+  // Prioridad Kanban
+  --dv-pri-alta-bg: oklch(94% 0.04 25);
+  --dv-pri-alta-fg: oklch(44% 0.2 25);
+  --dv-pri-media-bg: oklch(96% 0.03 75);
+  --dv-pri-media-fg: oklch(46% 0.16 75);
+  --dv-pri-none-bg: oklch(94% 0.008 215);
+  --dv-pri-none-fg: oklch(42% 0.015 215);
+
+  // Radio — estilo cuadrado/angular característico del tema Navy
+  // Unidades en rem (base 16px); bordes, outlines y sombras siempre en px
+  --dv-r-sm: 0.125rem; // 2px
+  --dv-r-md: 0.1875rem; // 3px
+  --dv-r-lg: 0.3125rem; // 5px
+  --dv-r-xl: 0.375rem; // 6px
+  --dv-r-pill: 0.25rem; // 4px — deliberadamente NO circular
+  --dv-bd-style: solid;
+  --dv-bd-width: 1px;
+  --dv-bd-thin: 1px;
+
+  // Sombras (px, con tinte navy para coherencia visual)
+  --dv-shadow-sm: 0 1px 3px oklch(13% 0.025 230 / 0.1);
+  --dv-shadow-md: 0 3px 12px oklch(13% 0.025 230 / 0.14);
+  --dv-shadow-lg: 0 12px 40px oklch(10% 0.025 230 / 0.16);
+}
+
+// ── Navy Dark ────────────────────────────────────────────────────
+[data-theme='navy-dark'] {
+  // Superficies — navy profundo inspirado en #0d1117
+  --dv-bg: oklch(10% 0.02 230);
+  --dv-surf: oklch(14% 0.024 230);
+  --dv-surf-2: oklch(18% 0.028 228);
+  --dv-surf-3: oklch(22% 0.03 226);
+  --dv-surf2: var(--dv-surf-2);
+  --dv-surf3: var(--dv-surf-3);
+
+  // Texto
+  --dv-fg: oklch(94% 0.008 215);
+  --dv-muted: oklch(60% 0.018 220);
+  --dv-dim: oklch(40% 0.018 220);
+
+  // Bordes
+  --dv-bor: oklch(34% 0.025 226);
+  --dv-bor-2: oklch(42% 0.028 224);
+  --dv-bor2: var(--dv-bor-2);
+  --dv-divider: oklch(94% 0.008 215 / 0.2);
+
+  // Acento — Teal más brillante para contraste sobre navy oscuro (#2dd4bf)
+  --dv-acc: oklch(75% 0.15 178);
+  --dv-acc-lo: oklch(75% 0.15 178 / 0.12);
+  --dv-acc-med: oklch(75% 0.15 178 / 0.24);
+  --dv-acc-bor: oklch(75% 0.15 178 / 0.45);
+  --dv-acc-fg: oklch(10% 0.02 230); // texto oscuro sobre teal claro
+
+  // Semánticos
+  --dv-success: oklch(62% 0.18 145);
+  --dv-success-lo: oklch(62% 0.18 145 / 0.12);
+  --dv-success-bor: oklch(62% 0.18 145 / 0.3);
+  --dv-warn: oklch(74% 0.14 80);
+  --dv-warn-lo: oklch(74% 0.14 80 / 0.12);
+  --dv-warn-bor: oklch(74% 0.14 80 / 0.3);
+  --dv-danger: oklch(66% 0.18 25);
+  --dv-danger-lo: oklch(66% 0.18 25 / 0.12);
+  --dv-danger-bor: oklch(66% 0.18 25 / 0.3);
+  --dv-info: oklch(66% 0.16 230);
+  --dv-info-lo: oklch(66% 0.16 230 / 0.12);
+  --dv-info-bor: oklch(66% 0.16 230 / 0.3);
+  --dv-bubble-user: oklch(75% 0.15 178 / 0.14);
+  --dv-bubble-user-tx: oklch(94% 0.008 215);
+  --dv-bubble-user-bd: oklch(75% 0.15 178 / 0.4);
+  --dv-bubble-ai: oklch(14% 0.016 230);
+  --dv-diff-add-fg: oklch(78% 0.16 145);
+  --dv-diff-add-soft: oklch(78% 0.16 145 / 0.14);
+  --dv-diff-del-fg: oklch(72% 0.18 25);
+  --dv-diff-del-soft: oklch(72% 0.18 25 / 0.14);
+  --dv-tech-bg: oklch(9.5% 0.008 230);
+  --dv-tech-bg-2: oklch(13.5% 0.01 230);
+  --dv-tech-head: oklch(16.5% 0.012 230);
+  --dv-tech-gutter: oklch(11% 0.009 230);
+  --dv-tech-bor: oklch(32% 0.014 230);
+  --dv-tech-fg: oklch(92% 0.006 230);
+  --dv-tech-muted: oklch(62% 0.01 230);
+  --dv-syntax-keyword: oklch(78% 0.14 178);
+  --dv-syntax-string: oklch(78% 0.16 145);
+  --dv-syntax-comment: oklch(55% 0.018 220);
+  --dv-syntax-number: oklch(76% 0.13 230);
+  --dv-syntax-tag: oklch(76% 0.15 25);
+  --dv-syntax-attr: oklch(78% 0.12 80);
+  --dv-diff-add-bg: oklch(17% 0.034 145);
+  --dv-diff-del-bg: oklch(17% 0.034 25);
+  --dv-diff-hunk-bg: oklch(15.5% 0.026 215);
+
+  // Prioridad Kanban
+  --dv-pri-alta-bg: oklch(20% 0.05 25);
+  --dv-pri-alta-fg: oklch(72% 0.18 25);
+  --dv-pri-media-bg: oklch(20% 0.04 75);
+  --dv-pri-media-fg: oklch(74% 0.14 75);
+  --dv-pri-none-bg: oklch(20% 0.02 228);
+  --dv-pri-none-fg: oklch(50% 0.015 220);
+
+  // Radio — mismo estilo cuadrado que Navy Light
+  --dv-r-sm: 0.125rem;
+  --dv-r-md: 0.1875rem;
+  --dv-r-lg: 0.3125rem;
+  --dv-r-xl: 0.375rem;
+  --dv-r-pill: 0.25rem;
+  --dv-bd-style: solid;
+  --dv-bd-width: 1px;
+  --dv-bd-thin: 1px;
+
+  // Sombras más pesadas para el contexto oscuro
+  --dv-shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.32);
+  --dv-shadow-md: 0 4px 14px oklch(0% 0 0 / 0.4);
+  --dv-shadow-lg: 0 12px 40px oklch(0% 0 0 / 0.5);
+}

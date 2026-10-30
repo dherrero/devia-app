@@ -1,0 +1,101 @@
+// Answered AskUserQuestion record — a quiet, read-only echo of the question
+// card. The accent left bar + selected pill say "the agent asked, you chose"
+// without competing with the surrounding prose.
+
+:host {
+  display: block;
+}
+
+.ds-qa-card {
+  border: 0.5px solid var(--dv-bor);
+  border-left: 2px solid var(--dv-acc-bor);
+  border-radius: var(--dv-r-lg);
+  background: var(--dv-surf);
+  padding: 0.625rem 0.75rem;
+}
+
+.ds-qa-card__prompt + .ds-qa-card__prompt {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 0.5px solid var(--dv-bor);
+}
+
+.ds-qa-card__header {
+  margin: 0 0 0.25rem;
+  color: var(--dv-acc);
+  font-size: var(--dv-fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ds-qa-card__question {
+  margin: 0 0 0.5rem;
+  font-size: var(--dv-fs-md);
+  line-height: 1.5;
+  color: var(--dv-fg);
+  white-space: pre-wrap;
+}
+
+.ds-qa-card__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.ds-qa-card__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.625rem;
+  background: var(--dv-surf-2);
+  border: 0.5px solid var(--dv-bor);
+  border-radius: var(--dv-r-pill);
+  font-size: var(--dv-fs-sm);
+  color: var(--dv-muted);
+}
+
+.ds-qa-card__opt dv-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+}
+
+.ds-qa-card__opt--selected {
+  background: var(--dv-acc-lo);
+  border-color: var(--dv-acc-bor);
+  color: var(--dv-acc);
+  font-weight: 600;
+}
+
+.ds-qa-card__free {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0.1875rem 0.625rem;
+  background: var(--dv-acc-lo);
+  border: 0.5px solid var(--dv-acc-bor);
+  border-radius: var(--dv-r-pill);
+  font-size: var(--dv-fs-sm);
+  font-weight: 600;
+  color: var(--dv-acc);
+}
+
+.ds-qa-card__free dv-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+}
+
+.ds-qa-card__free-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ds-qa-card__unrecorded {
+  margin: 0.375rem 0 0;
+  font-size: var(--dv-fs-sm);
+  font-style: italic;
+  color: var(--dv-muted);
+}

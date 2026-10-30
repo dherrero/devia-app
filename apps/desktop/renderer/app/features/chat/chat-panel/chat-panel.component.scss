@@ -1,0 +1,138 @@
+// min-width:0 belongs together with min-height:0 on a grid/flex child
+// that's expected to shrink — without it the host keeps its auto min
+// intrinsic size and a wide message bubble (long code token, long path)
+// can push the chat column past the viewport.
+// flex: 1 1 0 because the parent .dsm-outlet (router-outlet wrapper)
+// is a flex column — without an explicit grow factor the host shrinks
+// to its content's intrinsic height and the inner .dsm-chat { height:
+// 100% } collapses the 1fr messages row to zero, pinning the input
+// bar to the top of the column.
+:host {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dsm-chat {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  min-height: 0;
+  height: 100%;
+  // Falls back to --dv-bg when a theme doesn't define a dedicated chat surface
+  // (only the dark themes lift the chat above the window base).
+  background: var(--dv-chat-bg, var(--dv-bg));
+  position: relative;
+}
+
+// Header styles (`.dsm-chat-header`, `.dsm-chat-title`, `.dsm-tabs`,
+// `.dsm-chat-badges`, `.working-dot`) moved to
+// `components/chat-header/chat-header.component.scss` during HT-CH-02.
+// The header is now `ds-chat-header` and owns its own scoped tokens.
+
+// `.dsm-messages` / `.dsm-messages-inner` moved to
+// `components/messages-feed/messages-feed.component.scss` during HT-CH-03.
+// The empty-state styles travelled with them.
+
+// `.dsm-attachments` / `.dsm-attachment` styles moved to
+// `components/attachments-bar/attachments-bar.component.scss` during HT-CH-04.
+
+// `.dsm-mode-bar` / `.dsm-mode-seg` styles moved to
+// `components/mode-bar/mode-bar.component.scss` during HT-MD-01.
+
+// `.dsm-input-wrap` / `.dsm-input` / `.dsm-mic` / `.dsm-send` /
+// `.dsm-reset` moved to `components/input-bar/input-bar.component.scss`
+// during HT-IN-01.
+
+// ── Scroll-to-bottom FAB ──────────────────────────────────────────────
+// Anchored to the relative .dsm-chat grid so it stays put while the
+// messages container scrolls. Bottom offset clears the input bar
+// (~64px input rectangle + 16px wrap padding) plus a 12px gap.
+.dsm-scroll-fab-slot {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 5.75rem;
+  z-index: 20;
+  animation: fab-in var(--dv-dur-enter) var(--dv-ease-out);
+}
+
+@keyframes fab-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ── Quick-reply chips ─────────────────────────────────────────────────
+// Horizontal pill row that appears above the input bar when the chat has
+// at least one assistant message and the composer is empty.
+// ── Quick actions (projected into the mode bar's right slot) ──────────────
+// A toggle icon button that reveals the action chips to its right in a single
+// horizontally-scrollable row, so they fit the bar's height.
+.dsm-quick-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.dsm-qa-toggle {
+  flex-shrink: 0;
+}
+.dsm-qa-toggle.is-open {
+  background: var(--dv-surf-3);
+  color: var(--dv-acc);
+}
+.dsm-qa-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+}
+.dsm-qa-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.125rem;
+  scrollbar-width: thin;
+}
+.dsm-qa-chip {
+  flex: 0 0 auto;
+  height: 1.5rem;
+  padding: 0 0.625rem;
+  border-radius: var(--dv-r-pill);
+  border: 0.5px solid var(--dv-bor);
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+  font: 500 var(--dv-fs-xs)/1 var(--dv-font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dv-dur-quick) var(--dv-ease-out),
+              border-color var(--dv-dur-quick) var(--dv-ease-out);
+}
+.dsm-qa-chip:hover { background: var(--dv-surf-3); border-color: var(--dv-acc); }
+.dsm-qa-chip:focus-visible { outline: 2px solid var(--dv-acc); outline-offset: 1px; }
+
+// ── Drag-drop overlay ────────────────────────────────────────────────
+.dsm-drop {
+  position: absolute;
+  inset: 0.5rem;
+  border: 2px dashed var(--dv-acc);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--dv-acc) 7%, transparent);
+  display: grid;
+  place-items: center;
+  color: var(--dv-acc);
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 30;
+}
+
+// `.dsm-chat-empty*` moved to messages-feed.component.scss during HT-CH-03.

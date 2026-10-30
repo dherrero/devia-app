@@ -1,0 +1,17 @@
+<details class="tc-diff">
+  <summary class="tc-diff-summary">
+    <dv-icon class="tc-diff-icon" [icon]="LucideFileDiff" size="sm" aria-hidden="true" />
+    <span>{{ 'tool_card.diff_changes' | translate }}</span>
+    @if (filePath(); as fp) {
+      <span class="tc-review-action-slot">
+        <dv-button variant="accent-soft"
+                   size="sm"
+                   [title]="'tool_card.review_changes' | translate"
+                   (clicked)="focusDiff(fp, $event)">
+          {{ 'tool_card.review_changes' | translate }}
+        </dv-button>
+      </span>
+    }
+  </summary>
+  <ds-diff-viewer [inlineFiles]="toolCall().diff" />
+</details>

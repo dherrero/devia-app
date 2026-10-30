@@ -1,0 +1,53 @@
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+      border-bottom: 0.5px solid var(--dv-divider);
+      flex: 0 0 auto;
+    }
+    .title {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--dv-muted);
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    /* Split-button: the IDE icon opens with the preferred IDE, the caret
+       reveals the selector. The two sit flush so they read as one control. */
+    .ide-split {
+      display: inline-flex;
+      align-items: center;
+    }
+    /* Brand IDE icon in the header split-button. */
+    .ide-icon {
+      width: 1rem; height: 1rem;
+      object-fit: contain;
+      display: block;
+    }
+    .body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 0.25rem 0 0.5rem;
+    }
+    .loading, .empty {
+      padding: 1rem 0.75rem;
+      color: var(--dv-muted);
+      font-size: 0.75rem;
+      text-align: center;
+    }
+    .error { color: var(--dv-danger); padding: 1rem 0.75rem; font-size: 0.75rem; }
+  

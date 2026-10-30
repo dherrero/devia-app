@@ -1,0 +1,85 @@
+// Mode bar (HT-MD-01). Tokens per `DESKTOP-PART-06-MODE-BAR.md`. Sits as
+// `grid-row: 3` of `.dsm-chat`, between the queue panel and the input
+// bar. The top hairline divider distinguishes it from the messages
+// scroll above.
+//
+// V1 refinement: the three modes render as a contained segmented control
+// (pill group on a raised surface) instead of bare underlined captions —
+// the run mode is a state, not a tab, and the filled active segment makes
+// the current state readable at a glance from across the room.
+
+:host {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1.5rem 0;
+  background: var(--dv-bg);
+  border-top: 0.5px solid var(--dv-divider);
+}
+
+// Right-aligned projected slot (chat-panel's quick-actions). min-width:0 lets
+// its inner horizontal scroller shrink instead of pushing the row wider.
+.ds-mode-bar__end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.ds-mode-bar__end:empty { display: none; }
+
+// Contained pill group: one surface owns the segments so they read as a
+// single three-state control.
+.ds-mode-bar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  background: var(--dv-surf);
+  border: 0.5px solid var(--dv-bor);
+  border-radius: var(--dv-r-pill);
+}
+
+.ds-mode-bar__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--dv-r-pill);
+  padding: 0.1875rem 0.625rem;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--dv-muted);
+  cursor: pointer;
+  transition:
+    background var(--dv-dur-quick) var(--dv-ease-out),
+    color var(--dv-dur-quick) var(--dv-ease-out),
+    box-shadow var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover {
+    color: var(--dv-fg);
+    background: var(--dv-surf-3);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--dv-acc);
+    outline-offset: 1px;
+  }
+
+  &[data-active='true'] {
+    background: var(--dv-acc-lo);
+    color: var(--dv-acc);
+    box-shadow: inset 0 0 0 1px var(--dv-acc-bor);
+  }
+}
+
+// YOLO active state - danger family overrides accent. Painted in warn so
+// the user has a hard-to-miss reminder that confirmations are off.
+.ds-mode-bar__seg--warn[data-active='true'] {
+  background: var(--dv-warn-lo);
+  color: var(--dv-warn);
+  box-shadow: inset 0 0 0 1px var(--dv-warn-bor);
+}

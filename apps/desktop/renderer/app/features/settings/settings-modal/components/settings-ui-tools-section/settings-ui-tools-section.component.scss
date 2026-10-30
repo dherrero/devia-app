@@ -1,0 +1,109 @@
+@use '../../section-base';
+
+.dsm-ui-tools-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dsm-ui-tools-section__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dv-fg);
+  }
+}
+
+.dsm-ui-tools-section__budget {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dv-fg);
+}
+
+.dsm-ui-tools-section__warn {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dv-warn);
+}
+
+.dsm-ui-tools-section__list,
+.dsm-ui-tools-section__grants {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dsm-ui-tools-section__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--dv-divider);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: var(--dv-surf-2); }
+  &:disabled { cursor: default; opacity: 0.55; }
+}
+
+.dsm-ui-tools-section__mark {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--dv-bor);
+  border-radius: 3px;
+  background: var(--dv-acc);
+
+  .is-off & { background: transparent; }
+}
+
+.dsm-ui-tools-section__body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dsm-ui-tools-section__name {
+  font-size: 12px;
+  color: var(--dv-fg);
+}
+
+.dsm-ui-tools-section__desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--dv-muted);
+}
+
+.dsm-ui-tools-section__cost {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dv-muted);
+}
+
+.dsm-ui-tools-section__grant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--dv-divider);
+  border-radius: 6px;
+  font-size: 12px;
+}

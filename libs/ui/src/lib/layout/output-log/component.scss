@@ -1,0 +1,24 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.dv-output-log {
+  max-height: 12.5rem;
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-log-surface, var(--dv-tech-bg));
+  color: var(--dv-log-fg, var(--dv-tech-fg));
+  @include dv.dv-mono('xs');
+}
+
+.dv-output-log--empty {
+  color: var(--dv-muted);
+}

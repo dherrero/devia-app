@@ -1,0 +1,23 @@
+    :host { display: block; }
+    .ds-registry-viewer { min-width: 560px; max-width: 900px; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+    header { display: flex; flex-direction: column; gap: 0.25rem; }
+    .ds-rv-title { margin: 0; font-size: var(--dv-fs-lg); font-weight: 600; color: var(--dv-fg); display: flex; align-items: center; gap: 0.5rem; }
+    .path { font-size: var(--dv-fs-xs, 0.75rem); color: var(--dv-muted, #94a3b8); }
+    .ds-rv-content { overflow-y: auto; max-height: 60vh; }
+    .ds-rv-actions { display: flex; justify-content: flex-end; }
+    .ds-registry-md { font-size: 0.875rem; line-height: 1.55; }
+    .ds-registry-md h1, .ds-registry-md h2, .ds-registry-md h3 { margin-top: 1.1em; }
+    .ds-registry-md code {
+      background: var(--dv-surf-3, #0f172a); color: var(--dv-fg, #e5e7eb);
+      padding: 1px 0.25rem; border-radius: 4px;
+    }
+    .ds-registry-md pre {
+      background: var(--dv-surf-3, #0f172a);
+      padding: 0.625rem 0.75rem; border-radius: 6px; overflow-x: auto;
+    }
+    .ds-registry-md pre code { background: transparent; padding: 0; }
+    .ds-registry-md table { border-collapse: collapse; }
+    .ds-registry-md th, .ds-registry-md td {
+      border: 1px solid var(--dv-bor, #334155); padding: 0.25rem 0.5rem;
+    }
+  

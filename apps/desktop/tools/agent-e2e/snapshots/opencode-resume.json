@@ -1,0 +1,52 @@
+{
+  "agent": "opencode",
+  "scenario": "resume",
+  "wiring": {
+    "command": "opencode",
+    "argv": [
+      "run",
+      "--format",
+      "json",
+      "--model",
+      "opencode/deepseek-v4.1-flash-free",
+      "--dangerously-skip-permissions",
+      "--session",
+      "<SESSION>"
+    ],
+    "stdin": {
+      "format": "text",
+      "systemHeader": true
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "stdin-prepend",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": {
+      "skillsDirs": 0,
+      "subagentsDir": false
+    },
+    "configEnv": {
+      "OPENCODE_CONFIG": true
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [],
+    "uiCards": [],
+    "recalled": true
+  }
+}

@@ -1,0 +1,59 @@
+@if (plan(); as p) {
+  <section class="dsm-plan" [attr.aria-label]="'ui_tools.plan.aria' | translate">
+    <header class="dsm-plan__head">
+      <span class="dsm-plan__badge">{{ 'ui_tools.plan.badge' | translate }}</span>
+      <h3 class="dsm-plan__title">{{ p.title }}</h3>
+    </header>
+
+    <div class="dsm-plan__body" [innerHTML]="body().html"></div>
+
+    @if (p.risks) {
+      <p class="dsm-plan__risks">
+        <strong>{{ 'ui_tools.plan.risks' | translate }}:</strong> {{ p.risks }}
+      </p>
+    }
+
+    @if (p.filesTouched?.length) {
+      <ul class="dsm-plan__files">
+        @for (file of p.filesTouched; track file) {
+          <li><code>{{ file }}</code></li>
+        }
+      </ul>
+    }
+
+    @if (rejecting()) {
+      <div class="dsm-plan__reject">
+        <textarea class="dsm-plan__comment"
+                  rows="3"
+                  autofocus
+                  [attr.aria-label]="'ui_tools.plan.comment_aria' | translate"
+                  [placeholder]="'ui_tools.plan.comment_placeholder' | translate"
+                  [value]="comment()"
+                  (input)="onCommentInput($any($event.target).value)"></textarea>
+        <div class="dsm-plan__actions">
+          <dv-button variant="secondary" size="sm" (clicked)="cancelReject()">
+            {{ 'ui_tools.plan.cancel' | translate }}
+          </dv-button>
+          <dv-button variant="primary"
+                     size="sm"
+                     [disabled]="!canReject()"
+                     (clicked)="confirmReject()">
+            {{ 'ui_tools.plan.send_reject' | translate }}
+          </dv-button>
+        </div>
+      </div>
+    } @else {
+      <div class="dsm-plan__actions">
+        <dv-button variant="secondary" size="sm" (clicked)="startReject()">
+          {{ 'ui_tools.plan.reject' | translate }}
+        </dv-button>
+        <dv-button variant="secondary" size="sm" (clicked)="approve()">
+          {{ 'ui_tools.plan.approve' | translate }}
+        </dv-button>
+        <dv-button variant="primary" size="sm" (clicked)="approveAndRun()">
+          {{ 'ui_tools.plan.approve_and_run' | translate }}
+        </dv-button>
+      </div>
+    }
+  </section>
+}

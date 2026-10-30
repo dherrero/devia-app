@@ -1,0 +1,46 @@
+<section class="dv-stepper__root" [attr.aria-label]="ariaLabel() || null">
+  <header class="dv-stepper__head">
+    <span class="dv-stepper__progress-label">{{ progressLabel() }}</span>
+    @if (collapsed() && activeStep(); as step) {
+    <span class="dv-stepper__current">{{ step.label }}</span>
+    }
+    <button
+      type="button"
+      class="dv-stepper__toggle"
+      [attr.aria-expanded]="!collapsed()"
+      (click)="toggle()"
+    >
+      {{ collapsed() ? expandLabel() : collapseLabel() }}
+    </button>
+  </header>
+  <dv-progress class="dv-stepper__bar" [value]="percent()" />
+
+  @if (!collapsed()) {
+  <ol class="dv-stepper__list">
+    @for (step of steps(); track step.id; let i = $index) {
+    <li
+      class="dv-stepper__step"
+      [class.dv-stepper__step--active]="step.state === 'active'"
+      [class.dv-stepper__step--done]="step.state === 'done'"
+      [attr.aria-current]="step.id === activeStep()?.id ? 'step' : null"
+    >
+      <span class="dv-stepper__marker" aria-hidden="true">
+        @if (step.state === 'done') { ✓ } @else { {{ i + 1 }} }
+      </span>
+      <div class="dv-stepper__body">
+        <span class="dv-stepper__label">{{ step.label }}</span>
+        @for (note of step.notes ?? []; track $index) {
+        <span class="dv-stepper__note">{{ note }}</span>
+        } @if (step.id === activeStep()?.id && content(); as c) {
+        <div class="dv-stepper__content">
+          <ng-container
+            *ngTemplateOutlet="c.template; context: { $implicit: step }"
+          />
+        </div>
+        }
+      </div>
+    </li>
+    }
+  </ol>
+  }
+</section>

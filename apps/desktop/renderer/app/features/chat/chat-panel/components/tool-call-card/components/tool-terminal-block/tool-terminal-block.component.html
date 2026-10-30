@@ -1,0 +1,39 @@
+<div class="tc-section tc-terminal" [class.tc-terminal--error]="toolCall().isError">
+  <div class="tc-terminal-header">
+    <dv-button iconOnly
+               variant="ghost"
+               size="sm"
+               [title]="'tool_card.copy_command' | translate"
+               [ariaLabel]="'tool_card.copy_command' | translate"
+               (clicked)="copyCommand()">
+      <dv-icon [icon]="copiedCmd() ? LucideCheck : LucideCopy" size="sm" aria-hidden="true" />
+    </dv-button>
+  </div>
+  <pre class="tc-terminal-cmd" [title]="rawTerminalCommand()"><span class="tc-terminal-prompt">$</span> {{ terminalCommand() }}</pre>
+
+  @if (truncatedResult(); as result) {
+    <div class="tc-terminal-output-header">
+      <dv-button iconOnly
+                 variant="ghost"
+                 size="sm"
+                 [title]="'tool_card.copy_output' | translate"
+                 [ariaLabel]="'tool_card.copy_output' | translate"
+                 (clicked)="copyOutput()">
+        <dv-icon [icon]="copiedOut() ? LucideCheck : LucideCopy" size="sm" aria-hidden="true" />
+      </dv-button>
+    </div>
+    <dv-command-output-viewer
+      [content]="displayedResult()"
+      [isError]="toolCall().isError === true"
+      [command]="terminalCommand()"
+      [rawLabel]="'tool_card.raw_output' | translate"
+      [richLabel]="'tool_card.rich_output' | translate"
+      [fullLabel]="'tool_card.show_full_output' | translate"
+      [previewLabel]="'tool_card.hide_full_output' | translate" />
+    @if (showFullTrigger()) {
+      <dv-button variant="ghost" size="sm" (clicked)="toggleFull()">
+        {{ (showFull() ? 'tool_card.hide_full_output' : 'tool_card.show_full_output') | translate }}
+      </dv-button>
+    }
+  }
+</div>

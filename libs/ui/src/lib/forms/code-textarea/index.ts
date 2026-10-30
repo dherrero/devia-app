@@ -1,0 +1,1 @@
+export { CodeTextareaComponent } from './component';

@@ -1,0 +1,72 @@
+@if (task(); as t) {
+  <header class="drawer-head">
+    <div class="breadcrumb">
+      {{ projectSlug() }} <span>/</span> {{ ('sdd.col_' + t.column) | translate }}
+    </div>
+    <h2 class="drawer-title">{{ t.id }} · {{ t.title }}</h2>
+    <div class="drawer-head-meta">
+      <span class="badge" [attr.data-col]="t.column">{{ ('sdd.col_' + t.column) | translate }}</span>
+      <span class="tag-chip tag-spec">{{ t.specId }}</span>
+      @for (dep of t.dependsOn; track dep) {
+        <span class="tag-chip tag-dep">{{ dep }}</span>
+      }
+    </div>
+    <span class="close-btn-slot">
+      <dv-button iconOnly variant="ghost" size="sm" [ariaLabel]="'common.close' | translate" (clicked)="close()">
+        <dv-icon [icon]="LucideX" size="sm" />
+      </dv-button>
+    </span>
+  </header>
+
+  <div class="drawer-body">
+    <main class="drawer-main">
+      @if (t.column === 'blocked') {
+        <section class="block-callout">
+          <div class="block-title">
+            <dv-icon [icon]="LucideHelpCircle" size="sm" />
+            <span>Bloqueado — el agente necesita tu respuesta</span>
+          </div>
+          <p class="block-text">{{ blockText(t) }}</p>
+        </section>
+      }
+
+      <section>
+        <div class="section-lbl">Descripción</div>
+        <div class="body-text">{{ t.body || 'Sin descripción.' }}</div>
+      </section>
+
+      @if (hasThread(t)) {
+        <ds-ticket-thread [task]="t" />
+      }
+
+      @if (t.column === 'done' && commits().length > 0) {
+        <ds-ticket-commits [commits]="commits()" />
+      }
+
+      @if (t.column !== 'done' && t.column !== 'backlog') {
+        <ds-ticket-reply [task]="t" (sent)="onReplySent($event)" />
+      }
+    </main>
+
+    <ds-ticket-side-panel [task]="t" [(form)]="form" />
+  </div>
+
+  <footer class="drawer-foot">
+    <dv-button variant="danger-soft" size="sm" [disabled]="deleting()" (clicked)="confirmDelete()">
+      <dv-icon [icon]="LucideTrash2" size="sm" />
+      Eliminar
+    </dv-button>
+    <div class="foot-actions">
+      @if (t.column === 'blocked') {
+        <dv-button variant="secondary" (clicked)="unblock()">
+          <dv-icon [icon]="LucideUnlock" size="sm" />
+          Desbloquear
+        </dv-button>
+      }
+      <dv-button variant="ghost" (clicked)="close()">Cerrar</dv-button>
+      <dv-button variant="primary" [disabled]="!hasChanges() || saving()" (clicked)="save()">Guardar</dv-button>
+    </div>
+  </footer>
+} @else {
+  <p class="dst-loading">{{ 'sdd.loading' | translate }}</p>
+}

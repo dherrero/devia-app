@@ -1,0 +1,47 @@
+<section class="install-form">
+  <label class="lbl">{{ 'modals.skills.source_label' | translate }}</label>
+  <dv-input
+         [ngModel]="source()"
+         (ngModelChange)="source.set($event)"
+         [placeholder]="'modals.skills.source_placeholder' | translate"
+         [disabled]="busy()"
+         (keydown.enter)="submitted.emit()" />
+
+  <label class="lbl">{{ 'modals.skills.skill_filter_label' | translate }}</label>
+  <dv-input
+         [ngModel]="skillName()"
+         (ngModelChange)="skillName.set($event)"
+         [placeholder]="'modals.skills.skill_filter_placeholder' | translate"
+         [disabled]="busy()" />
+
+  <label class="lbl">{{ 'modals.skills.agents_label' | translate }}</label>
+  <div class="agents-row">
+    @for (a of agentOptions; track a.id) {
+      <dv-checkbox
+        [ngModel]="agents().includes(a.id)"
+        (valueChange)="toggleAgent(a.id)"
+        [disabled]="busy()"
+        [label]="a.label">
+      </dv-checkbox>
+    }
+  </div>
+  @if (agents().length === 0) {
+    <p class="warn">{{ 'modals.skills.no_agents_warn' | translate }}</p>
+  }
+
+  <label class="lbl">{{ 'modals.skills.scope_label' | translate }}</label>
+  <dv-radio-group
+    class="scope-radio"
+    [options]="scopeOptions()"
+    [ngModel]="scope()"
+    (ngModelChange)="setScope($event)"
+    [disabled]="busy()"
+  />
+
+  @if (log().length > 0) {
+    <pre class="log">{{ logText() }}</pre>
+  }
+  @if (errorMessage(); as msg) {
+    <p class="err">{{ msg }}</p>
+  }
+</section>

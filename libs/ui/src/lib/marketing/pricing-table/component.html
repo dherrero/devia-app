@@ -1,0 +1,55 @@
+<div class="pt-wrap">
+  <!-- Header -->
+  <div class="pt-head">
+    <div class="pt-col-label"></div>
+    @for (plan of plans(); track plan.name; let i = $index) {
+    <div class="pt-col-label" [class.featured]="plan.featured">
+      @if (plan.badge) {
+      <div class="plan-badge">{{ plan.badge }}</div>
+      }
+      <div class="plan-name">{{ plan.name }}</div>
+      <div class="plan-price-lg">{{ plan.priceLg }}</div>
+      @if (plan.priceSub) {
+      <div class="plan-price-sub">{{ plan.priceSub }}</div>
+      } @if (plan.desc) {
+      <div class="plan-desc">{{ plan.desc }}</div>
+      }
+    </div>
+    }
+  </div>
+
+  <!-- Feature rows -->
+  @for (feature of features(); track feature.label) {
+  <div class="pt-row">
+    <div class="pt-cell pt-cell-label">{{ feature.label }}</div>
+    @for (val of feature.values; track $index; let i = $index) {
+    <div class="pt-cell" [class.feat-col]="plans()[i]?.featured">
+      @if (val === true) {
+      <span class="check" aria-label="Incluido">✓</span>
+      } @else if (val === false) {
+      <span class="cross" aria-label="No incluido">—</span>
+      } @else {
+      <span class="pt-text">{{ val }}</span>
+      }
+    </div>
+    }
+  </div>
+  }
+
+  <!-- CTA row -->
+  <div class="pt-cta-row">
+    <div class="pt-cta-cell"></div>
+    @for (plan of plans(); track plan.name; let i = $index) {
+    <div class="pt-cta-cell" [class.feat-col]="plan.featured">
+      <dv-button
+        [variant]="plan.featured ? 'accent' : 'ghost'"
+        size="sm"
+        shape="pill"
+        [fullWidth]="true"
+        (clicked)="ctaClick.emit(i)"
+        >{{ plan.cta }}</dv-button
+      >
+    </div>
+    }
+  </div>
+</div>

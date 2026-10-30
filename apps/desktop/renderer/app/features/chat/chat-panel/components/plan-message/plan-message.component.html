@@ -1,0 +1,51 @@
+@if (plan(); as p) {
+  <section class="ds-plan-msg"
+           [class.is-rejected]="rejected()"
+           [attr.aria-label]="(rejected() ? 'ui_tools.plan.decided_rejected' : 'ui_tools.plan.decided_approved') | translate">
+    <header class="ds-plan-msg__head">
+      <span class="ds-plan-msg__badge">
+        {{ (rejected() ? 'ui_tools.plan.decided_rejected' : 'ui_tools.plan.decided_approved') | translate }}
+      </span>
+      <h3 class="ds-plan-msg__title">{{ p.title }}</h3>
+      <button type="button"
+              class="ds-plan-msg__toggle"
+              [attr.aria-expanded]="expanded()"
+              (click)="toggle()">
+        {{ (expanded() ? 'ui_tools.plan.hide' : 'ui_tools.plan.show') | translate }}
+      </button>
+    </header>
+
+    @if (p.comment) {
+      <p class="ds-plan-msg__comment">
+        <strong>{{ 'ui_tools.plan.reject_reason' | translate }}:</strong> {{ p.comment }}
+      </p>
+    }
+
+    @if (expanded()) {
+      @if (p.steps?.length) {
+        <ol class="ds-plan-msg__steps" [attr.aria-label]="'ui_tools.plan.steps' | translate">
+          @for (step of p.steps; track step.id) {
+            <li>{{ step.text }}</li>
+          }
+        </ol>
+      }
+      @if (body().plainTextFallback) {
+        <pre class="ds-plan-msg__plain">{{ p.plan }}</pre>
+      } @else {
+        <div class="ds-plan-msg__body md-body" [innerHTML]="body().html"></div>
+      }
+      @if (p.risks) {
+        <p class="ds-plan-msg__risks">
+          <strong>{{ 'ui_tools.plan.risks' | translate }}:</strong> {{ p.risks }}
+        </p>
+      }
+      @if (p.filesTouched?.length) {
+        <ul class="ds-plan-msg__files">
+          @for (file of p.filesTouched; track file) {
+            <li><code>{{ file }}</code></li>
+          }
+        </ul>
+      }
+    }
+  </section>
+}

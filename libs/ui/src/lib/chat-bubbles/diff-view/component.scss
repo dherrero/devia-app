@@ -1,0 +1,54 @@
+:host {
+  display: block;
+}
+
+.dv-diff-view {
+  overflow: hidden;
+  background: var(--dv-surf2);
+  border: 1px var(--dv-bd-style) var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-xs);
+}
+
+.dv-diff-file-header {
+  padding: 0.25rem 0.5rem;
+  background: var(--dv-surf);
+  border-bottom: 1px solid var(--dv-bor);
+  color: var(--dv-muted);
+  font-weight: 600;
+}
+
+.dv-diff-row {
+  display: flex;
+  color: var(--dv-muted);
+}
+
+.dv-diff-row--add {
+  background: var(--dv-diff-add-soft);
+  color: var(--dv-diff-add-fg);
+}
+
+.dv-diff-row--del {
+  background: var(--dv-diff-del-soft);
+  color: var(--dv-diff-del-fg);
+}
+
+.dv-diff-ln {
+  flex: 0 0 1.875rem;
+  padding: 0 0.375rem;
+  color: var(--dv-dim);
+  text-align: right;
+}
+
+.dv-diff-marker {
+  flex: 0 0 0.875rem;
+  padding: 0 0.25rem;
+}
+
+.dv-diff-code {
+  min-width: 0;
+  padding: 0 0.375rem;
+  overflow-x: auto;
+  white-space: pre;
+}

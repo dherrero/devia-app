@@ -1,0 +1,211 @@
+@use '_index' as dv;
+
+:host {
+  display: inline-flex;
+  align-items: center;
+
+  &.dv-button-host--full-width {
+    width: 100%;
+
+    .dv-button {
+      width: 100%;
+    }
+  }
+}
+
+.dv-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  font-weight: 500;
+  border-radius: var(--dv-r-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background var(--dv-dur-fast) var(--dv-ease-out),
+    border-color var(--dv-dur-fast) var(--dv-ease-out),
+    box-shadow var(--dv-dur-fast) var(--dv-ease-out),
+    transform var(--dv-dur-fast) var(--dv-ease-out);
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+
+  &:focus-visible {
+    @include dv.dv-focus-ring;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* ─── Sizes ─── */
+  &.dv-button--sm {
+    padding: 0.3125rem 0.75rem;
+    font-size: 0.8125rem;
+    min-height: 1.875rem;
+  }
+
+  &.dv-button--md {
+    padding: 0.4375rem 1rem;
+    font-size: 0.875rem;
+    min-height: 2.25rem;
+  }
+
+  &.dv-button--lg {
+    padding: 0.625rem 1.25rem;
+    font-size: 1rem;
+    min-height: 2.75rem;
+  }
+
+  &.dv-button--icon-only {
+    padding: 0;
+
+    &.dv-button--sm {
+      width: 1.875rem;
+      height: 1.875rem;
+    }
+    &.dv-button--md {
+      width: 2.25rem;
+      height: 2.25rem;
+    }
+    &.dv-button--lg {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+  }
+
+  /* ─── Variants ─── */
+  &.dv-button--primary {
+    background: var(--dv-acc);
+    color: var(--dv-acc-fg);
+    border-color: var(--dv-acc);
+
+    &:hover:not(:disabled) {
+      opacity: 0.88;
+    }
+  }
+
+  &.dv-button--secondary {
+    background: var(--dv-surf);
+    color: var(--dv-fg);
+    border-color: var(--dv-bor);
+
+    &:hover:not(:disabled) {
+      background: var(--dv-surf-2);
+      border-color: var(--dv-bor-2);
+    }
+  }
+
+  &.dv-button--ghost {
+    background: transparent;
+    color: var(--dv-muted);
+    border-color: transparent;
+
+    &:hover:not(:disabled) {
+      background: var(--dv-surf-2);
+      color: var(--dv-fg);
+    }
+  }
+
+  &.dv-button--accent-soft {
+    background: var(--dv-acc-lo);
+    color: var(--dv-acc);
+    border-color: var(--dv-acc-bor);
+
+    &:hover:not(:disabled) {
+      background: var(--dv-acc-med);
+    }
+  }
+
+  &.dv-button--danger {
+    background: var(--dv-danger);
+    color: var(--dv-acc-fg);
+    border-color: var(--dv-danger);
+
+    &:hover:not(:disabled) {
+      opacity: 0.85;
+    }
+  }
+
+  &.dv-button--danger-soft {
+    background: var(--dv-danger-lo);
+    color: var(--dv-danger);
+    border-color: var(--dv-danger-bor);
+
+    &:hover:not(:disabled) {
+      background: oklch(from var(--dv-danger) l c h / 0.18);
+    }
+  }
+
+  &.dv-button--accent {
+    background: var(--dv-acc);
+    color: var(--dv-acc-fg);
+    border-color: var(--dv-acc);
+    box-shadow: 0 4px 16px var(--dv-acc-lo);
+
+    &:hover:not(:disabled) {
+      opacity: 0.88;
+    }
+  }
+
+  &.dv-button--pill {
+    border-radius: 100px;
+  }
+
+  /* ─── Ripple ─── */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  &.dv-is-rippling::after {
+    animation: dv-ripple var(--dv-dur-base) var(--dv-ease-out) forwards;
+  }
+}
+
+.dv-button__spinner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.dv-button__content,
+.dv-button__icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.dv-button__content {
+  gap: 0.375rem;
+
+  &.dv-button__content--hidden {
+    visibility: hidden;
+  }
+}
+
+.dv-button__icon {
+  justify-content: center;
+  pointer-events: none;
+
+  &:empty {
+    display: none;
+  }
+
+  &.dv-button__icon--hidden {
+    visibility: hidden;
+  }
+}

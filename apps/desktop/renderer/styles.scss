@@ -1,0 +1,471 @@
+@use 'lib/tokens';
+@use 'lib/animations';
+@use 'lib/dialog';
+
+// Fonts (Inter + JetBrains Mono Variable) are bundled offline via
+// `@fontsource/*` packages, listed in angular.json's `styles` array.
+// Angular's build pipeline copies the woff2 files into the renderer dist and
+// rewrites the @font-face URLs, so there is no runtime network round-trip to
+// Google Fonts — required because the production build inlines fonts and was
+// failing on offline / DNS-filtered networks (fonts.googleapis.com blocked).
+
+// ─── The font knob ────────────────────────────────────────────────────────
+// Runtime zoom writes an inline percentage on <html>. The stylesheet fallback
+// stays at 100% so rem tokens scale from the browser default.
+html {
+  font-size: 100%;
+}
+
+// Renderer-only extensions on top of libs/styles tokens.
+:root {
+  --dv-fs-2xs: 0.6875rem;
+  --dv-r-xs: 3px;
+  --dv-radius: var(--dv-r-md);
+
+  --dv-titlebar-h: 2.5rem;
+  --dv-statusbar-h: 1.5rem;
+  --dv-row-h: 2rem;
+
+  --dv-safe-mac-l: 84px;
+  --dv-safe-winlinux-r: 148px;
+  --dv-subagent: #8f86d6;
+
+  --dv-backdrop-blur: 8px;
+  --dv-backdrop-saturate: 116%;
+  --dv-window-radius: var(--dv-r-xl);
+  --dv-window-border: var(--dv-bor);
+  --dv-shadow-inset: inset 0 0 0 0.5px color-mix(in oklch, var(--dv-fg) 8%, transparent);
+
+  // ── Technology badge colours (sidebar .proj-icon) ───────────────────────
+  // Brand-ish hues tuned at mid lightness so the initials read on the badge's
+  // --dv-surf-3 background in BOTH light and dark themes. One token per tech
+  // in shared/domain/tech-catalog.ts.
+  --dv-tech-ts: oklch(60% 0.14 252);
+  --dv-tech-node: oklch(64% 0.17 145);
+  --dv-tech-python: oklch(66% 0.13 232);
+  --dv-tech-go: oklch(68% 0.12 210);
+  --dv-tech-rust: oklch(63% 0.17 45);
+  --dv-tech-maven: oklch(60% 0.15 55);
+  --dv-tech-gradle: oklch(66% 0.11 165);
+  --dv-tech-ruby: oklch(60% 0.20 25);
+  --dv-tech-php: oklch(60% 0.13 290);
+  --dv-tech-dotnet: oklch(62% 0.18 305);
+  --dv-tech-elixir: oklch(60% 0.16 325);
+  --dv-tech-deno: oklch(70% 0.03 250);
+  --dv-tech-docker: oklch(64% 0.15 245);
+  --dv-tech-git: oklch(64% 0.17 35);
+}
+
+:root,
+html[data-theme=light] {
+  --dv-acc: oklch(55% 0.24 280);
+  --dv-acc-lo: oklch(55% 0.24 280 / 0.08);
+  --dv-acc-med: oklch(55% 0.24 280 / 0.18);
+  --dv-acc-bor: oklch(55% 0.24 280 / 0.30);
+  --dv-acc-fg: oklch(100% 0 0);
+  // Workbench-light pass (design/desktop-workbench-palette): deepen the canvas
+  // and keep cards pure white so they read as distinct planes — the old bg
+  // (98.5%) sat almost on top of surf (100%) and looked washed/low-contrast.
+  // Firmer borders + a darker `dim` floor (was 68%, failed on the command text)
+  // for legible long sessions.
+  --dv-bg: oklch(96.3% 0.004 270);
+  --dv-surf-2: oklch(93% 0.005 270);
+  --dv-surf-3: oklch(89.5% 0.006 270);
+  --dv-muted: oklch(46% 0.014 270);
+  --dv-dim: oklch(54% 0.012 270);
+  --dv-bor: oklch(80% 0.012 270);
+  --dv-bor-2: oklch(72% 0.014 270);
+  --dv-divider: oklch(0% 0 0 / 0.07);
+  color-scheme: light;
+}
+
+html[data-theme=dark] {
+  // Calm-violet pass (design/desktop-workbench-palette): the accent was neon
+  // fuchsia (chroma 0.30 / hue 295) and fought the cold blue-violet fills over
+  // long sessions. De-magenta'd to a dignified violet (0.21 / 286, brighter L
+  // so it still pops) and pulled fill chroma down on a warmer hue (275) so the
+  // neutrals read as charcoal-with-a-whisper, lifted out of the old murk.
+  --dv-acc: oklch(70% 0.21 286);
+  // V1: +4pt alpha on the soft fills so active states (mode segment, selected
+  // rows) read clearly on the dark surfaces without touching the hue.
+  --dv-acc-lo: oklch(70% 0.21 286 / 0.14);
+  --dv-acc-med: oklch(70% 0.21 286 / 0.26);
+  --dv-acc-bor: oklch(70% 0.21 286 / 0.34);
+  --dv-acc-fg: oklch(14% 0.02 286);
+  --dv-bg: oklch(14% 0.006 275);
+  --dv-surf: oklch(18.5% 0.007 275);
+  --dv-surf-2: oklch(22% 0.009 275);
+  --dv-surf-3: oklch(25% 0.010 275);
+  --dv-bor: oklch(30% 0.012 275);
+  --dv-bor-2: oklch(38% 0.014 275);
+  // Text floors raised for AA on the new surfaces (was muted 52% ~3.2:1,
+  // dim 33% ~1.45:1 — the command-arg text was effectively invisible).
+  --dv-muted: oklch(70% 0.009 275);
+  --dv-dim: oklch(60% 0.009 275);
+  --dv-divider: oklch(100% 0 0 / 0.09);
+  // User bubble follows the de-magenta'd accent.
+  --dv-bubble-user: oklch(70% 0.21 286 / 0.12);
+  --dv-bubble-user-bd: oklch(70% 0.21 286 / 0.32);
+  // Chat canvas sits just above the window base; with the assistant turn now
+  // de-boxed, its text reads directly on this surface.
+  --dv-chat-bg: oklch(15% 0.006 275);
+  color-scheme: dark;
+}
+
+html[data-theme=navy] {
+  --dv-acc: oklch(50% 0.15 178);
+  --dv-acc-lo: oklch(50% 0.15 178 / 0.10);
+  --dv-acc-med: oklch(50% 0.15 178 / 0.20);
+  --dv-acc-bor: oklch(50% 0.15 178 / 0.45);
+  --dv-acc-fg: oklch(100% 0 0);
+  // Workbench-light pass (navy family): deeper canvas + near-white surfaces so
+  // cards read as distinct planes, firmer borders, darker `dim` floor.
+  --dv-bg: oklch(95.2% 0.007 215);
+  --dv-surf-2: oklch(92.5% 0.009 215);
+  --dv-surf-3: oklch(88.5% 0.011 215);
+  --dv-dim: oklch(52% 0.016 215);
+  --dv-bor: oklch(68% 0.018 215);
+  --dv-bor-2: oklch(56% 0.022 215);
+  color-scheme: light;
+}
+
+html[data-theme=navy-dark] {
+  --dv-acc: oklch(75% 0.15 178);
+  --dv-acc-lo: oklch(75% 0.15 178 / 0.12);
+  --dv-acc-med: oklch(75% 0.15 178 / 0.24);
+  --dv-acc-bor: oklch(75% 0.15 178 / 0.45);
+  --dv-acc-fg: oklch(10% 0.020 230);
+  // Workbench-dark pass (navy family): keep the soft slate-graphite, but the
+  // old ramp read as too dark over long sessions — lift the whole ramp a few
+  // points so it's a working dark, not murk, while staying calm.
+  --dv-bg: oklch(14.5% 0.011 230);
+  --dv-surf: oklch(19% 0.013 230);
+  --dv-surf-2: oklch(22% 0.014 228);
+  --dv-surf-3: oklch(24.5% 0.015 226);
+  --dv-bor: oklch(40% 0.022 226);
+  --dv-bor-2: oklch(48% 0.024 224);
+  // Text floors raised for AA on the new surfaces (was dim 40% ~2.2:1).
+  --dv-muted: oklch(66% 0.018 220);
+  --dv-dim: oklch(60% 0.018 220);
+  // Chat canvas just above the window base; de-boxed assistant text reads here.
+  --dv-chat-bg: oklch(15% 0.011 230);
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dv-dur-instant: 0ms;
+    --dv-dur-quick:   0ms;
+    --dv-dur-normal:  0ms;
+    --dv-dur-slow:    0ms;
+    --dv-dur-enter:   0ms;
+    --dv-dur-exit:    0ms;
+  }
+  // HT-EM-02: belt-and-suspenders for animations that hardcode their
+  // duration (toast slide-in, splash, pulses, spin). Reducing
+  // animation-duration to 0.01ms keeps the keyframes' final state
+  // applied while skipping the motion. `animation-iteration-count: 1`
+  // ensures infinite spinners settle instead of hanging in a frozen
+  // mid-frame.
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// Density variants tune spacing/row tokens. Global scale is controlled by the
+// renderer zoom service through the root font-size.
+
+// ─── Sharp style variant ──────────────────────────────────────────────────
+// Collapses all radius tokens to near-flat values for a more geometric,
+// editor-like feel. Works on top of any accent palette and light/dark theme.
+[data-style="sharp"] {
+  --dv-r-xs:   1px;
+  --dv-r-sm:   2px;
+  --dv-r-md:   3px;
+  --dv-r-lg:   5px;
+  --dv-r-xl:   6px;
+  --dv-r-pill: 4px;
+  --dv-radius: var(--dv-r-md);
+}
+
+// ─── Base ──────────────────────────────────────────────────────────────────
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: transparent;
+  color: var(--dv-fg);
+  font-family: var(--dv-font);
+  font-size: var(--dv-fs-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01', 'cv11';
+  overflow: hidden;
+}
+
+button { font-family: inherit; }
+
+// ─── Focus ring (accessibility) ───────────────────────────────────────────
+*:focus-visible {
+  outline: 2px solid var(--dv-acc);
+  outline-offset: 2px;
+  border-radius: var(--dv-radius);
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--dv-acc);
+  outline-offset: 0;
+  box-shadow: 0 0 0 4px var(--dv-acc-lo);
+}
+.cdk-mouse-focused *:focus,
+.cdk-mouse-focused *:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+::selection { background: var(--dv-acc-med); color: var(--dv-fg); }
+
+.mono { font-family: var(--dv-mono); font-feature-settings: 'zero', 'ss01'; }
+
+// ─── Scrollbars (thin, palette-tinted) ─────────────────────────────────────
+.dsm-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dv-surf-3) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--dv-surf-3);
+  border-radius: 999px;
+  border: 2.5px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dv-acc-med);
+  background-clip: padding-box;
+}
+
+// ─── Reusable pill / chip / button primitives ──────────────────────────────
+// These are shared across titlebar, chat header, statusbar and modals.
+
+.dsm-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px;
+  border-radius: var(--dv-r-pill);
+  font-size: var(--dv-fs-xs); font-weight: 500;
+  letter-spacing: 0.02em;
+  background: var(--dv-surf);
+  border: 0.5px solid var(--dv-bor-2);
+  color: var(--dv-dim);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s, box-shadow .2s;
+  white-space: nowrap;
+}
+.dsm-pill:hover { background: var(--dv-surf-3); }
+.dsm-pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--dv-dim);
+}
+.dsm-pill[data-state="local"] {
+  background: var(--dv-info-lo);
+  color: var(--dv-info);
+  border-color: transparent;
+}
+.dsm-pill[data-state="local"] .dot { background: var(--dv-info); }
+
+.dsm-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 8px;
+  background: var(--dv-surf-2);
+  border: 0.5px solid var(--dv-bor-2);
+  border-radius: 6px;
+  font-size: var(--dv-fs-xs);
+  color: var(--dv-dim);
+}
+.dsm-chip.mono { font-family: var(--dv-mono); }
+.dsm-chip[data-tone="dirty"] {
+  color: var(--dv-warn); background: var(--dv-warn-lo); border-color: transparent;
+}
+.dsm-chip[data-tone="ok"] {
+  color: var(--dv-acc); background: var(--dv-acc-lo); border-color: transparent;
+}
+
+// ─── Range input (replaces MatSlider) ─────────────────────────────────────
+.ds-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--dv-acc) 0%,
+    var(--dv-acc) var(--range-pct, 50%),
+    var(--dv-surf-3) var(--range-pct, 50%),
+    var(--dv-surf-3) 100%
+  );
+  outline: none;
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--dv-acc);
+    border: 2px solid var(--dv-surf);
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transition: transform .1s;
+  }
+  &::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  &:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--dv-acc);
+    outline-offset: 2px;
+  }
+  &::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--dv-acc);
+    border: 2px solid var(--dv-surf);
+    cursor: pointer;
+  }
+}
+.ds-range-field { display: flex; flex-direction: column; gap: .5rem; }
+.ds-range-label { font-size: .75rem; color: var(--dv-dim); font-weight: 500; }
+.ds-range-row   { display: flex; align-items: center; gap: .75rem; }
+.ds-range-side  { font-size: .75rem; color: var(--dv-muted); min-width: 2.5rem; }
+.ds-range-value { font-size: .875rem; font-weight: 600; color: var(--dv-acc); text-align: center; }
+
+.dsm-icon-btn {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 6px; border: 0;
+  background: transparent;
+  color: var(--dv-dim);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.dsm-icon-btn:hover { background: var(--dv-surf-3); color: var(--dv-fg); }
+.dsm-icon-btn:active { background: var(--dv-surf-3); }
+.dsm-icon-btn[data-active="true"] { background: var(--dv-surf-3); color: var(--dv-fg); }
+
+.dsm-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px;
+  border-radius: 7px;
+  font: 500 var(--dv-fs-sm)/1 var(--dv-font);
+  border: 0.5px solid var(--dv-bor);
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s, box-shadow .12s;
+}
+.dsm-btn:hover  { background: var(--dv-surf-3); }
+.dsm-btn:active { background: var(--dv-surf-3); }
+.dsm-btn[data-tone="primary"] {
+  background: var(--dv-acc);
+  color: var(--dv-acc-fg);
+  border-color: transparent;
+}
+.dsm-btn[data-tone="primary"]:hover { background: var(--dv-acc); }
+.dsm-btn[data-tone="ghost"] {
+  background: transparent; border-color: transparent;
+  color: var(--dv-dim);
+}
+.dsm-btn[data-tone="ghost"]:hover { background: var(--dv-surf-3); color: var(--dv-fg); }
+.dsm-btn[data-tone="danger"] {
+  color: var(--dv-danger); border-color: transparent; background: transparent;
+}
+.dsm-btn[data-tone="danger"]:hover { background: var(--dv-danger-lo); }
+
+// ─── Priority dot (N4) ───────────────────────────────────────────────────────
+.ds-priority-dot {
+  width: 0.5rem; height: 0.5rem;
+  border-radius: 50%; flex-shrink: 0;
+}
+.ds-priority-dot--critical { background: var(--dv-danger); }
+.ds-priority-dot--high     { background: var(--dv-warn); }
+.ds-priority-dot--medium   { background: var(--dv-acc); }
+.ds-priority-dot--low      { background: var(--dv-dim); }
+
+// ─── Utility: uppercase section labels ───────────────────────────────────────
+.ds-label-caps {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dv-muted);
+}
+
+// ─── Running pulse, used in sidebar dots + chat-header chip ────────────────
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0   var(--dv-acc-pulse, rgba(82, 183, 136, 0.55)); }
+  100% { box-shadow: 0 0 0 7px var(--dv-acc-pulse-end, rgba(82, 183, 136, 0)); }
+}
+@keyframes ds-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.7); }
+}
+
+// ─── CDK overlay / dialog overrides ──────────────────────────────────────
+// The `.dv-dialog*` chrome (backdrop, panel, dialog surface, drawer) is
+// provided by the shared `lib/dialog` partial `@use`d above. Only the
+// desktop-specific overrides below remain.
+
+// Keep the legacy dark backdrop alias in sync with the shared backdrop look.
+.cdk-overlay-dark-backdrop {
+  background: var(--dv-backdrop);
+  -webkit-backdrop-filter:
+    blur(var(--dv-backdrop-blur))
+    saturate(var(--dv-backdrop-saturate));
+  backdrop-filter:
+    blur(var(--dv-backdrop-blur))
+    saturate(var(--dv-backdrop-saturate));
+}
+
+// E-DSK-12 — kanban board dialog fills its panel edge-to-edge so the
+// columns get the full height/width instead of the default 24px padding.
+// CDK inserts cdk-dialog-container between the overlay pane and the component.
+.dsk-dialog cdk-dialog-container { padding: 0; overflow: hidden; height: 100%; }
+
+// Cap all CDK dialog panels at 92vh so they never overflow the viewport.
+// Per-dialog maxHeight (in DialogConfig) still wins over this default.
+.dv-dialog-panel { max-height: 92vh; }
+
+// Centered ticket modal — matches the desktop-main-chat.html #m-ticket mockup,
+// which renders the panel centered in the overlay (not a side drawer).
+// Before: `position: fixed; top/right/bottom: 0` pinned it full-height to the
+// right edge with a translateX(100%) slide-in (side drawer).
+.dv-ticket-drawer {
+  max-height: 90vh;
+  animation: dv-ticket-drawer-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dv-ticket-drawer cdk-dialog-container {
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+// Before: slid in from the right edge (translateX(100%)). Now fades/scales in
+// from center, matching the mockup's modal-in keyframes.
+@keyframes dv-ticket-drawer-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+
+// Multi-line tooltips (S-1 T-4: per-turn cost breakdown). Material's MDC
+// tooltip collapses whitespace by default, so embedded "\n" would render as
+// spaces. `pre-line` preserves the line breaks and left-aligns the list.
+.mat-mdc-tooltip.ds-tooltip-multiline .mdc-tooltip__surface {
+  white-space: pre-line;
+  text-align: left;
+  max-width: 260px;
+}

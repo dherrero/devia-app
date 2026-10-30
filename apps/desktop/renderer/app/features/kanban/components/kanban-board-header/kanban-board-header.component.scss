@@ -1,0 +1,47 @@
+:host {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.75rem; flex: 0 0 auto;
+  padding: 0.375rem 0.875rem; border-bottom: 1px solid var(--dv-bor);
+  background: var(--dv-surf);
+}
+.dsk-title { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 0.9375rem; letter-spacing: 0; min-width: 0; }
+.dsk-title dv-icon { color: var(--dv-acc); }
+.dsk-project { color: var(--dv-muted); font-weight: 400; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsk-head-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; min-width: 0; flex-wrap: wrap; }
+.dsk-search {
+  width: min(18rem, 24vw);
+  min-width: 11rem;
+  flex: 1 1 11rem;
+}
+.dsk-priority-filter {
+  min-width: 10rem;
+  flex: 1 1 10rem;
+}
+.dsk-spec-filter {
+  max-width: 16.25rem;
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+.dsk-stats {
+  font-family: var(--dv-mono);
+  font-size: 0.75rem;
+  color: var(--dv-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+@media (max-width: 56rem) {
+  :host {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .dsk-head-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .dsk-search,
+  .dsk-priority-filter,
+  .dsk-spec-filter {
+    min-width: min(100%, 11rem);
+  }
+}

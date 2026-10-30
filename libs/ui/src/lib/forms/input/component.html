@@ -1,0 +1,50 @@
+@if (label()) {
+<label [for]="id" class="dv-field__label">
+  {{ label() }} @if (required()) {
+  <span class="dv-field__required" aria-hidden="true">*</span>
+  }
+</label>
+}
+<div
+  class="dv-field__control"
+  [class.dv-field__control--sm]="size() === 'sm'"
+  [class.dv-field__control--md]="size() === 'md'"
+  [class.dv-field__control--lg]="size() === 'lg'"
+  [class.dv-field__control--focused]="isFocused()"
+  [class.dv-field__control--error]="!!error()"
+  [class.dv-field__control--disabled]="disabled()"
+>
+  @if (prefix()) {
+  <span class="dv-field__prefix">{{ prefix() }}</span>
+  }
+  <input
+    #inputEl
+    [id]="id"
+    [type]="type()"
+    [placeholder]="placeholder()"
+    [disabled]="disabled()"
+    [readOnly]="readonly()"
+    [required]="required()"
+    [attr.aria-label]="ariaLabel()"
+    [attr.aria-invalid]="error() ? 'true' : null"
+    [attr.aria-describedby]="describedBy()"
+    [attr.autocomplete]="autocomplete()"
+    [attr.inputmode]="inputmode()"
+    [attr.pattern]="pattern()"
+    [attr.spellcheck]="spellcheck()"
+    [value]="value()"
+    class="dv-field__input"
+    data-testid="dv-input"
+    (input)="handleInput($event)"
+    (focus)="handleFocus($event)"
+    (blur)="handleBlur($event)"
+  />
+  @if (suffix()) {
+  <span class="dv-field__suffix">{{ suffix() }}</span>
+  }
+</div>
+@if (error()) {
+<span [id]="errorId" class="dv-field__error" role="alert">{{ error() }}</span>
+} @else if (hint()) {
+<span [id]="hintId" class="dv-field__hint">{{ hint() }}</span>
+}

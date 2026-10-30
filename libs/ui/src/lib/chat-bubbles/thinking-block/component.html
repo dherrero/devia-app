@@ -1,0 +1,21 @@
+<div class="dv-thinking-block">
+  <button
+    class="dv-thinking-header"
+    type="button"
+    (click)="toggle()"
+    [attr.aria-expanded]="isOpen()"
+  >
+    <span class="dv-thinking-label">{{ label() }}</span>
+    <span
+      class="dv-thinking-chevron"
+      [class.dv-thinking-chevron--open]="isOpen()"
+      aria-hidden="true"
+      >›</span
+    >
+  </button>
+  @if (isOpen()) {
+  <div class="dv-thinking-body">
+    {{ content() }}<span class="dv-thinking-cursor" aria-hidden="true">|</span>
+  </div>
+  }
+</div>

@@ -1,0 +1,41 @@
+<div class="msg-outbox">
+  <div class="avatar"><dv-icon [icon]="LucideFile" size="sm" /></div>
+  <div class="card">
+    <div class="thumb">
+      @if (msg().kind === "image") {
+        <img
+          class="thumb-img"
+          [src]="fileUri()"
+          [alt]="msg().name"
+          (click)="api.openPath(msg().path!)"
+        />
+      } @else {
+        <dv-icon class="thumb-glyph" [icon]="kindIconLucide()" size="lg" />
+      }
+    </div>
+    <div class="meta">
+      <div class="filename mono">{{ msg().name }}</div>
+      <div class="submeta">{{ msg().kind }} · {{ 'message_bubble.generated' | translate }}</div>
+      @if (msg().channel === "telegram") {
+        <div
+          class="channel"
+          data-testid="outbox-for-telegram"
+          [attr.title]="'chat.outbox.for_telegram_hint' | translate"
+        >
+          <dv-badge variant="info" size="sm">
+            <dv-icon [icon]="LucideSend" size="sm" />
+            {{ 'chat.outbox.for_telegram' | translate }}
+          </dv-badge>
+        </div>
+      }
+    </div>
+    <div class="actions">
+      <dv-button variant="secondary" size="sm" (clicked)="api.openPath(msg().path!)">
+        <dv-icon [icon]="LucideExternalLink" size="sm" /> {{ 'message_bubble.outbox_open' | translate }}
+      </dv-button>
+      <dv-button variant="ghost" size="sm" (clicked)="api.revealInFolder(msg().path!)">
+        <dv-icon [icon]="LucideFolder" size="sm" /> {{ 'message_bubble.outbox_folder' | translate }}
+      </dv-button>
+    </div>
+  </div>
+</div>

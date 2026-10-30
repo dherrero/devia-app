@@ -1,0 +1,24 @@
+<nav class="dv-pill-nav__list">
+  @for (item of items(); track item.id) { @if (item.href) {
+  <a
+    class="dv-pill-nav__item"
+    [class.dv-pill-nav__item--active]="activeId() === item.id"
+    [class.dv-pill-nav__item--disabled]="item.disabled"
+    [href]="item.href"
+    [attr.aria-current]="activeId() === item.id ? 'page' : null"
+    >{{ item.label }}</a
+  >
+  } @else {
+  <button
+    type="button"
+    class="dv-pill-nav__item"
+    [class.dv-pill-nav__item--active]="activeId() === item.id"
+    [class.dv-pill-nav__item--disabled]="item.disabled"
+    [attr.aria-pressed]="activeId() === item.id"
+    [disabled]="item.disabled"
+    (click)="select(item)"
+  >
+    {{ item.label }}
+  </button>
+  } }
+</nav>

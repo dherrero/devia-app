@@ -1,0 +1,43 @@
+<div class="dsk-title">
+  <dv-icon [icon]="LucideLayoutDashboard" size="sm" />
+  <span>{{ 'sdd.kanban_title' | translate }}</span>
+  <span class="dsk-project">{{ project() }}</span>
+</div>
+<div class="dsk-head-actions">
+  @if (!isEmpty()) {
+    <dv-input
+      class="dsk-search"
+      type="search"
+      size="sm"
+      placeholder="Buscar tarjetas..."
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)" />
+    <dv-select
+      class="dsk-priority-filter"
+      size="sm"
+      [ngModel]="priorityFilter()"
+      (ngModelChange)="priorityFilter.set($event)"
+      [options]="priorityFilterOptions()"
+      ariaLabel="Filtrar por prioridad" />
+  }
+  @if (hasSpecs()) {
+    <dv-select class="dsk-spec-filter"
+               size="sm"
+               [ngModel]="specFilter()"
+               (ngModelChange)="specFilter.set($event)"
+               [options]="specFilterOptions()"
+               [ariaLabel]="'sdd.all_specs' | translate" />
+    <span class="dsk-stats">{{ columnCount() }} columnas &middot; {{ totalCards() }} tarjetas</span>
+    <dv-button variant="secondary" type="button" (clicked)="createToggled.emit()">
+      <dv-icon [icon]="LucidePlus" size="sm" />{{ 'sdd.new_task' | translate }}
+    </dv-button>
+  }
+  <dv-button iconOnly
+             variant="ghost"
+             size="sm"
+             (clicked)="closed.emit()"
+             [dvTooltip]="'common.close' | translate"
+             ariaLabel="Cerrar tablero">
+    <dv-icon [icon]="LucideX" size="sm" />
+  </dv-button>
+</div>

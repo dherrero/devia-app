@@ -1,0 +1,49 @@
+@if (displayedInput(); as inp) {
+  <div class="tc-section">
+    <!-- ② CHIPS DE FICHERO CLICABLES -->
+    @if (filePath(); as fp) {
+      <div class="tc-file-chip-row">
+        <button type="button" class="tc-file-chip"
+                [title]="'tool_card.open_in_ide' | translate"
+                [attr.aria-label]="'tool_card.open_in_ide' | translate"
+                (click)="openFileInIde(fp)">
+          <dv-icon [icon]="LucideExternalLink" size="sm" aria-hidden="true" />
+          <span class="tc-file-chip-path">{{ fp }}</span>
+        </button>
+        <button type="button" class="tc-file-chip tc-file-chip--secondary"
+                [title]="'tool_card.reveal_folder' | translate"
+                [attr.aria-label]="'tool_card.reveal_folder' | translate"
+                (click)="revealFile(fp)">
+          <dv-icon [icon]="LucideFolder" size="sm" aria-hidden="true" />
+        </button>
+      </div>
+    } @else if (isQuestionTool()) {
+      <em class="tc-question">{{ formattedInput() }}</em>
+    } @else {
+      <pre class="tc-input">{{ inp }}</pre>
+      @if (showFullInputTrigger()) {
+        <dv-button variant="ghost" size="sm" (clicked)="toggleFullInput()">
+          {{ (showFullInput() ? 'tool_card.hide_full_input' : 'tool_card.show_full_input') | translate }}
+        </dv-button>
+      }
+    }
+  </div>
+}
+
+
+@if (truncatedResult(); as result) {
+  <div class="tc-section">
+    <dv-command-output-viewer
+      [content]="displayedResult()"
+      [isError]="toolCall().isError === true"
+      [rawLabel]="'tool_card.raw_output' | translate"
+      [richLabel]="'tool_card.rich_output' | translate"
+      [fullLabel]="'tool_card.show_full_output' | translate"
+      [previewLabel]="'tool_card.hide_full_output' | translate" />
+    @if (showFullTrigger()) {
+      <dv-button variant="ghost" size="sm" (clicked)="toggleFull()">
+        {{ (showFull() ? 'tool_card.hide_full_output' : 'tool_card.show_full_output') | translate }}
+      </dv-button>
+    }
+  </div>
+}

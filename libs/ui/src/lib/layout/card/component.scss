@@ -1,0 +1,55 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-lg);
+}
+
+:host(.dv-card--pad-sm) {
+  padding: 1rem;
+}
+:host(.dv-card--pad-md) {
+  padding: 1.5rem;
+}
+:host(.dv-card--pad-lg) {
+  padding: 2rem;
+}
+
+:host(.dv-card--featured) {
+  border-color: var(--dv-acc-bor);
+  background: var(--dv-acc-lo);
+}
+
+:host(.dv-card--danger) {
+  border-color: var(--dv-danger-bor);
+  background: var(--dv-danger-lo);
+}
+
+:host(.dv-card--interactive) {
+  cursor: pointer;
+  transition:
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    box-shadow var(--dv-dur-quick) var(--dv-ease-out),
+    transform var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover {
+    border-color: var(--dv-bor-2);
+    box-shadow: var(--dv-shadow-sm);
+    transform: translateY(-0.0625rem);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+:host(.dv-card--selected) {
+  border-color: var(--dv-acc-bor);
+  box-shadow: 0 0 0 1px var(--dv-acc-bor);
+}
+
+:host(.dv-card--interactive):focus-visible {
+  @include dv.dv-focus-ring;
+}

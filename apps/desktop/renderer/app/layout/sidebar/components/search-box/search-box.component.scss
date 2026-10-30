@@ -1,0 +1,52 @@
+// Search box (HT-SB-03) — tokens per `DESKTOP-PART-02-SIDEBAR.md` sub-2.2.
+//
+// The 3px focus ring intentionally uses `box-shadow` instead of `outline`
+// so it composes with the search-box's own border and doesn't overlap the
+// container's `border-soft` 0.5px hairline.
+
+:host {
+  display: block;
+  margin: 0 0.625rem 0.5rem;
+}
+
+.ds-search-box__wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  background: var(--dv-surf);
+  border: 0.5px solid var(--dv-bor-2);
+  border-radius: var(--dv-r-md);
+  color: var(--dv-dim);
+  transition: border-color var(--dv-dur-quick) var(--dv-ease-out),
+              box-shadow var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:focus-within {
+    border-color: var(--dv-acc);
+    box-shadow: 0 0 0 3px var(--dv-acc-lo);
+  }
+}
+
+.ds-search-box__input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--dv-fg);
+  font: inherit;
+  font-size: var(--dv-fs-sm);
+
+  &::placeholder {
+    color: var(--dv-dim);
+  }
+}
+
+.ds-search-box__hint {
+  width: 0.875rem;
+  height: 0.875rem;
+  line-height: 0.875rem;
+  color: var(--dv-dim);
+  overflow: hidden;
+  flex-shrink: 0;
+}

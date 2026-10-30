@@ -1,0 +1,34 @@
+<div class="dv-msg-error">
+  <dv-chat-avatar
+    variant="ai"
+    label="!"
+    [imageSrc]="avatarImageSrc()"
+    [ariaLabel]="'Error'"
+  />
+  <div class="dv-bubble-error">
+    <div class="dv-error-title">{{ message() }}</div>
+    @if (detail()) {
+    <div class="dv-error-detail">{{ detail() }}</div>
+    } @if (showRetry() || showContinue()) {
+    <div class="dv-error-actions">
+      @if (showRetry()) {
+      <button
+        class="dv-error-action-btn dv-error-retry"
+        type="button"
+        (click)="retry.emit()"
+      >
+        {{ retryLabel() }}
+      </button>
+      } @if (showContinue()) {
+      <button
+        class="dv-error-action-btn dv-error-continue"
+        type="button"
+        (click)="continueRun.emit()"
+      >
+        {{ continueLabel() }}
+      </button>
+      }
+    </div>
+    }
+  </div>
+</div>

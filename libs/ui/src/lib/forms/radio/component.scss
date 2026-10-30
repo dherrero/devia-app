@@ -1,0 +1,70 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+}
+
+/* Layout lives on an inner wrapper so a consumer overriding the host's
+   `display` can never collapse the gap between options. */
+.dv-radio-group__options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.dv-radio__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  &--disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.dv-radio__input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.dv-radio__circle {
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid var(--dv-bor-2);
+  border-radius: 50%;
+  background: var(--dv-surf);
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color var(--dv-dur-quick) var(--dv-ease-out);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0.1875rem;
+    border-radius: 50%;
+    background: var(--dv-acc);
+    transform: scale(0);
+    transition: transform var(--dv-dur-quick) var(--dv-ease-spring);
+  }
+
+  .dv-radio__input:checked + & {
+    border-color: var(--dv-acc);
+    &::after {
+      transform: scale(1);
+    }
+  }
+
+  .dv-radio__input:focus-visible + & {
+    box-shadow:
+      0 0 0 3px var(--dv-acc-lo),
+      0 0 0 1px var(--dv-acc);
+  }
+}
+
+.dv-radio__text {
+  font-size: 0.875rem;
+  color: var(--dv-fg);
+}

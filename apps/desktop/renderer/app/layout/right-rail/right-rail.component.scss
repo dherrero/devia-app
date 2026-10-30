@@ -1,0 +1,132 @@
+    :host {
+      display: flex;
+      flex-direction: row;
+      min-height: 0;
+      min-width: 0;
+    }
+    /* -- Splitter ----------------------------------------------------- */
+    .dsr-splitter {
+      width: 0.375rem;
+      cursor: col-resize;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+    }
+    .dsr-splitter-handle {
+      display: block;
+      width: 2px;
+      height: 40%;
+      max-height: 5rem;
+      border-radius: 2px;
+      background: var(--dv-bor-2);
+      opacity: 1;
+      transition: background var(--dv-dur-quick) var(--dv-ease-out);
+    }
+    .dsr-splitter:hover .dsr-splitter-handle,
+    .dsr-splitter.is-active .dsr-splitter-handle {
+      background: var(--dv-acc);
+      opacity: 1;
+    }
+
+    /* -- Panel body --------------------------------------------------- */
+    .dsr-panel {
+      flex: 0 0 auto;
+      width: var(--dsr-panel-width, 360px);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      background: var(--dv-bg);
+      border-left: 0.5px solid var(--dv-divider);
+      overflow: hidden;
+    }
+    .dsr-pane {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .dsr-pane[hidden] { display: none !important; }
+
+    /* -- Activity bar ------------------------------------------------- */
+    .dsr-rail {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.125rem;
+      padding: 0.375rem 0;
+      /* 44px spec-locked per PART-08 sub-8.1. */
+      width: 2.75rem;
+      background: var(--dv-surf-2, var(--dv-surf, var(--dv-bg)));
+      border-left: var(--dv-bd-thin, 0.5px) var(--dv-bd-style, solid) var(--dv-divider);
+    }
+    .dsr-rail-btn {
+      width: 2rem;
+      height: 2rem;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: var(--dv-bd-width, 1px) var(--dv-bd-style, solid) transparent;
+      border-radius: var(--dv-r-sm);
+      background: transparent;
+      color: var(--dv-muted);
+      cursor: pointer;
+      transition: background var(--dv-dur-quick) var(--dv-ease-out),
+                  color var(--dv-dur-quick) var(--dv-ease-out);
+      position: relative;
+    }
+    .dsr-rail-btn:hover {
+      background: var(--dv-acc-lo);
+      color: var(--dv-acc);
+    }
+    .dsr-rail-btn:focus-visible {
+      outline: 2px solid var(--dv-acc);
+      outline-offset: 2px;
+    }
+    .dsr-rail-btn[data-active] {
+      color: var(--dv-fg);
+      background: var(--dv-surf);
+      border-color: var(--dv-bor);
+    }
+    .dsr-rail-btn[data-active]::before {
+      content: '';
+      position: absolute;
+      top: 0.375rem; bottom: 0.375rem;
+      left: -0.4375rem;
+      width: 2px;
+      border-radius: 2px;
+      background: var(--dv-acc);
+    }
+    .dsr-rail-btn dv-icon {
+      width: 1.0625rem; height: 1.0625rem;
+    }
+    .dsr-rail-divider {
+      width: 1.375rem;
+      height: 0;
+      margin: 0.3125rem 0;
+      border-top: var(--dv-bd-thin, 1px) var(--dv-bd-style, solid) var(--dv-bor-2);
+      opacity: 0.8;
+      flex: 0 0 auto;
+    }
+    /* Per-project asset count, pinned to the icon's top-right corner. */
+    .dsr-count {
+      position: absolute;
+      top: -0.0625rem;
+      right: -0.0625rem;
+      min-width: 0.9375rem;
+      height: 0.9375rem;
+      padding: 0 0.1875rem;
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      border-radius: var(--dv-r-pill);
+      background: var(--dv-acc);
+      color: var(--dv-acc-fg);
+      font-size: 0.5625rem;
+      font-weight: 700;
+      line-height: 1;
+      pointer-events: none;
+    }
+  

@@ -1,0 +1,43 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--dv-r-pill);
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:host(.dv-chat-status-badge--ok) {
+  background: var(--dv-success);
+  color: white;
+  border-color: color-mix(in oklch, var(--dv-success) 35%, transparent);
+}
+
+:host(.dv-chat-status-badge--running) {
+  background: var(--dv-warn);
+  color: #040404;
+  border-color: color-mix(in oklch, var(--dv-warn) 35%, transparent);
+}
+
+:host(.dv-chat-status-badge--error) {
+  background: var(--dv-danger);
+  color: white;
+  border-color: color-mix(in oklch, var(--dv-danger) 35%, transparent);
+}
+
+:host(.dv-chat-status-badge--pending) {
+  background: var(--dv-info);
+  color: white;
+  border-color: color-mix(in oklch, var(--dv-info) 35%, transparent);
+}
+
+:host(.dv-chat-status-badge--neutral) {
+  background: var(--dv-surf2);
+  color: var(--dv-muted);
+  border-color: var(--dv-bor);
+}

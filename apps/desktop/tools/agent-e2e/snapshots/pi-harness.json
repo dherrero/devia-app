@@ -1,0 +1,65 @@
+{
+  "agent": "pi",
+  "scenario": "harness",
+  "wiring": {
+    "command": "pi",
+    "argv": [
+      "--mode",
+      "rpc",
+      "--session-id",
+      "<UUID>",
+      "-e",
+      "<DEVIA>/tmp/pi-mcp-<ID>.mjs",
+      "--skill",
+      "<WS>/proj/.agents/skills/e2e-skill",
+      "--append-system-prompt",
+      "<TMP>/devia-system-prompt-<RUN>.md"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "get_state",
+        "prompt"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui",
+      "e2e-echo"
+    ],
+    "systemPrompt": {
+      "channel": "argv-file",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": {
+      "skillsDirs": 1,
+      "subagentsDir": true
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "thinking_delta",
+      "tool_result",
+      "tool_use",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [
+      "mcp__devia-ui__devia_skill"
+    ],
+    "uiCards": [],
+    "quoted": {
+      "mcp": true,
+      "skill": true,
+      "subagent": true
+    }
+  }
+}

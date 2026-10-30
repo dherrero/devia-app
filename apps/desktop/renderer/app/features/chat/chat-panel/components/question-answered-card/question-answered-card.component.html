@@ -1,0 +1,33 @@
+<div class="ds-qa-card" role="group" [attr.aria-label]="'question_card.answered' | translate">
+  @for (prompt of prompts(); track prompt.key) {
+    <section class="ds-qa-card__prompt">
+      @if (prompt.header) {
+        <h3 class="ds-qa-card__header">{{ prompt.header }}</h3>
+      }
+      <p class="ds-qa-card__question">{{ prompt.question }}</p>
+      @if (prompt.options.length) {
+        <div class="ds-qa-card__options">
+          @for (opt of prompt.options; track opt.label) {
+            <span class="ds-qa-card__opt"
+                  [class.ds-qa-card__opt--selected]="opt.selected"
+                  [attr.aria-current]="opt.selected ? 'true' : null">
+              @if (opt.selected) {
+                <dv-icon [icon]="LucideCheck" size="sm" aria-hidden="true" />
+              }
+              <span class="ds-qa-card__opt-label">{{ opt.label }}</span>
+            </span>
+          }
+        </div>
+      }
+      @if (prompt.freeAnswer) {
+        <div class="ds-qa-card__free">
+          <dv-icon [icon]="LucideCheck" size="sm" aria-hidden="true" />
+          <span class="ds-qa-card__free-text">{{ prompt.freeAnswer }}</span>
+        </div>
+      }
+      @if (prompt.unrecorded) {
+        <p class="ds-qa-card__unrecorded">{{ 'question_card.unrecorded' | translate }}</p>
+      }
+    </section>
+  }
+</div>

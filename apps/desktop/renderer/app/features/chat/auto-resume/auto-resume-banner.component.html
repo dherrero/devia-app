@@ -1,0 +1,8 @@
+@if (time(); as t) {
+  <div class="auto-resume" role="status">
+    <span class="auto-resume-text">{{ 'auto_resume.text' | translate: { time: t } }}</span>
+    <dv-button variant="secondary" size="sm" shape="pill" (clicked)="cancel()">
+      {{ 'auto_resume.cancel' | translate }}
+    </dv-button>
+  </div>
+}

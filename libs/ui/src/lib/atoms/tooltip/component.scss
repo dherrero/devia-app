@@ -1,0 +1,20 @@
+:host {
+  display: block;
+  pointer-events: none;
+  animation: dv-fade-in var(--dv-dur-fast) var(--dv-ease-out);
+}
+
+.dv-tooltip__text {
+  display: block;
+  padding: 0.25rem 0.625rem;
+  background: var(--dv-fg);
+  color: var(--dv-bg);
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: var(--dv-r-md);
+  white-space: nowrap;
+  box-shadow: var(--dv-shadow-md);
+  max-width: 16rem;
+  white-space: normal;
+  word-break: break-word;
+}

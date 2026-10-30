@@ -1,0 +1,15 @@
+@if (item().icon) {
+  <span class="dv-menu-item__icon" aria-hidden="true">
+    <ng-container *ngComponentOutlet="item().icon!" />
+  </span>
+} @else if (item().matIcon) {
+  <span class="dv-menu-item__icon dv-menu-item__icon--mat" aria-hidden="true">
+    <span class="material-icons">{{ item().matIcon }}</span>
+  </span>
+}
+<span class="dv-menu-item__label">{{ item().label }}</span>
+@if (item().shortcut) {
+  <span class="dv-menu-item__shortcut" aria-hidden="true">{{
+    item().shortcut
+  }}</span>
+}

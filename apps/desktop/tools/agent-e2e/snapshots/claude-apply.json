@@ -1,0 +1,70 @@
+{
+  "agent": "claude",
+  "scenario": "apply",
+  "wiring": {
+    "command": "claude",
+    "argv": [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
+      "--verbose",
+      "--model",
+      "haiku",
+      "--permission-mode",
+      "acceptEdits",
+      "--disallowedTools",
+      "WebSearch,WebFetch,Workflow",
+      "--append-system-prompt",
+      "<TEXT>",
+      "--mcp-config",
+      "<DEVIA>/tmp/mcp-<ID>.json",
+      "--strict-mcp-config"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "user"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "argv",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": {
+      "skillsDirs": 0,
+      "subagentsDir": false
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "raw",
+      "session_started",
+      "status",
+      "text_delta",
+      "tool_use",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [
+      "mcp__devia-kanban__kanban_create_spec",
+      "mcp__devia-memory__mem_save",
+      "mcp__devia-ui__devia_ask_user",
+      "mcp__devia-ui__devia_todo"
+    ],
+    "uiCards": [
+      "ask_user",
+      "todo"
+    ]
+  }
+}

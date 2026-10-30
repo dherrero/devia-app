@@ -1,0 +1,217 @@
+<section>
+  <h4>{{ 'modals.settings.agent_heading' | translate }}</h4>
+  <p class="hint inline">{{ 'modals.settings.agent_hint' | translate }}</p>
+
+  @if (loadingAgents()) {
+    <div class="status">{{ 'modals.settings.detecting' | translate }}</div>
+  } @else {
+    <div class="agent-search">
+      <dv-icon class="search-icon" [icon]="LucideSearch" size="sm" />
+      <input
+        type="search"
+        [ngModel]="agentSearch()"
+        (ngModelChange)="onAgentSearchChange($event)"
+        placeholder="Buscar agente..."
+        aria-label="Buscar agente"
+      />
+    </div>
+
+    <div class="agent-list" role="listbox" aria-label="Agentes disponibles">
+      @for (a of visibleAgents(); track a.id) {
+        <div class="agent-entry">
+          <div
+            class="agent-row"
+            role="option"
+            [class.active]="selectedAgentId() === a.id"
+            [class.expanded]="expandedAgentId() === a.id"
+            [class.unavailable]="!a.selectable"
+            [class.planned]="a.applicability === 'planned'"
+            [attr.tabindex]="a.selectable ? '0' : '-1'"
+            [attr.aria-disabled]="!a.selectable"
+            [attr.aria-selected]="selectedAgentId() === a.id"
+            [attr.aria-expanded]="a.selectable ? expandedAgentId() === a.id : null"
+            [title]="a.selectable ? '' : (a.unavailableReason ?? '')"
+            (click)="selectAgent(a)"
+            (keydown.enter)="selectAgent(a)"
+            (keydown.space)="selectAgent(a); $event.preventDefault()"
+          >
+            <span class="agent-radio" aria-hidden="true"></span>
+
+            <div class="agent-row-main">
+              <span class="agent-row-name">{{ a.name }}</span>
+              <span class="agent-row-meta">
+                {{ a.resolvedBin || a.path || a.bin }}
+                @if (a.version) {
+                  <span aria-hidden="true"> - </span>{{ a.version }}
+                }
+              </span>
+            </div>
+
+            <div class="agent-row-badges">
+              @if (a.providerType && a.providerType !== 'cli') {
+                <span class="badge kind" [attr.data-kind]="a.providerType">{{ a.providerType }}</span>
+              }
+              @if (a.applicability === 'planned') {
+                <span class="badge planned" title="Soporte planificado, aún no ejecutable">planeado</span>
+              }
+              @if (a.available) {
+                <span class="badge ok">{{ 'modals.settings.available' | translate }}</span>
+              } @else if (a.providerType === 'cli') {
+                <span class="badge off">{{ 'modals.settings.not_detected' | translate }}</span>
+              } @else if (a.configured) {
+                <span class="badge config">configurado</span>
+              } @else {
+                <span class="badge off">no configurado</span>
+              }
+              @if (a.authStatus === 'ok') {
+                <span class="badge auth-ok" title="Autenticado">✓ auth</span>
+              } @else if (a.authStatus === 'missing') {
+                <span class="badge auth-miss" [title]="a.authMessage ?? 'No autenticado'">! auth</span>
+              } @else if (a.authStatus === 'unknown' && a.providerType === 'cli' && a.available) {
+                <span class="badge auth-unk" title="Estado de autenticación desconocido">? auth</span>
+              }
+            </div>
+
+            @if (a.selectable) {
+              <dv-icon class="agent-chevron" [icon]="LucideChevronRight" size="sm" />
+            }
+          </div>
+
+          @if (a.diagnostic) {
+            <dv-alert variant="warn" [title]="a.diagnostic" />
+          }
+
+          @if (!a.selectable && a.unavailableReason) {
+            <div class="agent-reason">{{ a.unavailableReason }}</div>
+          }
+
+          @if (!a.available && a.installUrl) {
+            <a class="install" [href]="a.installUrl" target="_blank" rel="noopener">
+              {{ 'modals.settings.install' | translate }}
+            </a>
+          }
+
+          @if (expandedAgentId() === a.id && selectedAgentId() === a.id && a.selectable) {
+            <div class="agent-config">
+              <div class="agent-detail-title">Configuración de {{ a.name }}</div>
+
+              <div class="agent-config-grid">
+                <div class="field">
+                  <label>{{ 'modals.settings.model_label' | translate }}</label>
+                  <dv-select
+                    size="sm"
+                    [ngModel]="agentForm().model"
+                    (ngModelChange)="updateAgentForm('model', $event)"
+                    [options]="a.models.map(m => ({value: m.id, label: m.label}))">
+                  </dv-select>
+                </div>
+
+                @if (a.reasoningOptions?.length) {
+                  <div class="field">
+                    <label>{{ 'modals.settings.reasoning_label' | translate }}</label>
+                    <dv-select
+                      size="sm"
+                      [ngModel]="agentForm().reasoning"
+                      (ngModelChange)="updateAgentForm('reasoning', $event)"
+                      [options]="(a.reasoningOptions ?? []).map(r => ({value: r.id, label: r.label}))">
+                    </dv-select>
+                  </div>
+                }
+              </div>
+
+              @if (a.envOverrideKeys?.length) {
+                <div class="env-disclosure">
+                  <button
+                    type="button"
+                    class="env-toggle"
+                    [attr.aria-expanded]="envExpanded()"
+                    (click)="toggleEnv()"
+                  >
+                    <span class="agent-detail-title">{{ 'modals.settings.env_heading' | translate }}</span>
+                    <dv-icon class="env-chevron" [icon]="LucideChevronRight" size="sm" />
+                  </button>
+
+                  @if (envExpanded()) {
+                    <div class="env-panel">
+                      <p class="hint inline">{{ 'modals.settings.env_hint' | translate:{ agent: a.name } }}</p>
+                      @for (k of a.envOverrideKeys ?? []; track k) {
+                        <div class="field env-field">
+                          <label>{{ k }}</label>
+                          @if (isSecret(k) && !isEditingSecret(k) && agentForm().env[k]) {
+                            <div class="secret-row">
+                              <span class="secret-mask" aria-label="Valor establecido">••••••••</span>
+                              <dv-button type="button" variant="secondary" size="sm" shape="pill" class="secret-edit-btn" (clicked)="startEditSecret(k)">Editar</dv-button>
+                            </div>
+                          } @else {
+                            <dv-input
+                              [type]="isSecret(k) ? 'password' : 'text'"
+                              [ngModel]="agentForm().env[k] || ''"
+                              (ngModelChange)="onEnvChange(k, $event)"
+                            />
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+
+              <div class="row agent-test-row">
+                <dv-button variant="secondary" size="sm" shape="pill" (clicked)="testAgent()" [disabled]="testing()">
+                  <dv-icon [icon]="LucidePlay" size="sm" />
+                  {{ 'modals.settings.test' | translate }}
+                </dv-button>
+                @if (testResult(); as r) {
+                  <span class="test-result" [class.ok]="r.available" [class.fail]="!r.available">
+                    @if (r.available) {
+                      {{ ('modals.settings.test_success' | translate:{ version: r.version }) || ('modals.settings.test_success_detected' | translate) }}
+                      @if (r.authStatus === 'ok') { - auth ok }
+                    } @else {
+                      {{ ('modals.settings.test_error' | translate:{ message: r.authMessage }) || ('modals.settings.test_error_not_detected' | translate) }}
+                    }
+                  </span>
+                }
+
+                @if (a.id === 'claude') {
+                  <div class="agent-option">
+                    <dv-toggle
+                      [ngModel]="autoContinueSessions()[a.id] === true"
+                      (ngModelChange)="setAutoContinue(a.id, $event)"
+                      [ariaLabel]="'modals.settings.auto_continue_label' | translate"
+                    />
+                    <span class="agent-option-label">
+                      {{ 'modals.settings.auto_continue_label' | translate }}
+                      <dv-icon
+                        class="agent-option-info"
+                        [icon]="LucideInfo"
+                        size="sm"
+                        [dvTooltip]="'modals.settings.auto_continue_hint' | translate"
+                      />
+                    </span>
+                  </div>
+                }
+
+                @if (a.id === 'claude' || a.id === 'codex') {
+                  <div class="agent-import">
+                    <span class="agent-import-label">
+                      {{ 'modals.session_import.settings_label_short' | translate }}
+                      <dv-icon
+                        class="agent-import-info"
+                        [icon]="LucideInfo"
+                        size="sm"
+                        [dvTooltip]="'modals.session_import.settings_hint' | translate"
+                      />
+                    </span>
+                    <dv-button variant="secondary" size="sm" shape="pill" (clicked)="importSessions.emit()">
+                      {{ 'modals.session_import.settings_import' | translate }}
+                    </dv-button>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</section>

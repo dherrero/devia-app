@@ -1,0 +1,54 @@
+{
+  "agent": "pi",
+  "scenario": "resume",
+  "wiring": {
+    "command": "pi",
+    "argv": [
+      "--mode",
+      "rpc",
+      "--session-id",
+      "<UUID>",
+      "-e",
+      "<DEVIA>/tmp/pi-mcp-<ID>.mjs",
+      "--append-system-prompt",
+      "<TMP>/devia-system-prompt-<RUN>.md"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "get_state",
+        "prompt"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "argv-file",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": {
+      "skillsDirs": 0,
+      "subagentsDir": false
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "thinking_delta",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [],
+    "uiCards": [],
+    "recalled": true
+  }
+}

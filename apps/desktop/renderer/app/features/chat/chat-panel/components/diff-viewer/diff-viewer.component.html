@@ -1,0 +1,127 @@
+<div class="dsm-diff-content">
+  @if (loading()) {
+    <div class="dsm-diff-empty">{{ 'diff_viewer.loading' | translate }}</div>
+  } @else if (diff()?.reason === 'not-a-git-repo') {
+    <div class="dsm-diff-empty">{{ 'diff_viewer.not_git' | translate }}</div>
+  } @else if (!diff()?.hasChanges) {
+    <div class="dsm-diff-empty">{{ 'diff_viewer.no_changes' | translate }}</div>
+  } @else {
+    <div class="dsm-diff dsm-scroll">
+      <div class="dsm-diff-summary">
+        <span>{{ (files() === 1 ? 'diff_viewer.files_changed' : 'diff_viewer.files_changed_plural') | translate:{ count: files() } }}</span>
+        <span><span class="num add">+{{ totalAdds() }}</span> {{ 'diff_viewer.additions' | translate }}</span>
+        <span><span class="num del">−{{ totalDels() }}</span> {{ 'diff_viewer.deletions' | translate }}</span>
+      </div>
+
+      @for (file of diff()!.files; track file.path) {
+        <article class="dsm-diff-file" [attr.data-path]="file.path">
+          <header class="dsm-diff-file-head">
+            <span class="dsm-status-pill" [attr.data-status]="file.status">
+              {{ statusLabel(file.status) }}
+            </span>
+            <span class="dsm-diff-path" [title]="file.path">
+              @if (file.oldPath) {
+                <span class="old-path">{{ displayPath(file.oldPath) }}</span>
+                <span class="arrow">→</span>
+              }
+              {{ displayPath(file.path) }}
+            </span>
+            <span class="dsm-diff-counts">
+              @if (countAdds(file) > 0) { <span class="add">+{{ countAdds(file) }}</span> }
+              @if (countDels(file) > 0) { <span class="del">−{{ countDels(file) }}</span> }
+            </span>
+          </header>
+          <div class="dsm-diff-body">
+            @for (line of file.lines; track $index) {
+              <div class="dsm-diff-row"
+                   [attr.data-kind]="line.type"
+                   [class.commentable]="commentable() && line.type !== 'hunk'"
+                   [class.has-comment]="commentable() && !!commentFor(file, line)"
+                   (click)="onLineClick(file, line)">
+                @if (line.type === 'hunk') {
+                  <span class="src">{{ line.text }}</span>
+                } @else {
+                  <span class="ln">{{ line.oldLineNo ?? '' }}</span>
+                  <span class="ln">{{ line.newLineNo ?? '' }}</span>
+                  <span class="mark">{{ markerFor(line.type) }}</span>
+                  <span class="src">{{ line.text || ' ' }}</span>
+                }
+              </div>
+
+              @if (commentable() && line.type !== 'hunk') {
+                @if (commentFor(file, line); as c) {
+                  @if (editingKey() !== lineKey(file, line)) {
+                    <div class="dsm-comment">
+                      <dv-icon class="dsm-comment-ic" [icon]="LucideMessageCircle" size="sm" />
+                      <span class="dsm-comment-text">{{ c.text }}</span>
+                      <dv-button iconOnly
+                                 variant="ghost"
+                                 size="sm"
+                                 [ariaLabel]="'diff_viewer.comment_edit' | translate"
+                                 [title]="'diff_viewer.comment_edit' | translate"
+                                 (clicked)="onLineClick(file, line); $event.stopPropagation()">
+                        <dv-icon [icon]="LucidePencil" size="sm" />
+                      </dv-button>
+                      <dv-button iconOnly
+                                 variant="ghost"
+                                 size="sm"
+                                 [ariaLabel]="'diff_viewer.comment_delete' | translate"
+                                 [title]="'diff_viewer.comment_delete' | translate"
+                                 (clicked)="deleteComment(file, line); $event.stopPropagation()">
+                        <dv-icon [icon]="LucideTrash2" size="sm" />
+                      </dv-button>
+                    </div>
+                  }
+                }
+
+                @if (editingKey() === lineKey(file, line)) {
+                  <div class="dsm-comment-editor" (click)="$event.stopPropagation()">
+                    <textarea #commentEditor
+                              class="dsm-comment-ta"
+                              [value]="editorSeed()"
+                              [placeholder]="'diff_viewer.comment_placeholder' | translate"
+                              (keydown.enter)="onEditorEnter($event, file, line)"
+                              (keydown.escape)="cancelEdit()"
+                              rows="2"></textarea>
+                    <div class="dsm-comment-editor-actions">
+                      <dv-button variant="ghost" size="sm" (clicked)="cancelEdit()">
+                        {{ 'diff_viewer.comment_cancel' | translate }}
+                      </dv-button>
+                      <dv-button variant="primary" size="sm" (clicked)="saveComment(file, line)">
+                        {{ 'diff_viewer.comment_save' | translate }}
+                      </dv-button>
+                    </div>
+                  </div>
+                }
+              }
+            }
+          </div>
+        </article>
+      }
+    </div>
+  }
+</div>
+
+@if (commentable() && diff()?.hasChanges) {
+  <footer class="dsm-review-bar">
+    @if (toolMode()) {
+      <!-- Why the user is suddenly looking at a diff: the agent asked, and it
+           is blocked until they answer. -->
+      <span class="dsm-review-bar__tool">{{ 'ui_tools.review.requested' | translate }}</span>
+    }
+    <span class="count">
+      {{ (reviewCount() === 1 ? 'diff_viewer.review_count' : 'diff_viewer.review_count_plural')
+          | translate:{ count: reviewCount() } }}
+    </span>
+    <span class="spacer"></span>
+    <dv-button variant="ghost" size="sm" (clicked)="onCancel()">
+      {{ 'diff_viewer.review_cancel' | translate }}
+    </dv-button>
+    <dv-button variant="primary"
+               size="sm"
+               [disabled]="reviewCount() === 0"
+               (clicked)="onSend()">
+      {{ 'diff_viewer.review_send' | translate }}
+    </dv-button>
+  </footer>
+}

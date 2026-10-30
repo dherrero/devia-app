@@ -1,0 +1,110 @@
+    @if (effectiveProject() && (items().length > 0 || view().paused)) {
+      <section class="ds-queue" [attr.aria-label]="'queue.aria_label' | translate">
+        <header class="ds-queue-header">
+          <div class="ds-queue-title">
+            <dv-icon class="qic" [icon]="LucideList" size="sm" />
+            <span class="t">{{ 'queue.header' | translate }}</span>
+            <span class="count">{{ items().length }}</span>
+          </div>
+          <div class="ds-queue-actions">
+            @if (view().paused) {
+              <dv-button variant="secondary"
+                         size="sm"
+                         (clicked)="resume()"
+                         [dvTooltip]="'queue.resume_tooltip' | translate">
+                <dv-icon [icon]="LucidePlay" size="sm" />
+                <span>{{ 'queue.resume' | translate }}</span>
+              </dv-button>
+            } @else {
+              <dv-button variant="secondary"
+                         size="sm"
+                         [disabled]="items().length === 0"
+                         (clicked)="pause()"
+                         [dvTooltip]="'queue.pause_tooltip' | translate">
+                <dv-icon [icon]="LucidePause" size="sm" />
+                <span>{{ 'queue.pause' | translate }}</span>
+              </dv-button>
+            }
+            <dv-button variant="danger-soft"
+                       size="sm"
+                       [disabled]="items().length === 0"
+                       (clicked)="confirmClear()"
+                       [dvTooltip]="'queue.clear_tooltip' | translate">
+              <dv-icon [icon]="LucideTrash2" size="sm" />
+              <span>{{ (confirmingClear() ? 'queue.confirm' : 'queue.clear') | translate }}</span>
+            </dv-button>
+          </div>
+        </header>
+
+        @if (view().paused) {
+          <div class="ds-queue-banner" role="status">
+            <dv-icon [icon]="LucidePauseCircle" size="sm" />
+            <span>{{ 'queue.paused_banner' | translate }}</span>
+          </div>
+        }
+
+        @if (items().length > 0) {
+          <ol class="ds-queue-list"
+              cdkDropList
+              (cdkDropListDropped)="onDrop($event)">
+            @for (item of items(); track item.id; let i = $index) {
+              <li class="ds-queue-row"
+                  [class.is-next]="i === 0 && !view().paused"
+                  cdkDrag>
+                <button class="handle"
+                        type="button"
+                        cdkDragHandle
+                        [dvTooltip]="'queue.drag_tooltip' | translate"
+                        [attr.aria-label]="'queue.drag_aria' | translate">
+                  <dv-icon [icon]="LucideGripVertical" size="sm" />
+                </button>
+
+                @if (editingId() === item.id) {
+                  <dv-code-textarea class="edit-area"
+                            [rows]="2"
+                            resize="vertical"
+                            [ngModel]="editDraft()"
+                            (ngModelChange)="editDraft.set($event)"
+                            (keydown.enter)="onEditEnter($event, item)"
+                            (keydown.escape)="cancelEdit()"
+                            />
+                  <div class="edit-actions">
+                    <dv-button variant="primary" size="sm" (clicked)="commitEdit(item)">{{ 'queue.save' | translate }}</dv-button>
+                    <dv-button variant="secondary" size="sm" (clicked)="cancelEdit()">{{ 'queue.cancel' | translate }}</dv-button>
+                  </div>
+                } @else {
+                  <button class="text"
+                          type="button"
+                          (click)="startEdit(item)"
+                          [dvTooltip]="'queue.edit_tooltip' | translate">
+                    @if (i === 0 && !view().paused) {
+                      <span class="next-pill">{{ 'queue.next' | translate }}</span>
+                    }
+                    <span class="body">{{ item.text }}</span>
+                  </button>
+                  <div class="row-actions">
+                    <dv-button iconOnly
+                               variant="ghost"
+                               size="sm"
+                               (clicked)="startEdit(item)"
+                               [dvTooltip]="'queue.edit_button_aria' | translate"
+                               [ariaLabel]="'queue.edit_button_aria' | translate">
+                      <dv-icon [icon]="LucidePencil" size="sm" />
+                    </dv-button>
+                    <dv-button iconOnly
+                               variant="danger-soft"
+                               size="sm"
+                               (clicked)="remove(item)"
+                               [dvTooltip]="'queue.remove_tooltip' | translate"
+                               [ariaLabel]="'queue.remove_tooltip' | translate">
+                      <dv-icon [icon]="LucideX" size="sm" />
+                    </dv-button>
+                  </div>
+                }
+              </li>
+            }
+          </ol>
+        }
+      </section>
+    }
+  

@@ -1,0 +1,24 @@
+<section
+  class="dv-kanban-board__inner"
+  cdkDropList
+  cdkDropListOrientation="horizontal"
+  [cdkDropListData]="columns()"
+  (cdkDropListDropped)="onColumnDrop($event)"
+>
+  @for (column of columns(); track column.id) {
+  <div cdkDrag [cdkDragData]="column" class="dv-kanban-board__col-wrapper">
+    <dv-kanban-column
+      [column]="column"
+      [readonly]="readonly()"
+      [connectedTo]="columnCardListIds()"
+      (itemMoved)="itemMoved.emit($event)"
+      (itemClicked)="itemClicked.emit($event)"
+      (addItemClicked)="addItemClicked.emit($event)"
+      (inlineCardCreated)="inlineCardCreated.emit($event)"
+      (menuOpened)="menuOpened.emit($event)"
+      (collapseToggled)="collapseToggled.emit($event)"
+    />
+  </div>
+  }
+  <ng-content />
+</section>

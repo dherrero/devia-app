@@ -1,0 +1,397 @@
+/* Modal chrome only — the per-section styles moved to the section components
+   under components/ (shared chrome in _section-base.scss). The audit-log and
+   other currently-unreferenced styles are kept on purpose (dead code kept by
+   user decision, same as the audit methods in the component). */
+
+:host { display: block; height: 100%; box-sizing: border-box; }
+:host, :host * { box-sizing: border-box; }
+.path { font-size: var(--dv-fs-xs); color: var(--dv-muted); margin: 0 0 0.875rem; }
+.path code {
+  background: var(--dv-surf-3); padding: 1px 0.375rem;
+  border-radius: 4px; color: var(--dv-acc); font-size: var(--dv-fs-xs);
+  word-break: break-all;
+}
+.full { width: 100%; }
+.mem-toggle { margin: 0.375rem 0; }
+
+/* ── Apariencia / palette picker ───────────────────────────────── */
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.625rem;
+  margin-top: 0.375rem;
+}
+.palette-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--dv-fg);
+  text-align: left;
+  transition: border-color .12s, background .12s, box-shadow .12s;
+}
+.palette-card:hover { border-color: var(--dv-acc-med); }
+.palette-card.selected {
+  border-color: var(--dv-acc);
+  box-shadow: 0 0 0 1px var(--dv-acc) inset;
+}
+.palette-card .swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid;
+  padding: 0 0.625rem;
+}
+.palette-card .dot {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.08) inset;
+}
+.palette-card .palette-name {
+  font-size: var(--dv-fs-sm);
+  font-weight: 500;
+}
+.palette-card .check {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  color: var(--dv-acc);
+  font-size: 1.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* ── Audit Log tab ──────────────────────────────────────────────── */
+.audit-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.75rem; margin-bottom: 0.625rem;
+}
+.audit-count {
+  font-size: var(--dv-fs-xs); color: var(--dv-muted);
+}
+.audit-export-btn {
+  font-size: var(--dv-fs-xs);
+}
+.audit-empty {
+  padding: 1rem 0;
+  color: var(--dv-muted);
+  font-size: var(--dv-fs-sm);
+  text-align: center;
+  font-style: italic;
+}
+.audit-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 0.5px solid var(--dv-bor);
+  border-radius: var(--dv-radius);
+}
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--dv-fs-xs);
+}
+.audit-table th {
+  background: var(--dv-surf-3);
+  color: var(--dv-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.375rem 0.625rem;
+  text-align: left;
+  border-bottom: 0.5px solid var(--dv-bor);
+  white-space: nowrap;
+}
+.audit-table td {
+  padding: 0.3125rem 0.625rem;
+  border-bottom: 0.5px solid var(--dv-bor-2);
+  color: var(--dv-dim);
+  vertical-align: top;
+}
+.audit-table tr:last-child td { border-bottom: none; }
+.audit-table tr:hover td { background: var(--dv-surf-2); }
+.audit-project {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── DSK-M1: Form field states ──────────────────────────────────── */
+.ds-field { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.25rem; }
+.ds-field-label { font-size: 0.8125rem; font-weight: 500; color: var(--dv-dim); }
+.ds-field-hint  { font-size: 0.75rem; color: var(--dv-dim); }
+.ds-field-error {
+  font-size: 0.75rem; color: var(--dv-danger);
+  display: flex; align-items: center; gap: 0.25rem;
+}
+.ds-field--disabled { opacity: 0.45; pointer-events: none; }
+
+/* ── DSK-M3: Accent swatch picker ────────────────────────────────── */
+.palette-card {
+  transition:
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    box-shadow   var(--dv-dur-quick) var(--dv-ease-out),
+    transform    var(--dv-dur-quick) var(--dv-ease-spring);
+}
+.palette-card:hover { transform: scale(1.03); }
+.palette-card.selected { transform: scale(1.01); }
+
+/* ── Theme toggle ────────────────────────────────────────────────── */
+.theme-toggle-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-radius);
+  background: var(--dv-surf-2);
+  color: var(--dv-muted);
+  font: inherit;
+  font-size: var(--dv-fs-sm);
+  cursor: pointer;
+  transition:
+    background var(--dv-dur-quick) var(--dv-ease-out),
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    color var(--dv-dur-quick) var(--dv-ease-out);
+}
+.theme-btn:hover { background: var(--dv-surf-3); color: var(--dv-fg); }
+.theme-btn.active {
+  background: var(--dv-acc-lo);
+  border-color: var(--dv-acc);
+  color: var(--dv-acc);
+  font-weight: 600;
+}
+
+:host {
+  --r-sm: var(--dv-r-sm, 0.3125rem);
+  --r-md: var(--dv-r-md, 0.5rem);
+  --r-lg: var(--dv-r-lg, 0.75rem);
+  --r-xl: var(--dv-r-xl, 1rem);
+  --r-pill: var(--dv-r-pill, 100rem);
+  display: flex;
+  flex-direction: column;
+  width: 54rem;
+  max-width: calc(100vw - 2rem);
+  max-height: 36rem;
+  overflow: hidden;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--r-xl);
+  box-shadow: var(--dv-shadow-lg, 0 12px 48px oklch(0% 0 0 / 0.12));
+  color: var(--dv-fg);
+  box-sizing: border-box;
+}
+
+:host, :host * { box-sizing: border-box; }
+
+.modal-head {
+  height: 3.25rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--dv-bor);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.modal-title-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-sm);
+  background: var(--dv-acc-lo);
+  border: 1px solid var(--dv-acc-bor);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.625rem;
+  color: var(--dv-acc);
+  flex: 0 0 auto;
+}
+
+.modal-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--dv-fg);
+}
+
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 11.5rem minmax(0, 1fr);
+}
+
+.settings-nav {
+  background: var(--dv-surf-2);
+  border-right: 1px solid var(--dv-bor);
+  padding: 0.625rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-height: 0;
+}
+
+.settings-nav dv-menu-item {
+  width: 100%;
+}
+
+.nav-section-lbl {
+  font-family: var(--dv-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dv-dim);
+  padding: 0.5rem 0.5rem 0.25rem;
+}
+
+.settings-content {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.content-scroll {
+  flex: 1;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.path {
+  font-family: var(--dv-mono);
+  font-size: 0.6875rem;
+  color: var(--dv-dim);
+  background: var(--dv-surf-2);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--r-sm);
+  padding: 0.25rem 0.5rem;
+  margin: 0;
+  word-break: break-all;
+}
+
+.toggle-track {
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: var(--r-pill);
+  background: var(--dv-surf-3);
+  border: 1px solid var(--dv-bor-2);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.toggle-track.on {
+  background: var(--dv-acc);
+  border-color: var(--dv-acc);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 0.125rem;
+  left: 0.125rem;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  background: var(--dv-muted);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.toggle-track.on .toggle-thumb {
+  transform: translateX(0.875rem);
+  background: #fff;
+}
+
+.modal-footer {
+  height: 3.25rem;
+  padding: 0 1rem;
+  border-top: 1px solid var(--dv-bor);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 1rem;
+}
+
+.footer-hint {
+  font-size: 0.6875rem;
+  font-family: var(--dv-mono);
+  color: var(--dv-muted);
+}
+
+.footer-hint.dirty {
+  color: var(--dv-warn);
+}
+
+.footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+::-webkit-scrollbar {
+  width: 0.25rem;
+  height: 0.25rem;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dv-bor);
+  border-radius: 0.125rem;
+}
+
+// S-3 F1.2: worktree base-ref selector under the execution section.
+.dsm-worktree-baseref {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--dv-divider);
+
+
+  label {
+    font-size: var(--dv-fs-sm);
+    color: var(--dv-fg);
+  }
+
+  .hint {
+    margin: 0;
+    font-size: var(--dv-fs-xs);
+    color: var(--dv-muted);
+  }
+}

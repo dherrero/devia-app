@@ -1,0 +1,8 @@
+@if (variant() === 'avatar') {
+<span class="dv-skeleton__circle"></span>
+} @else { @for (line of linesArray(); track $index) {
+<span
+  class="dv-skeleton__line"
+  [class.dv-skeleton__line--last]="$last && lines() > 1"
+></span>
+} }

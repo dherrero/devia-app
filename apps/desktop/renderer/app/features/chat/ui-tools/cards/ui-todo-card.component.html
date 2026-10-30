@@ -1,0 +1,26 @@
+<section class="dsm-todo" [attr.aria-label]="'ui_tools.todo.aria' | translate">
+  <header class="dsm-todo__head">
+    <span class="dsm-todo__title">{{ 'ui_tools.todo.title' | translate }}</span>
+    <span class="dsm-todo__count">{{ doneCount() }}/{{ total() }}</span>
+  </header>
+
+  <div class="dsm-todo__bar"
+       role="progressbar"
+       [attr.aria-valuenow]="percent()"
+       aria-valuemin="0"
+       aria-valuemax="100">
+    <span class="dsm-todo__bar-fill" [style.width.%]="percent()"></span>
+  </div>
+
+  <ol class="dsm-todo__list">
+    @for (item of items(); track item.id) {
+      <li class="dsm-todo__item" [class]="'is-' + item.status">
+        <span class="dsm-todo__dot" aria-hidden="true"></span>
+        <span class="dsm-todo__text">{{ item.text }}</span>
+        @if (item.note) {
+          <span class="dsm-todo__note">{{ item.note }}</span>
+        }
+      </li>
+    }
+  </ol>
+</section>

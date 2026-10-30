@@ -1,0 +1,22 @@
+<div class="ds-search-box__wrap">
+  <input #inputEl
+         type="text"
+         class="ds-search-box__input"
+         [placeholder]="placeholder()"
+         [(ngModel)]="value"
+         (ngModelChange)="onInput()"
+         autocomplete="off" />
+  @if (!isEmpty()) {
+    <dv-button
+            iconOnly
+            variant="ghost"
+            size="sm"
+            [dvTooltip]="clearTooltip()"
+            [ariaLabel]="clearAriaLabel()"
+            (clicked)="onClear()">
+      <dv-icon [icon]="LucideX" size="sm" />
+    </dv-button>
+  } @else {
+    <dv-icon class="ds-search-box__hint" [icon]="LucideSearch" size="sm" />
+  }
+</div>

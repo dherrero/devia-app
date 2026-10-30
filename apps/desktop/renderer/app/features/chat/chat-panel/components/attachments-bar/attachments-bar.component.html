@@ -1,0 +1,27 @@
+@for (a of items(); track a.id) {
+  <div class="ds-attachments-bar__chip" [title]="a.name">
+    @if (a.previewUrl) {
+      <div class="ds-attachments-bar__thumb"
+           [style.background-image]="'url(' + a.previewUrl + ')'"></div>
+    } @else {
+      <div class="ds-attachments-bar__file" aria-hidden="true">
+        <dv-icon [icon]="iconFor(a.kind)" size="sm" />
+      </div>
+    }
+    <span class="ds-attachments-bar__meta">
+      <span class="ds-attachments-bar__name">{{ a.name }}</span>
+      @if (!a.previewUrl) {
+        <span class="ds-attachments-bar__size">{{ formatBytes(a.size) }}</span>
+      }
+    </span>
+    <dv-button
+            iconOnly
+            variant="ghost"
+            size="sm"
+            [title]="'chat.remove_title' | translate"
+            [ariaLabel]="'chat.remove_title' | translate"
+            (clicked)="onRemove(a.id)">
+      <dv-icon [icon]="LucideX" size="sm" />
+    </dv-button>
+  </div>
+}

@@ -1,0 +1,32 @@
+<div class="dv-topbar__leading">
+  <ng-content select="[dvTopbarLeading]" />
+</div>
+<div class="dv-topbar__center">
+  @if (breadcrumbs().length > 0) {
+  <nav class="dv-breadcrumb" aria-label="Breadcrumb">
+    <ol class="dv-breadcrumb__list">
+      @for (crumb of breadcrumbs(); track $index; let last = $last) {
+      <li
+        class="dv-breadcrumb__item"
+        [class.dv-breadcrumb__item--current]="last"
+      >
+        @if (!last && crumb.href) {
+        <a [href]="crumb.href" class="dv-breadcrumb__link">{{ crumb.label }}</a>
+        } @else {
+        <span [attr.aria-current]="last ? 'page' : null"
+          >{{ crumb.label }}</span
+        >
+        } @if (!last) {
+        <span class="dv-breadcrumb__sep" aria-hidden="true">/</span>
+        }
+      </li>
+      }
+    </ol>
+  </nav>
+  } @else {
+  <ng-content select="[dvTopbarTitle]" />
+  }
+</div>
+<div class="dv-topbar__actions">
+  <ng-content select="[dvTopbarActions]" />
+</div>

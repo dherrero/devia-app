@@ -1,0 +1,8 @@
+<div class="section-lbl">Commit vinculado</div>
+@for (sha of commits(); track sha) {
+  <button class="commit-badge" type="button" (click)="copyCommitSha(sha)">
+    <dv-icon [icon]="LucideGitCommitHorizontal" size="sm" />
+    <span class="commit-hash">{{ sha.slice(0, 8) }}</span>
+    <span class="commit-msg">{{ sha }}</span>
+  </button>
+}

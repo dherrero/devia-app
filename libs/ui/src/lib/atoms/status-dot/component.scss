@@ -1,0 +1,35 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--dv-muted);
+  font-size: var(--dv-fs-xs);
+}
+
+.dv-status-dot__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in oklch, currentColor 14%, transparent);
+}
+
+:host(.dv-status-dot--accent) {
+  color: var(--dv-acc);
+}
+:host(.dv-status-dot--success) {
+  color: var(--dv-success);
+}
+:host(.dv-status-dot--warn) {
+  color: var(--dv-warn);
+}
+:host(.dv-status-dot--danger) {
+  color: var(--dv-danger);
+}
+:host(.dv-status-dot--info) {
+  color: var(--dv-info);
+}
+
+.dv-status-dot__label {
+  color: var(--dv-muted);
+}

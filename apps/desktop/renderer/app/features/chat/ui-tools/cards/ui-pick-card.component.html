@@ -1,0 +1,54 @@
+<section class="dsm-pick" [attr.aria-label]="'ui_tools.pick.aria' | translate">
+  <header class="dsm-pick__head">
+    <span class="dsm-pick__badge">{{ 'ui_tools.pick.badge' | translate }}</span>
+    @if (pick().intro) {
+      <span class="dsm-pick__intro">{{ pick().intro }}</span>
+    }
+  </header>
+
+  <div class="dsm-pick__crumbs">
+    <button type="button"
+            class="dsm-pick__up"
+            [disabled]="!cwd()"
+            [attr.aria-label]="'ui_tools.pick.up' | translate"
+            (click)="up()">..</button>
+    <code>{{ cwd() || '/' }}</code>
+  </div>
+
+  <ul class="dsm-pick__list">
+    @for (node of visible(); track node.path) {
+      <li class="dsm-pick__item"
+          [class.is-selected]="isSelected(node)"
+          [class.is-locked]="!isSelectable(node)">
+        <button type="button"
+                class="dsm-pick__pick"
+                [disabled]="!isSelectable(node)"
+                [attr.aria-pressed]="isSelected(node)"
+                (click)="toggle(node)">
+          <span class="dsm-pick__mark" aria-hidden="true"></span>
+          <span class="dsm-pick__name">{{ node.name }}</span>
+        </button>
+        @if (node.isDir) {
+          <button type="button"
+                  class="dsm-pick__enter"
+                  [attr.aria-label]="'ui_tools.pick.enter' | translate"
+                  (click)="browse(node.path)">›</button>
+        }
+      </li>
+    } @empty {
+      <li class="dsm-pick__empty">
+        {{ (loading() ? 'ui_tools.pick.loading' : 'ui_tools.pick.empty') | translate }}
+      </li>
+    }
+  </ul>
+
+  <div class="dsm-pick__actions">
+    <span class="dsm-pick__count">{{ selected().length }}</span>
+    <dv-button variant="secondary" size="sm" (clicked)="cancel()">
+      {{ 'ui_tools.pick.cancel' | translate }}
+    </dv-button>
+    <dv-button variant="primary" size="sm" [disabled]="!canSend()" (clicked)="send()">
+      {{ 'ui_tools.pick.send' | translate }}
+    </dv-button>
+  </div>
+</section>

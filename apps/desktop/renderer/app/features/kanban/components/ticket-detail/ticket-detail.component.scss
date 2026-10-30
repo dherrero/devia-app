@@ -1,0 +1,158 @@
+/* Centered modal panel — matches the #m-ticket mockup (centered, not a
+   side drawer). Before: height:100% + border-left only (full-height drawer
+   flush against the right edge). Now: content-height capped at the pane,
+   full border + r-xl radius so it reads as a floating centered card. */
+:host {
+  display: flex;
+  flex-direction: column;
+  width: min(42rem, 90vw);
+  height: auto;
+  /* Cap on the viewport, not the parent: the cdk overlay pane has no
+     definite height (only max-height: 90vh), so a percentage cap here
+     resolves against an indefinite basis and is ignored — the panel then
+     grows past the viewport, the body never scrolls and the footer +
+     bottom padding are clipped. A vh cap makes :host a bounded flex
+     container so .drawer-main scrolls and its bottom padding shows. */
+  max-height: 90vh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-xl);
+  box-shadow: var(--dv-shadow-lg);
+  box-sizing: border-box;
+}
+.drawer-head {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0.875rem 3.25rem 0.875rem 1rem;
+  border-bottom: 1px solid var(--dv-bor);
+}
+.breadcrumb {
+  margin-bottom: 0.3125rem;
+  color: var(--dv-muted);
+  font-family: var(--dv-mono);
+  font-size: 0.6875rem;
+}
+.breadcrumb span { color: var(--dv-dim); }
+.drawer-title {
+  margin: 0;
+  color: var(--dv-fg);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+.drawer-head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+}
+.close-btn-slot {
+  position: absolute;
+  top: 0.875rem;
+  right: 0.875rem;
+}
+.drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 13.5rem;
+}
+.drawer-main {
+  overflow-y: auto;
+  padding: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-right: 1px solid var(--dv-bor);
+}
+.section-lbl {
+  margin-bottom: 0.375rem;
+  font-family: var(--dv-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dv-muted);
+}
+.body-text {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-surf-2);
+  color: var(--dv-fg);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.block-callout {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--dv-warn-bor);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-warn-lo);
+}
+.block-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.25rem;
+  color: var(--dv-warn);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+.block-text {
+  margin: 0;
+  color: var(--dv-warn);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+.badge,
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  border: 1px solid;
+  border-radius: var(--dv-r-pill);
+  white-space: nowrap;
+}
+.badge {
+  padding: 0.125rem 0.4375rem;
+  border-color: var(--dv-bor);
+  background: var(--dv-surf-2);
+  color: var(--dv-muted);
+  font-family: var(--dv-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+.badge[data-col="in_progress"] { background: var(--dv-acc-lo); border-color: var(--dv-acc-bor); color: var(--dv-acc); }
+.badge[data-col="done"] { background: var(--dv-success-lo); border-color: var(--dv-success-bor); color: var(--dv-success); }
+.badge[data-col="blocked"] { background: var(--dv-warn-lo); border-color: var(--dv-warn-bor); color: var(--dv-warn); }
+.tag-chip {
+  padding: 0.1875rem 0.4375rem;
+  font-size: 0.625rem;
+  font-weight: 500;
+}
+.tag-spec {
+  background: oklch(56% 0.20 250 / 0.14);
+  border-color: oklch(56% 0.20 250 / 0.30);
+  color: oklch(62% 0.20 250);
+}
+.tag-dep {
+  background: oklch(52% 0.18 145 / 0.12);
+  border-color: oklch(52% 0.18 145 / 0.28);
+  color: oklch(55% 0.18 145);
+}
+.drawer-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 1rem;
+  border-top: 1px solid var(--dv-bor);
+}
+.foot-actions { display: flex; align-items: center; gap: 0.5rem; }
+.dst-loading { padding: 1.5rem; text-align: center; color: var(--dv-muted); }

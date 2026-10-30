@@ -1,0 +1,56 @@
+@use '_index' as dv;
+
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+:host(.dv-toggle--disabled) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.dv-toggle__track {
+  position: relative;
+  width: 2.75rem;
+  height: 1.5rem;
+  background: var(--dv-bor-2);
+  border: none;
+  border-radius: var(--dv-r-pill);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--dv-dur-quick) var(--dv-ease-spring);
+
+  &[aria-checked='true'] {
+    background: var(--dv-acc);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px var(--dv-acc-lo),
+      0 0 0 1px var(--dv-acc);
+  }
+}
+
+.dv-toggle__thumb {
+  position: absolute;
+  top: 0.125rem;
+  left: 0.125rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: white;
+  border-radius: 50%;
+  transition: transform var(--dv-dur-quick) var(--dv-ease-spring);
+  box-shadow: var(--dv-shadow-sm);
+
+  .dv-toggle__track[aria-checked='true'] & {
+    transform: translateX(1.25rem);
+  }
+}
+
+.dv-toggle__label {
+  font-size: 0.875rem;
+  color: var(--dv-fg);
+  cursor: pointer;
+}

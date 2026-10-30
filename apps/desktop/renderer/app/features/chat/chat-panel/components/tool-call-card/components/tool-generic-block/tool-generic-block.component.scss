@@ -1,0 +1,82 @@
+:host {
+  display: block;
+}
+
+/* Inner sections (input / output). */
+.tc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.375rem 0.625rem 0.5rem;
+  border-top: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-bor);
+}
+
+/* Generic input — content painted directly (no inner box/border). */
+.tc-input {
+  margin: 0;
+  padding: 0;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-sm);
+  line-height: 1.5;
+  background: transparent;
+  border: 0;
+  color: var(--dv-fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-height: 11.25rem;
+  overflow-y: auto;
+}
+
+/* ② File chip */
+.tc-file-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+/* Calm pass: neutral file chip (muted ink on the card surface) instead of
+   an accent-coloured button — the accent budget is reserved for the one
+   status pill per card. Accent appears only on hover/focus. */
+.tc-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--dv-surf);
+  border: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-bor);
+  border-radius: var(--dv-r-sm);
+  padding: 0.125rem 0.5rem;
+  cursor: pointer;
+  color: var(--dv-muted);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-sm);
+  transition: background .1s, border-color .1s, color .1s;
+  min-width: 0;
+}
+.tc-file-chip:hover {
+  background: var(--dv-acc-lo);
+  border-color: var(--dv-acc);
+  color: var(--dv-acc);
+}
+.tc-file-chip--secondary {
+  color: var(--dv-muted);
+  flex-shrink: 0;
+}
+.tc-file-chip--secondary:hover {
+  color: var(--dv-fg);
+  background: var(--dv-surf3);
+  border-color: var(--dv-bor2);
+}
+.tc-file-chip-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 32rem;
+}
+
+/* AskUserQuestion text */
+.tc-question {
+  font-size: var(--dv-fs-sm);
+  color: var(--dv-muted);
+  line-height: 1.5;
+}

@@ -1,0 +1,66 @@
+    <div class="status-modal" role="dialog" aria-labelledby="status-title" aria-describedby="status-desc">
+      <header class="modal-header">
+        <div class="modal-header-left">
+          <span class="modal-icon" aria-hidden="true">
+            <dv-icon [icon]="LucideInfo" size="sm" />
+          </span>
+          <h2 class="modal-title" id="status-title">{{ 'modals.status.title' | translate }}</h2>
+        </div>
+        <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Cerrar" (clicked)="ref?.close()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      </header>
+
+      <section class="modal-body" id="status-desc">
+        @if (data(); as d) {
+          @if (d.projects.length === 0) {
+            <div class="empty-state">
+              <dv-icon class="empty-icon" [icon]="LucideLayers" size="lg" aria-hidden="true" />
+              <span class="empty-title">{{ 'modals.status.no_running' | translate }}</span>
+              <p class="empty-body">{{ 'modals.status.loaded' | translate:{ count: 0 } }}</p>
+            </div>
+          } @else {
+            <div class="summary-row" aria-label="Resumen">
+              <span class="status-pill accent">
+                <span class="pill-dot"></span>
+                {{ 'modals.status.running' | translate:{ count: d.runningCount } }}
+              </span>
+              <span class="status-pill">
+                {{ 'modals.status.loaded' | translate:{ count: d.projects.length } }}
+              </span>
+            </div>
+
+            <div class="project-list" role="list">
+              @for (p of d.projects; track p.name) {
+                <div class="project-row" role="listitem">
+                  <div class="project-row-left">
+                    <span class="project-dot" [class.running]="p.isRunning" [class.stopped]="!p.isRunning"></span>
+                    <span class="project-name">{{ p.name }}</span>
+                  </div>
+                  <div class="project-row-right">
+                    @if (p.git) {
+                      <span class="git-ref">{{ p.git.branch }}</span>
+                      @if (p.git.dirty) {
+                        <span class="git-dirty">{{ 'modals.status.git_uncommitted' | translate }}</span>
+                      }
+                    } @else {
+                      <span class="git-ref">{{ 'modals.status.no_git' | translate }}</span>
+                    }
+                    <span class="state-badge" [class.running]="p.isRunning" [class.stopped]="!p.isRunning">
+                      {{ (p.isRunning ? 'modals.status.continuing' : 'modals.status.new_session') | translate }}
+                    </span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        } @else {
+          <div class="loading-state">{{ 'modals.status.loading' | translate }}</div>
+        }
+      </section>
+
+      <footer class="modal-footer">
+        <dv-button variant="ghost" size="sm" (clicked)="ref?.close()">{{ 'modals.status.close' | translate }}</dv-button>
+      </footer>
+    </div>
+  

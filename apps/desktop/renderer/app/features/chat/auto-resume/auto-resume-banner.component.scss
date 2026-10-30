@@ -1,0 +1,16 @@
+:host {
+  display: block;
+}
+
+.auto-resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--dv-bor);
+  border-radius: 0.5rem;
+  background: var(--dv-surf-2);
+  color: var(--dv-fg);
+  font-size: 0.8125rem;
+}

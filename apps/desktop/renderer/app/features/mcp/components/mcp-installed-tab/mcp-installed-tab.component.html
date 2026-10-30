@@ -1,0 +1,100 @@
+@if (loading()) {
+  <div class="empty"><dv-spinner size="lg" /></div>
+} @else if (servers().length === 0) {
+  <p class="empty">{{ 'mcp.modal.installed_empty' | translate }}</p>
+} @else {
+  <div class="modal-split">
+    <aside class="server-sidebar">
+      <div class="server-list">
+        <div class="server-section-lbl">{{ 'mcp.modal.scope_project' | translate }}</div>
+        @for (s of projectServers(); track s.id) {
+          <button class="server-item" type="button"
+                  [class.active]="selectedServerId() === s.id"
+                  (click)="selectedServerId.set(s.id)">
+            <span class="srv-dot s-green"></span>
+            <span class="srv-info">
+              <span class="srv-name">{{ s.name }}</span>
+              <span class="srv-scope">{{ s.scope }}</span>
+            </span>
+          </button>
+        }
+        <div class="server-section-lbl">{{ 'mcp.modal.scope_global' | translate }}</div>
+        @for (s of globalServers(); track s.id) {
+          <button class="server-item" type="button"
+                  [class.active]="selectedServerId() === s.id"
+                  (click)="selectedServerId.set(s.id)">
+            <span class="srv-dot s-green"></span>
+            <span class="srv-info">
+              <span class="srv-name">{{ s.name }}</span>
+              <span class="srv-scope">{{ s.scope }}</span>
+            </span>
+          </button>
+        }
+      </div>
+      <div class="sidebar-footer">
+        <dv-button fullWidth variant="secondary" size="sm" (clicked)="addRequested.emit()">
+          <dv-icon [icon]="LucidePlus" size="sm" />
+          {{ 'mcp.modal.install' | translate }}
+        </dv-button>
+      </div>
+    </aside>
+
+    @if (selectedServer(); as s) {
+      <section class="detail-panel">
+        <div class="detail-scroll">
+          <div class="detail-hdr">
+            <div>
+              <div class="detail-srv-name">{{ s.name }}</div>
+              <code class="detail-cmd">{{ s.command }} {{ s.args.join(' ') }}</code>
+            </div>
+            <span class="status-badge s-connected">
+              <span class="status-dot"></span>
+              connected
+            </span>
+          </div>
+
+          <div>
+            <div class="section-lbl">{{ 'mcp.modal.field_description' | translate }}</div>
+            <p class="detail-desc">{{ s.description || s.name }}</p>
+          </div>
+
+          <div>
+            <div class="section-lbl">{{ 'mcp.modal.field_agents' | translate }}</div>
+            <div class="chips-row">
+              @for (a of s.agents; track a) {
+                <span class="chip chip-accent">{{ agentLabel(a) }}</span>
+              }
+            </div>
+          </div>
+
+          <div>
+            <div class="section-lbl">{{ 'mcp.modal.field_scope' | translate }}</div>
+            <div class="chips-row"><span class="chip chip-scope">{{ s.scope }}</span></div>
+          </div>
+
+          <div>
+            <div class="section-lbl">{{ 'mcp.modal.probe' | translate }}</div>
+            <div class="probe-row">
+              <dv-button variant="ghost" size="sm" type="button" (clicked)="probe(s)">
+                <dv-icon [icon]="LucidePlay" size="sm" />
+                {{ 'mcp.modal.probe' | translate }}
+              </dv-button>
+              @if (probeResults()[s.id]; as p) {
+                <span class="probe-result" [class.probe-ok]="p.ok" [class.probe-err]="!p.ok">
+                  {{ p.ok ? (p.version ?? ('mcp.modal.probe_ok' | translate)) : (p.error ?? ('mcp.modal.probe_fail' | translate)) }}
+                </span>
+              }
+            </div>
+          </div>
+
+          <div class="detail-actions">
+            <dv-button variant="danger" size="sm" type="button" (clicked)="removeRequested.emit(s)">
+              <dv-icon [icon]="LucideTrash2" size="sm" />
+              {{ 'mcp.modal.remove' | translate }}
+            </dv-button>
+          </div>
+        </div>
+      </section>
+    }
+  </div>
+}

@@ -1,0 +1,71 @@
+<div class="dv-table-wrapper">
+  <table [class]="hostTableClass()" aria-live="polite">
+    <thead
+      class="dv-table__head"
+      [class.dv-table__head--sticky]="stickyHeader()"
+    >
+      <tr class="dv-table__row dv-table__row--header">
+        @for (col of columns(); track col.key) {
+          <th
+            class="dv-table__cell dv-table__cell--header"
+            scope="col"
+            [style.width]="col.width ?? null"
+          >
+            {{ col.label }}
+          </th>
+        }
+      </tr>
+    </thead>
+    <tbody class="dv-table__body">
+      @if (loading()) {
+        @for (row of skeletonRows; track row) {
+          <tr class="dv-table__row dv-table__row--skeleton">
+            @for (col of columns(); track col.key) {
+              <td class="dv-table__cell">
+                <dv-skeleton variant="text" />
+              </td>
+            }
+          </tr>
+        }
+      } @else if (data().length === 0) {
+        <tr class="dv-table__row dv-table__row--empty">
+          <td
+            class="dv-table__cell dv-table__cell--empty"
+            [attr.colspan]="columns().length"
+          >
+            <dv-empty-state [title]="emptyText()" />
+          </td>
+        </tr>
+      } @else {
+        @for (row of data(); track $index) {
+          <tr
+            class="dv-table__row dv-table__row--data"
+            [class.dv-table__row--interactive]="hasRowClickListeners()"
+            [attr.tabindex]="hasRowClickListeners() ? 0 : null"
+            [attr.role]="hasRowClickListeners() ? 'button' : null"
+            (click)="onRowClick(row)"
+            (keydown)="onRowKey($event, row)"
+          >
+            @for (col of columns(); track col.key) {
+              <td class="dv-table__cell">
+                @let tpl = getCellTemplate(col.key);
+                @if (tpl !== null) {
+                  <ng-container
+                    [ngTemplateOutlet]="tpl"
+                    [ngTemplateOutletContext]="{
+                      $implicit: row,
+                      value: cellValue(row, col.key),
+                    }"
+                  />
+                } @else {
+                  {{ cellValue(row, col.key) }}
+                }
+              </td>
+            }
+          </tr>
+        }
+      }
+    </tbody>
+  </table>
+</div>
+<ng-content select="[dvTableFooter]" />

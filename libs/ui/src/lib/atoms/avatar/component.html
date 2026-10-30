@@ -1,0 +1,11 @@
+@if (src()) {
+<img
+  [ngSrc]="src()!"
+  [width]="imgSize()"
+  [height]="imgSize()"
+  [alt]="initials()"
+  class="dv-avatar__img"
+/>
+} @else {
+<span class="dv-avatar__initials" aria-hidden="true">{{ initials() }}</span>
+}

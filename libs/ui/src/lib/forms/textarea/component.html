@@ -1,0 +1,37 @@
+@if (label()) {
+<label [for]="id" class="dv-field__label">
+  {{ label() }} @if (required()) {
+  <span class="dv-field__required" aria-hidden="true">*</span>
+  }
+</label>
+}
+<textarea
+  #textareaEl
+  [id]="id"
+  [placeholder]="placeholder()"
+  [disabled]="disabled()"
+  [readOnly]="readonly()"
+  [required]="required()"
+  [rows]="rows()"
+  [attr.aria-label]="ariaLabel()"
+  [attr.aria-invalid]="error() ? 'true' : null"
+  [attr.aria-describedby]="describedBy()"
+  [attr.autocomplete]="autocomplete()"
+  [attr.spellcheck]="spellcheck()"
+  [class.dv-textarea--focused]="isFocused()"
+  [class.dv-textarea--error]="!!error()"
+  [class.dv-textarea--disabled]="disabled()"
+  [style.resize]="resize()"
+  class="dv-textarea"
+  data-testid="dv-textarea"
+  (input)="handleInput($event)"
+  (focus)="handleFocus($event)"
+  (blur)="handleBlur($event)"
+>
+{{ value() }}</textarea
+>
+@if (error()) {
+<span [id]="errorId" class="dv-field__error" role="alert">{{ error() }}</span>
+} @else if (hint()) {
+<span [id]="hintId" class="dv-field__hint">{{ hint() }}</span>
+}

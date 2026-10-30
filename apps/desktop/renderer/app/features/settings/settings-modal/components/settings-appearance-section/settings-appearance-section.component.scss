@@ -1,0 +1,60 @@
+@use '../../section-base';
+
+/* The host is transparent to layout: the section participates directly in the
+   parent's .content-scroll flex column, exactly as before the split. */
+:host { display: contents; }
+
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.theme-swatch {
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  background: transparent;
+  padding: 0;
+}
+
+.theme-swatch:hover {
+  border-color: var(--dv-bor-2);
+}
+
+.theme-swatch.selected {
+  border-color: var(--dv-acc);
+  box-shadow: 0 0 0 2px var(--dv-acc-lo);
+}
+
+.swatch-preview {
+  height: 2.25rem;
+  display: grid;
+  grid-template-columns: 2fr 5fr;
+}
+
+.swatch-sidebar {
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.violet-light-side { background: #ddd8fe; }
+.violet-light-main { background: #f5f3ff; }
+.violet-dark-side { background: #1a1730; }
+.violet-dark-main { background: #0d0b14; }
+.navy-light-side { background: #cdd7e2; }
+.navy-light-main { background: #e8eef4; }
+.navy-dark-side { background: #142030; }
+.navy-dark-main { background: #0a1220; }
+
+.swatch-label {
+  display: block;
+  font-family: var(--dv-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: 0.25rem;
+  background: var(--dv-surf);
+  color: var(--dv-muted);
+}

@@ -1,0 +1,25 @@
+    @if (svc.current(); as state) {
+      <div class="ds-upgrade-toast" role="dialog" aria-live="polite"
+           [attr.data-feature]="state.feature">
+        <span class="ic" aria-hidden="true">
+          <dv-icon [icon]="LucideLock" size="sm" />
+        </span>
+        <div class="content">
+          <div class="title">{{ 'upgrade.toast.title' | translate }}</div>
+          <div class="body">{{ body() }}</div>
+        </div>
+        <div class="actions">
+          <dv-button variant="primary" type="button" (clicked)="svc.activate()">
+            {{ 'upgrade.toast.cta' | translate }}
+          </dv-button>
+          <dv-button iconOnly
+                     variant="ghost"
+                     size="sm"
+                     (clicked)="svc.dismiss()"
+                     [ariaLabel]="'upgrade.toast.close_aria' | translate">
+            <dv-icon [icon]="LucideX" size="sm" />
+          </dv-button>
+        </div>
+      </div>
+    }
+  

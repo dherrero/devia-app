@@ -1,0 +1,16 @@
+@supports (view-transition-name: none) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: var(--dv-dur-calm);
+    animation-timing-function: var(--dv-ease-out);
+  }
+  .dv-vt-card {
+    view-transition-name: dv-card;
+  }
+  .dv-vt-title {
+    view-transition-name: dv-title;
+  }
+  .dv-vt-panel {
+    view-transition-name: dv-panel;
+  }
+}

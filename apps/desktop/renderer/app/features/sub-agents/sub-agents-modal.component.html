@@ -1,0 +1,154 @@
+    <ds-modal-shell
+      [heading]="'sub_agents.modal.title' | translate"
+      [headingIcon]="LucideUsers"
+      [sections]="sections()"
+      [(active)]="active"
+    >
+      @switch (active()) {
+
+        <!-- -- Tab 1 — Project sub-agents ------------------------ -->
+        @case ('project') {
+          @if (loading()) {
+            <div class="empty"><dv-spinner size="lg" /></div>
+          } @else if (entries().length === 0) {
+            <div class="empty empty-state">
+              <div class="empty-icon"><dv-icon [icon]="LucideUsers" size="lg" /></div>
+              <p class="empty-title">No hay sub-agentes instalados</p>
+              <p class="empty-sub">Explora el catalogo o crea uno personalizado.</p>
+            </div>
+          } @else {
+            <ul class="rows">
+              @for (s of entries(); track s.name) {
+                <li class="row">
+                  <span class="agent-avatar" [style.background]="avatarColor(s.name)">{{ agentInitial(s.name) }}</span>
+                  <div class="row-meta">
+                    <div class="row-title">
+                      <strong>{{ s.name }}</strong>
+                      @if (s.model) { <code class="model-chip">{{ s.model }}</code> }
+                    </div>
+                    @if (s.description) {
+                      <p class="row-desc">{{ s.description }}</p>
+                    }
+                    <div class="row-agents">
+                      @for (cli of allClis; track cli.id) {
+                        <button class="cli-chip"
+                                type="button"
+                                [attr.data-on]="s.agents.includes(cli.id) ? 'true' : null"
+                                [disabled]="!cli.supported"
+                                [dvTooltip]="!cli.supported
+                                  ? ('sub_agents.modal.cli_unsupported' | translate)
+                                  : (s.agents.includes(cli.id)
+                                    ? ('sub_agents.modal.toggle_off' | translate)
+                                    : ('sub_agents.modal.toggle_on' | translate))"
+                                (click)="toggleAgent(s, cli.id)">
+                          {{ cli.label }}
+                        </button>
+                      }
+                    </div>
+                  </div>
+                  <div class="row-actions">
+                    <span class="delete-btn-slot">
+                      <dv-button iconOnly
+                                 variant="danger-soft"
+                                 size="sm"
+                                 (clicked)="remove(s)"
+                                 [dvTooltip]="'sub_agents.modal.remove' | translate"
+                                 [ariaLabel]="'sub_agents.modal.remove' | translate">
+                      <dv-icon [icon]="LucideTrash2" size="sm" />
+                      </dv-button>
+                    </span>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        }
+
+        <!-- -- Tab 2 — Catálogo curado --------------------------- -->
+        @case ('catalog') {
+          <div class="catalog-grid">
+            @for (entry of catalog; track entry.slug) {
+              <article class="catalog-card">
+                <header>
+                  <h4>{{ entry.name }}</h4>
+                </header>
+                <p>{{ entry.description }}</p>
+                <p class="tools-line">
+                  <dv-icon [icon]="LucideWrench" size="sm" />
+                  {{ entry.tools.join(', ') || ('sub_agents.modal.tools_none' | translate) }}
+                </p>
+                <dv-button variant="primary" size="sm" type="button" (clicked)="installFromCatalog(entry)">
+                  <dv-icon [icon]="LucidePlus" size="sm" />
+                  {{ 'sub_agents.modal.install' | translate }}
+                </dv-button>
+              </article>
+            }
+          </div>
+        }
+
+        <!-- -- Tab 3 — Personalizado ----------------------------- -->
+        @case ('custom') {
+          <div class="custom-form">
+            <div class="form-grid-2">
+              <dv-input
+                label="Nombre"
+                required
+                [ngModel]="form().name"
+                (ngModelChange)="updateFormText('name', $event)"
+                placeholder="nombre-del-agente"
+                pattern="[a-z0-9-]+"
+              />
+              <dv-input
+                [label]="'sub_agents.modal.field_description' | translate"
+                [ngModel]="form().description"
+                (ngModelChange)="updateFormText('description', $event)"
+                placeholder="Breve descripcion del agente"
+              />
+            </div>
+            <dv-input
+              [label]="'sub_agents.modal.field_tools' | translate"
+              [ngModel]="form().toolsText"
+              (ngModelChange)="updateFormText('toolsText', $event)"
+              [placeholder]="'sub_agents.modal.field_tools_placeholder' | translate"
+            />
+            <dv-textarea
+              [label]="'sub_agents.modal.field_body' | translate"
+              [rows]="10"
+              [ngModel]="form().body"
+              (ngModelChange)="updateFormText('body', $event)"
+              [placeholder]="'sub_agents.modal.field_body_placeholder' | translate"
+            />
+            <span class="char-counter">{{ form().body.length }}</span>
+
+            <fieldset class="agents-fs">
+              <legend>{{ 'sub_agents.modal.field_agents' | translate }}</legend>
+              <div class="agents-grid">
+                @for (cli of allClis; track cli.id) {
+                  <dv-checkbox
+                    [ngModel]="form().agents.has(cli.id)"
+                    [disabled]="!cli.supported"
+                    (valueChange)="toggleFormAgent(cli.id, $event)"
+                    [label]="cli.supported ? cli.label : cli.label + ' - no compatible'">
+                  </dv-checkbox>
+                }
+              </div>
+              <div class="warn-callout" role="note">Asegurate de conceder los permisos necesarios a cada CLI antes de instalar el sub-agente.</div>
+            </fieldset>
+          </div>
+        }
+      }
+
+      <div shellActions>
+        <dv-button variant="ghost" type="button" (clicked)="ref?.close()">{{ 'sub_agents.modal.close' | translate }}</dv-button>
+        @if (active() === 'custom') {
+          <dv-button variant="primary" type="button"
+                  [disabled]="!canSaveCustom() || installing()"
+                  [loading]="installing()"
+                  (clicked)="installCustom()">
+            @if (!installing()) { <dv-icon [icon]="LucideSave" size="sm" /> }
+            {{ 'sub_agents.modal.save' | translate }}
+          </dv-button>
+        }
+      </div>
+    </ds-modal-shell>
+  

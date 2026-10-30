@@ -1,0 +1,14 @@
+<header class="dv-modal-section__header">
+  <div class="dv-modal-section__copy">
+    <h3 class="dv-modal-section__title">{{ title() }}</h3>
+    @if (description()) {
+    <p class="dv-modal-section__description">{{ description() }}</p>
+    }
+  </div>
+  <div class="dv-modal-section__actions">
+    <ng-content select="[sectionActions]" />
+  </div>
+</header>
+<div class="dv-modal-section__body">
+  <ng-content />
+</div>

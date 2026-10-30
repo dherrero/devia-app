@@ -1,0 +1,89 @@
+:host {
+  display: block;
+  height: 100vh;
+  background: transparent;
+  overflow: hidden;
+}
+
+.dsm-app--hidden {
+  visibility: hidden;
+}
+
+.dsm-app {
+  display: grid;
+  grid-template-rows: var(--dv-titlebar-h) 1fr var(--dv-statusbar-h);
+  height: 100vh;
+  background: var(--dv-bg);
+  background-clip: padding-box;
+  border: 2px solid var(--dv-window-border, var(--dv-bor));
+  color: var(--dv-fg);
+  border-radius: var(--dv-window-radius);
+  box-sizing: border-box;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.dsm-main {
+  position: relative;
+  display: grid;
+  // minmax(0, 1fr) — not bare 1fr — so the chat column actually shrinks
+  // to the available space. A bare 1fr has min-width:auto, which lets a
+  // child with wide min-content (a long unbreakable code token in a
+  // message bubble, an over-eager <pre>, etc.) push the track beyond the
+  // viewport. body { overflow:hidden } then clips the overflow on the
+  // right, looking like the chat is cut off when in fact the column is
+  // just too wide.
+  // The first track (sidebar) and second (vertical splitter) are driven
+  // by [style.gridTemplateColumns] so the user can drag-resize and
+  // collapse the sidebar at runtime.
+  grid-template-columns: 280px 6px minmax(0, 1fr) auto;
+  min-height: 0;
+  border-top: 0.5px solid var(--dv-divider);
+  transition: grid-template-columns var(--dv-dur-normal) var(--dv-ease-out);
+}
+
+// ── Vertical splitter between sidebar and chat-panel ────────────────────
+.dsm-vsplitter {
+  position: relative;
+  cursor: col-resize;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+
+  &.is-collapsed {
+    cursor: ew-resize;
+  }
+}
+
+.dsm-vsplitter-handle {
+  display: block;
+  width: 1.5px;
+  height: 40%;
+  max-height: 5rem;
+  border-radius: 2px;
+  background: var(--dv-bor-2);
+  opacity: 1;
+  transition: background var(--dv-dur-quick) var(--dv-ease-out);
+}
+
+.dsm-vsplitter:hover .dsm-vsplitter-handle,
+.dsm-vsplitter.is-active .dsm-vsplitter-handle,
+.dsm-vsplitter.is-collapsed .dsm-vsplitter-handle {
+  background: var(--dv-acc);
+  opacity: 1;
+}
+
+// Router outlet wrapper — fills the chat grid track, never overflows.
+.dsm-outlet {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+// The collapse/expand control lives in sidebar.component as a floating square
+// handle straddling the sidebar's right edge (works in both expanded and
+// collapsed states) — see `.dsm-collapse-toggle`. No floating toggle here.

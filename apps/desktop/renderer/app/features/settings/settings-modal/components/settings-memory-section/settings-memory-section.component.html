@@ -1,0 +1,139 @@
+<div class="mem-tab">
+<section>
+  <h4>{{ 'modals.settings.memory_heading' | translate }}</h4>
+  <p class="hint inline">{{ 'modals.settings.memory_hint' | translate }}</p>
+
+  <label class="mem-provider-label">{{ 'modals.settings.memory_provider_label' | translate }}</label>
+  <dv-button-toggle-group class="mem-provider"
+                          [items]="memoryProviderItems()"
+                          [value]="memoryProvider()"
+                          (valueChange)="setMemoryProvider($event)"
+                          ariaLabel="memory provider">
+  </dv-button-toggle-group>
+  <p class="hint inline">{{ ('modals.settings.memory_provider_hint_' + memoryProvider()) | translate }}</p>
+  @if (memoryBlockExternal() && externalBlockUnsupportedAgent()) {
+    <dv-alert variant="warn"
+      [title]="'modals.settings.memory_block_unsupported' | translate:{ agent: selectedAgentId() }" />
+  }
+</section>
+
+<div class="hr"></div>
+
+@if (engramDetection()?.present) {
+<section>
+  <h4>{{ 'modals.settings.memory_engram_heading' | translate }}</h4>
+  <p class="hint inline">{{ 'modals.settings.memory_engram_detected' | translate }}</p>
+  <div class="row">
+    <dv-button variant="secondary" type="button"
+               size="sm"
+               shape="pill"
+               [disabled]="engramImporting()"
+               (clicked)="doImportEngram()">
+      <dv-icon [icon]="LucideDownload" size="sm" />
+      {{ 'modals.settings.memory_import_button' | translate }}
+    </dv-button>
+    @if (engramImporting()) {
+      <dv-spinner size="sm" />
+    }
+  </div>
+  @if (engramImportedAt(); as at) {
+    <p class="hint inline">{{ 'modals.settings.memory_last_import' | translate:{ date: formatImportedAt(at) } }}</p>
+  }
+  @if (engramImportResult(); as r) {
+    @if (r.ok) {
+      <p class="test-result ok">
+        {{ 'modals.engram_import.success' | translate:{ imported: r.imported, sessions: r.sessions, prompts: r.prompts } }}
+      </p>
+    } @else {
+      <p class="test-result fail">{{ engramErrorKey(r.reason) | translate }}</p>
+    }
+  }
+</section>
+<div class="hr"></div>
+}
+
+<section class="mem-saved">
+  <div class="row">
+    <div class="col-6">
+    <h4>{{ 'modals.settings.memory_saved_heading' | translate }}</h4>
+  @if (activeProjectName()) {
+    <dv-button-toggle-group class="mem-scope"
+                            [items]="memoryScopeItems()"
+                            [value]="memoryViewScope()"
+                            (valueChange)="setMemoryViewScope($event)"
+                            ariaLabel="memory scope">
+    </dv-button-toggle-group>
+  }
+   </div>
+   <div class="col-6">
+  @if (memoryViewScope() === 'project' && activeProjectName(); as proj) {
+    <p class="hint inline mem-scope-label">{{ 'modals.settings.memory_saved_project' | translate:{ project: proj } }}</p>
+  } @else {
+    <p class="hint inline">{{ 'modals.settings.memory_saved_hint' | translate }}</p>
+  }
+  <dv-input type="search"
+         [ngModel]="memorySearchQuery()"
+         (ngModelChange)="memorySearchQuery.set($event)"
+         (keydown.enter)="runMemorySearch()"
+         [placeholder]="'modals.settings.memory_search_placeholder' | translate" />
+    </div>
+  </div>
+
+  @if (memoryItems().length === 0 && memorySessions().length === 0) {
+    <p class="hint inline">{{ 'modals.settings.memory_empty' | translate }}</p>
+  } @else {
+    <div class="mem-scroll">
+      @if (memoryItems().length > 0) {
+        <ul class="mem-list">
+          @for (obs of memoryItems(); track obs.id) {
+            <li class="mem-item">
+              <span class="mem-type">{{ obs.type }}</span>
+              <span class="mem-body">
+                <span class="mem-title">{{ obs.title }}</span>
+                <span class="mem-snippet">{{ obs.content }}</span>
+              </span>
+              <dv-button variant="ghost" size="sm" [iconOnly]="true"
+                      class="mem-act"
+                      [class.pinned]="obs.pinned"
+                      [dvTooltip]="(obs.pinned ? 'modals.settings.memory_unpin' : 'modals.settings.memory_pin') | translate"
+                      (clicked)="togglePin(obs)">
+                <dv-icon [icon]="LucidePin" size="sm" />
+              </dv-button>
+              <dv-button variant="ghost" size="sm" [iconOnly]="true"
+                      class="mem-act"
+                      [dvTooltip]="'modals.settings.memory_forget' | translate"
+                      (clicked)="forgetObservation(obs)">
+                <dv-icon [icon]="LucideTrash2" size="sm" />
+              </dv-button>
+            </li>
+          }
+        </ul>
+      }
+      @if (memorySessions().length > 0) {
+        <h5 class="mem-sessions-heading">{{ 'modals.settings.memory_sessions_heading' | translate }}</h5>
+        <ul class="mem-list">
+          @for (s of memorySessions(); track s.id) {
+            <li class="mem-item">
+              <span class="mem-type">{{ 'modals.settings.memory_session_badge' | translate }}</span>
+              <span class="mem-body">
+                @if (s.summary) {
+                  <span class="mem-snippet">{{ s.summary }}</span>
+                }
+                <span class="mem-session-date">{{ formatImportedAt(s.startedAt) }}</span>
+              </span>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  }
+  @if (memoryItems().length > 0 || memorySessions().length > 0) {
+    <div class="mem-clear-row">
+      <dv-button variant="secondary" size="sm" shape="pill" class="mem-clear" (clicked)="clearAllMemory()">
+        <dv-icon [icon]="LucideTrash2" size="sm" />
+        {{ 'modals.settings.memory_clear' | translate }}
+      </dv-button>
+    </div>
+  }
+</section>
+</div>

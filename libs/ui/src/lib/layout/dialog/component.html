@@ -1,0 +1,45 @@
+<div class="dv-dialog__header">
+  <div class="dv-dialog__heading">
+    @if (data.title) {
+    <h2 class="dv-dialog__title">{{ data.title }}</h2>
+    } @if (data.subtitle) {
+    <p class="dv-dialog__subtitle">{{ data.subtitle }}</p>
+    }
+  </div>
+  @if (!data.disableClose) {
+  <button
+    type="button"
+    class="dv-dialog__close"
+    aria-label="Cerrar"
+    (click)="dismiss()"
+  >
+    ✕
+  </button>
+  }
+</div>
+<div class="dv-dialog__body">
+  @if (data.message) {
+  <p class="dv-dialog__message">{{ data.message }}</p>
+  }
+  <ng-content />
+</div>
+@if (hasActions) {
+<div class="dv-dialog__footer" dvDialogFooter>
+  <dv-button
+    variant="ghost"
+    type="button"
+    (clicked)="close({ action: 'cancel' })"
+    >{{ data.cancelLabel || 'Cancelar' }}</dv-button
+  >
+  <dv-button
+    [variant]="data.danger ? 'danger' : 'primary'"
+    type="button"
+    (clicked)="close({ action: 'confirm' })"
+    >{{ data.confirmLabel || 'Confirmar' }}</dv-button
+  >
+</div>
+} @else {
+<div class="dv-dialog__footer">
+  <ng-content select="[dvDialogFooter]" />
+</div>
+}

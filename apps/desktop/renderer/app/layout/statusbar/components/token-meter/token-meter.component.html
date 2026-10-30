@@ -1,0 +1,20 @@
+<div class="ds-token-meter__wrap"
+     role="progressbar"
+     [attr.aria-valuemin]="0"
+     [attr.aria-valuemax]="limit()"
+     [attr.aria-valuenow]="used()"
+     [attr.aria-label]="'statusbar.token_meter' | translate">
+  @if (modelLabel(); as label) {
+    <span class="ds-token-meter__model">{{ label }}</span>
+  }
+  <span class="ds-token-meter__count" [attr.data-tone]="tone()">
+    <span class="ds-token-meter__used">{{ usedLabel() }}</span>
+    <span class="ds-token-meter__sep">/</span>
+    <span class="ds-token-meter__limit">{{ limitLabel() }}</span>
+  </span>
+  <span class="ds-token-meter__bar" aria-hidden="true">
+    <span class="ds-token-meter__fill"
+          [style.width.%]="fillPercent()"
+          [attr.data-tone]="tone()"></span>
+  </span>
+</div>

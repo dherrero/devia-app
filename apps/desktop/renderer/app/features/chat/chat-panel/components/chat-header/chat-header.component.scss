@@ -1,0 +1,80 @@
+// Chat panel header (HT-CH-02). Tokens per `DESKTOP-PART-03-CHAT-PANEL.md`
+// sub-3.1. The grid splits title / tabs / badges into three tracks so the
+// tabs sit dead-centre regardless of how long the project name and path
+// grow.
+
+:host {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.625rem 1.25rem;
+  border-bottom: 0.5px solid var(--dv-divider);
+  background: var(--dv-bg);
+}
+
+.ds-chat-header__title {
+  min-width: 0;
+}
+
+.ds-chat-header__name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.ds-chat-header__no-isolation {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--dv-warn);
+}
+
+.ds-chat-header__name {
+  min-width: 0;
+  font-size: var(--dv-fs-lg);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--dv-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.ds-chat-header__path {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-2xs, var(--dv-fs-xs));
+  color: var(--dv-dim);
+  letter-spacing: 0.01em;
+  margin-top: 0.0625rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-chat-header__tabs {
+  justify-self: center;
+}
+
+.ds-chat-header__badges {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  justify-self: end;
+  // Reserve the top-right gutter where the split-view container floats its
+  // split/close controls (ChatPanesContainerComponent .pane-controls), so the
+  // "trabajando" badge never sits under them (S-13 T-143). Sized to clear both
+  // the split and the close icon button on an additional pane.
+  margin-right: 3.5rem;
+}
+
+.ds-chat-header__working-dot {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--dv-acc);
+  animation: ds-pulse 2s var(--dv-ease-out) infinite;
+}

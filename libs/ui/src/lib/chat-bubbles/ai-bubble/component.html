@@ -1,0 +1,17 @@
+<div class="dv-msg-ai">
+  <dv-chat-avatar
+    variant="ai"
+    [label]="avatarLabel()"
+    [imageSrc]="avatarImageSrc()"
+    [blinkSrc]="avatarBlinkSrc()"
+    [state]="avatarState()"
+    [active]="avatarActive()"
+    [ariaLabel]="'Asistente'"
+  />
+  <div class="dv-bubble-ai">
+    @if (content()) {
+    <p>{{ content() }}</p>
+    }
+    <ng-content />
+  </div>
+</div>

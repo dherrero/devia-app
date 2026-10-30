@@ -1,0 +1,1 @@
+export { SearchInputComponent } from './component';

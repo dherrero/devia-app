@@ -1,0 +1,77 @@
+    .dsn-btn {
+      position: relative;
+      width: 2rem;
+      height: 2rem;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: var(--dv-bd-width, 1px) var(--dv-bd-style, solid) transparent;
+      border-radius: var(--dv-r-sm);
+      background: transparent;
+      color: var(--dv-muted);
+      cursor: pointer;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    .dsn-btn:hover { background: var(--dv-acc-lo); color: var(--dv-acc); }
+    .dsn-btn:focus-visible { outline: 2px solid var(--dv-acc); outline-offset: 2px; }
+    .dsn-icon-wrap { position: relative; display: inline-flex; }
+    .dsn-btn dv-icon {
+      width: 1.0625rem;
+      height: 1.0625rem;
+    }
+    /* Count badge — kept identical to the right-rail badges (.dsr-count in
+       right-rail.component) so the bell's unread count matches the rest. */
+    .dsn-count {
+      position: absolute;
+      top: -0.0625rem;
+      right: -0.0625rem;
+      min-width: 0.9375rem;
+      height: 0.9375rem;
+      padding: 0 0.1875rem;
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      border-radius: var(--dv-r-pill);
+      background: var(--dv-acc);
+      color: var(--dv-acc-fg);
+      font-size: 0.5625rem;
+      font-weight: 700;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    /* Panel rendered via CDK TemplatePortal — styles apply because Angular
+       still stamps the component's _ngcontent attribute on the embedded view. */
+    .dsn-panel {
+      min-width: 17.5rem; max-width: 21.25rem;
+      background: var(--dv-surf);
+      border: 0.5px solid var(--dv-bor-2);
+      border-radius: var(--dv-r-lg);
+      box-shadow: var(--dv-shadow-lg);
+      overflow: hidden;
+    }
+    .dsn-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.375rem 0.75rem; font-weight: 600; font-size: 0.8125rem;
+      border-bottom: 0.5px solid var(--dv-divider);
+    }
+    .dsn-empty {
+      padding: 1rem; text-align: center;
+      color: var(--dv-muted); font-size: 0.75rem; margin: 0;
+    }
+    .dsn-item {
+      display: flex; align-items: flex-start; gap: 0.5rem;
+      width: 100%; padding: 0.5rem 0.75rem;
+      border: 0; background: transparent;
+      color: var(--dv-fg); cursor: pointer;
+      text-align: left; line-height: 1.3;
+      transition: background .1s;
+    }
+    .dsn-item:hover { background: var(--dv-surf-3); }
+    .dsn-item dv-icon { margin: 2px 0 0; color: var(--dv-muted); }
+    .dsn-item[data-kind="user_input"] dv-icon { color: var(--dv-warn, #d8a657); }
+    .dsn-item[data-kind="task_done"]  dv-icon { color: var(--dv-success, #8ec07c); }
+    .dsn-item-body { display: flex; flex-direction: column; }
+    .dsn-item-title { font-size: 0.8125rem; color: var(--dv-fg); }
+    .dsn-item-sub { font-size: 0.6875rem; color: var(--dv-muted); }
+  

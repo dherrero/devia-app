@@ -1,0 +1,45 @@
+    <div class="ws-modal" role="dialog" aria-modal="true" aria-labelledby="ws-title" aria-describedby="ws-desc">
+      <header class="ws-head">
+        <span class="ws-icon-badge" aria-hidden="true">
+          <dv-icon [icon]="LucideFolderOpen" size="sm" />
+        </span>
+        <div class="ws-head-text">
+          <h2 class="ws-title" id="ws-title">{{ 'modals.workspace.title' | translate }}</h2>
+          <p class="ws-subtitle">{{ 'modals.workspace.description' | translate }}</p>
+        </div>
+        @if (hasExistingWorkspace()) {
+          <dv-button variant="ghost" size="sm" iconOnly ariaLabel="Cerrar" (clicked)="cancel()" [disabled]="saving()">
+            <dv-icon [icon]="LucideX" size="sm" />
+          </dv-button>
+        }
+      </header>
+
+      <section class="ws-body" id="ws-desc" [class.loading]="saving()">
+        <div class="path-row">
+          <div class="path-input-wrap">
+            <dv-input class="path-input"
+                   readonly
+                   [ngModel]="picked()"
+                   [placeholder]="'modals.workspace.none_selected' | translate"
+                   ariaLabel="Workspace path" />
+            <dv-icon class="check-icon" [class.visible]="picked()" [icon]="LucideCheck" size="sm" aria-hidden="true" />
+          </div>
+          <dv-button variant="secondary" size="md" (clicked)="browse()" [disabled]="saving()">
+            {{ 'modals.workspace.browse' | translate }}
+          </dv-button>
+        </div>
+      </section>
+
+      <footer class="ws-footer">
+        @if (hasExistingWorkspace()) {
+          <dv-button variant="ghost" size="sm" shape="pill" (clicked)="cancel()" [disabled]="saving()">Mas tarde</dv-button>
+        } @else {
+          <span></span>
+        }
+        <dv-button size="sm" shape="pill" [disabled]="!picked()" [loading]="saving()" (clicked)="save()">
+          {{ 'modals.workspace.start' | translate }}
+          <dv-icon [icon]="LucideArrowRight" size="sm" aria-hidden="true" />
+        </dv-button>
+      </footer>
+    </div>
+  

@@ -1,0 +1,9 @@
+<span class="dv-toast__message">{{ options().message }}</span>
+<button
+  type="button"
+  class="dv-toast__close"
+  aria-label="Cerrar notificación"
+  (click)="dismissed.emit()"
+>
+  ✕
+</button>

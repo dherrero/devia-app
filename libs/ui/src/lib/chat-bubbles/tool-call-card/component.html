@@ -1,0 +1,23 @@
+<div class="dv-tool-card">
+  <button
+    class="dv-tool-header"
+    type="button"
+    (click)="toggle()"
+    [attr.aria-expanded]="isOpen()"
+    [attr.aria-label]="ariaLabel()"
+  >
+    <span class="dv-tool-name">{{ name() }}</span>
+    @if (arg()) {
+    <span class="dv-tool-arg">{{ arg() }}</span>
+    } @else {
+    <span class="dv-tool-arg" aria-hidden="true"></span>
+    }
+    <dv-chat-status-badge [status]="status()"
+      >{{ statusLabel() }}</dv-chat-status-badge
+    >
+  </button>
+
+  @if (isOpen() && body()) {
+  <pre class="dv-tool-body">{{ body() }}</pre>
+  }
+</div>

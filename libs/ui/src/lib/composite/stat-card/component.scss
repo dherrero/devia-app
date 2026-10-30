@@ -1,0 +1,52 @@
+@use '_index' as dv;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-lg);
+}
+
+.dv-stat-card__label {
+  font-size: 0.8125rem;
+  color: var(--dv-muted);
+  font-weight: 500;
+  margin: 0;
+}
+
+.dv-stat-card__value {
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--dv-fg);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.dv-stat-card__sub {
+  font-size: 0.8125rem;
+  color: var(--dv-muted);
+  margin: 0;
+}
+
+.dv-stat-card__delta {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.dv-stat-card__delta--positive {
+  color: var(--dv-success);
+}
+.dv-stat-card__delta--negative {
+  color: var(--dv-danger);
+}
+
+.dv-stat-card__skeleton {
+  @include dv.dv-skeleton;
+  width: 6rem;
+  height: 2.25rem;
+  border-radius: var(--dv-r-md);
+}

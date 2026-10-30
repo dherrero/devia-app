@@ -1,0 +1,14 @@
+<div
+  class="dv-chat-feed"
+  role="log"
+  aria-live="polite"
+  [attr.aria-label]="ariaLabel()"
+>
+  @for (message of messages(); track message.id) {
+  <dv-chat-message
+    [message]="message"
+    (choiceSelected)="choiceSelected.emit($event)"
+    (retry)="retry.emit(message)"
+  />
+  }
+</div>

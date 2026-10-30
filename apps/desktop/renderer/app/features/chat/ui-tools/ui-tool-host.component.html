@@ -1,0 +1,45 @@
+<ng-template #cardList>
+  @for (request of cards(); track request.callId) {
+    @switch (request.tool) {
+      @case ('confirm') {
+        <ds-ui-confirm-card [input]="request.input"
+                            (decided)="onConfirmDecided(request, $event)" />
+      }
+      @case ('pick') {
+        <ds-ui-pick-card [input]="request.input"
+                         [project]="project()"
+                         (decided)="onPickDecided(request, $event)" />
+      }
+    }
+  }
+</ng-template>
+
+@if (planRequest(); as plan) {
+  <div class="dsm-ui-tools" role="region" [attr.aria-label]="'ui_tools.region_aria' | translate">
+    <ds-ui-plan-card [input]="plan.input"
+                     [callId]="plan.callId"
+                     (decided)="onPlanDecided(plan, $event)" />
+  </div>
+} @else if (steps().length > 0) {
+  <div class="dsm-ui-tools dsm-ui-tools--stepper" role="region" [attr.aria-label]="'ui_tools.region_aria' | translate">
+    <dv-stepper [steps]="steps()"
+                [(collapsed)]="collapsed"
+                [progressLabel]="progressLabel()"
+                [expandLabel]="'ui_tools.panel.expand' | translate"
+                [collapseLabel]="'ui_tools.panel.collapse' | translate"
+                [ariaLabel]="'ui_tools.panel.aria' | translate">
+      <ng-template dvStepContent>
+        @if (hasOpenStep()) {
+          <ng-container [ngTemplateOutlet]="cardList" />
+        }
+      </ng-template>
+    </dv-stepper>
+    @if (!hasOpenStep() && cards().length > 0) {
+      <ng-container [ngTemplateOutlet]="cardList" />
+    }
+  </div>
+} @else if (cards().length > 0) {
+  <div class="dsm-ui-tools" role="region" [attr.aria-label]="'ui_tools.region_aria' | translate">
+    <ng-container [ngTemplateOutlet]="cardList" />
+  </div>
+}

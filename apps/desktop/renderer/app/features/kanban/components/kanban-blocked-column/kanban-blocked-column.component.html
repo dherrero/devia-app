@@ -1,0 +1,43 @@
+<header class="dsk-col-head">
+  <span>{{ 'sdd.col_blocked' | translate }}</span>
+  <span class="dsk-count">{{ cards().length }}</span>
+</header>
+<div class="dsk-col-body">
+  @for (reason of blockReasons; track reason) {
+    @if (blockedBy(reason).length > 0) {
+      <div class="dsk-lane">
+        <div class="dsk-lane-head" [attr.data-reason]="reason">
+          <dv-icon [icon]="reasonIcon(reason)" size="sm" />
+          {{ ('sdd.block_' + reason) | translate }}
+        </div>
+        @for (card of blockedBy(reason); track card.id) {
+          <article class="dsk-card dsk-card-blocked" [attr.data-reason]="reason" (click)="cardOpened.emit(card)">
+            <div class="dsk-card-title">{{ card.title }}</div>
+            <div class="dsk-card-foot">
+              @if (showSpecTag()) {
+                <span class="dsk-spec-tag" [dvTooltip]="specTitles()[card.specId] ?? card.specId">{{ card.specId }}</span>
+              }
+              <span class="dsk-id">{{ card.id }}</span>
+              @if (cardPriority(card) !== 'none') {
+                <span class="dsk-priority" [attr.data-priority]="cardPriority(card)">
+                  {{ priorityLabel(cardPriority(card)) }}
+                </span>
+              }
+              @if (card.unreadCount > 0) {
+                <span class="dsk-badge dsk-unread">
+                  <dv-icon [icon]="LucideMessageSquare" size="sm" />{{ card.unreadCount }}
+                </span>
+              }
+            </div>
+          </article>
+        }
+      </div>
+    }
+  }
+  @if (cards().length === 0) {
+    <div class="dsk-col-empty">
+      <dv-icon [icon]="LucideInbox" size="sm" />
+      <span>{{ 'sdd.col_empty' | translate }}</span>
+    </div>
+  }
+</div>

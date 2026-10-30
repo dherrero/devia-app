@@ -1,0 +1,188 @@
+:host {
+  display: block;
+}
+
+// 4-column grid (HT-TB-01): left inset | flexible drag zone | action cluster
+// | custom window controls. The brand is absolutely
+// centered against the full window width.
+.dsm-titlebar {
+  position: relative;
+  display: grid;
+  grid-template-columns:
+    12px
+    1fr
+    auto
+    auto;
+  align-items: center;
+  height: var(--dv-titlebar-h);
+  background: var(--dv-surf-2);
+  border-bottom: 0.5px solid var(--dv-divider);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+// VS Code pattern: the whole titlebar (including the brand and empty
+// gaps between controls) is a drag region by default. Only the actual
+// interactive controls opt out — otherwise the user has almost no
+// surface to grab the window by, especially on Linux/WSL where the
+// left safe zone collapses to 12px.
+.left,
+.center,
+.titlebar-actions,
+.window-controls {
+  height: 100%;
+}
+
+.left {
+  grid-column: 1;
+}
+
+.titlebar-actions,
+.window-controls {
+  -webkit-app-region: no-drag;
+}
+
+// The macOS-style controls are renderer-owned; Windows keeps them on the
+// right instead of reserving space for native window buttons.
+:host-context(body.is-windows) .dsm-titlebar {
+  grid-template-columns: 12px 1fr auto auto;
+}
+
+// macOS uses the native traffic lights (no renderer-owned controls); reserve
+// the left inset so the brand/controls don't sit under them.
+:host-context(body.is-macos) .dsm-titlebar {
+  grid-template-columns: var(--dv-safe-mac-l) 1fr auto;
+}
+
+.center {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100% - 18rem);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.titlebar-actions {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-right: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.titlebar-actions dv-menu {
+  display: inline-flex;
+  align-items: center;
+}
+
+// Match the kebab trigger to the shared two-button theme switcher
+// (dv-theme-toggle__btn): same pill, border, surface and interaction
+// states. Scoped to the titlebar so the shared dsMenuTriggerButton keeps
+// its default ghost look everywhere else.
+.titlebar-actions button[dsMenuTriggerButton] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: var(--dv-r-pill);
+  border: 1px solid var(--dv-bor);
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+  line-height: 1;
+  transition:
+    background var(--dv-dur-quick) var(--dv-ease-out),
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    color var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover {
+    background: var(--dv-surf-2);
+    border-color: var(--dv-bor-2);
+    color: var(--dv-fg);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--dv-surf);
+    box-shadow:
+      0 0 0 3px var(--dv-acc-lo),
+      0 0 0 1px var(--dv-acc);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+.window-controls {
+  grid-column: 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 5.25rem;
+  // Right padding tuned so the (rightmost) close button's centre sits over the
+  // right-rail icon column — see right-rail `.dsr-rail` width (2.75rem) and its
+  // centred 2rem buttons. flex-end keeps the close button flush to this padding.
+  padding-inline: 0.75rem 0.42rem;
+  position: relative;
+  z-index: 1;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  max-width: 100%;
+  font-family: var(--dv-font);
+  font-weight: 650;
+  font-size: var(--dv-fs-md);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dv-fg);
+}
+
+.brand-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  background: var(--dv-acc-lo);
+  color: var(--dv-acc-fg);
+  border-radius: var(--dv-r-sm);
+  font-size: var(--dv-fs-sm);
+  font-weight: 700;
+  letter-spacing: 0;
+  // Subtle accent ring keys the mark to the active palette without
+  // introducing a second brand colour.
+  box-shadow: 0 0 0 1px var(--dv-acc-bor), var(--dv-shadow-inset);
+  overflow: hidden;
+  cursor: default;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.brand-word {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

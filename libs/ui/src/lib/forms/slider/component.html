@@ -1,0 +1,12 @@
+<input
+  class="dv-slider"
+  type="range"
+  [min]="min()"
+  [max]="max()"
+  [step]="step()"
+  [value]="value()"
+  [disabled]="controlDisabled()"
+  [attr.aria-label]="ariaLabel()"
+  (input)="handleInput($event)"
+  (blur)="handleBlur()"
+/>

@@ -1,0 +1,132 @@
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dcp-title">
+      <div class="modal-head">
+        <div class="modal-title-wrap">
+          <div class="modal-icon" aria-hidden="true">
+            <dv-icon [icon]="LucideRocket" size="sm" />
+          </div>
+          <div>
+            <div class="modal-title" id="dcp-title">{{ 'modals.create_project.title' | translate }}</div>
+            @if (state.navPath()) {
+              <div class="modal-sub">{{ state.navPath() }}</div>
+            }
+          </div>
+        </div>
+        <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Cerrar" [disabled]="busy()" (clicked)="ref?.close()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      </div>
+
+    <div class="modal-body">
+      <div>
+        <div class="section-lbl">Tipo de proyecto</div>
+
+      <div class="type-cards" role="radiogroup" aria-label="Tipo de proyecto">
+        <dv-option-card
+          [label]="'modals.create_project.type_blank' | translate"
+          [description]="'modals.create_project.type_blank_sub' | translate"
+          [icon]="LucidePlusCircle"
+          [selected]="type() === 'blank'"
+          [disabled]="busy()"
+          (selectedChange)="selectType('blank')" />
+        <dv-option-card
+          [label]="'modals.create_project.type_base' | translate"
+          [description]="'modals.create_project.type_base_sub' | translate"
+          [icon]="LucideStar"
+          [selected]="type() === 'base'"
+          [disabled]="busy()"
+          (selectedChange)="selectType('base')" />
+        <dv-option-card
+          [label]="'modals.create_project.type_import' | translate"
+          [description]="'modals.create_project.type_import_sub' | translate"
+          [icon]="LucideDownload"
+          [selected]="type() === 'import'"
+          [disabled]="busy()"
+          (selectedChange)="selectType('import')" />
+      </div>
+      </div>
+
+      @if (type() === 'base') {
+        <div class="field">
+          <label>Base / plantilla<span class="req">*</span></label>
+          @if (bases().length > 0) {
+            <dv-select
+              class="dcp-input"
+              ariaLabel="Base / plantilla"
+              [ngModel]="base()"
+              (ngModelChange)="base.set($event)"
+              [disabled]="busy()"
+              [options]="baseOptions()"
+            />
+          } @else {
+            <small>{{ 'modals.create_project.base_empty_hint' | translate }}</small>
+          }
+        </div>
+      }
+
+      @if (type() === 'import') {
+        <div class="field">
+          <dv-input
+                 label="URL del repositorio"
+                 required
+                 type="url"
+                 [ngModel]="repoUrl()" (ngModelChange)="onUrlChange($event)"
+                 [placeholder]="'modals.create_project.url_placeholder' | translate"
+                 [disabled]="busy()" />
+          <small>El nombre del proyecto se detecta autom&aacute;ticamente.</small>
+        </div>
+      }
+
+      <div class="field">
+        <dv-input
+               label="Nombre del proyecto"
+               required
+               [ngModel]="name()" (ngModelChange)="onNameChange($event)"
+               placeholder="mi-proyecto"
+               [disabled]="busy()"
+               [error]="nameInvalid() ? ('modals.create_project.name_hint' | translate) : null" />
+      </div>
+
+      <div class="field">
+        <dv-textarea
+          [label]="type() === 'import' ? 'Contexto inicial' : 'Intención del proyecto'"
+          [required]="type() !== 'import'"
+          [rows]="3"
+          [ngModel]="intent()" (ngModelChange)="intent.set($event)"
+          [disabled]="busy()"
+          [placeholder]="type() === 'import' ? 'Describe que quieres hacer con este proyecto...' : 'Que quieres construir? El agente usara esto como punto de partida.'"
+        />
+        @if (type() === 'base' && intent().trim()) {
+          <small>El agente usar&aacute; esto como contexto inicial para el planning.</small>
+        }
+      </div>
+
+      @if (output().length > 0) {
+        <pre class="output-log" role="log" aria-live="polite" aria-label="Clone output">{{ outputText() }}</pre>
+      }
+      @if (errorMessage(); as msg) { <p class="err-callout">{{ msg }}</p> }
+    </div>
+
+    <div class="modal-footer">
+      <dv-button variant="ghost" type="button" [disabled]="busy()" (clicked)="ref?.close()">{{ 'modals.create_project.cancel' | translate }}</dv-button>
+      @if (busy()) {
+        <dv-button variant="primary" type="button" disabled loading>
+          Creando...
+        </dv-button>
+      } @else if (errorMessage()) {
+        <dv-button variant="primary" type="button" [disabled]="!canCreate()" (clicked)="run(type() !== 'import')">
+          Reintentar
+        </dv-button>
+      } @else {
+        <dv-button [variant]="type() === 'import' ? 'primary' : 'secondary'" type="button" [disabled]="!canCreate()" (clicked)="run(false)">
+          {{ 'modals.create_project.create' | translate }}
+        </dv-button>
+        @if (type() !== 'import') {
+          <dv-button variant="accent" type="button" [disabled]="!canMagic()" (clicked)="run(true)">
+            <dv-icon [icon]="LucideStar" size="sm" />
+            {{ 'modals.create_project.magic' | translate }}
+          </dv-button>
+        }
+      }
+    </div>
+    </div>
+  

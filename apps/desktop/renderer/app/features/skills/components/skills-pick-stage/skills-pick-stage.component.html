@@ -1,0 +1,61 @@
+<section class="pick-stage">
+  <div class="pick-head">
+    <div class="pick-title">
+      <div class="pick-h1">{{ 'modals.skills.pick_title' | translate }}</div>
+      <div class="pick-h2 mono">{{ committedSource() }}</div>
+    </div>
+  </div>
+
+  <div class="search-row">
+    <dv-search-input
+      size="sm"
+      [ngModel]="query()"
+      (ngModelChange)="query.set($event)"
+      [placeholder]="'modals.skills.search_placeholder' | translate"
+      [clearAriaLabel]="'modals.skills.search_clear' | translate"
+      [disabled]="installing()"
+    />
+  </div>
+
+  <div class="pick-toolbar">
+    <dv-button variant="secondary" size="sm"
+            (clicked)="toggleAll(true)"
+            [disabled]="installing()">
+      {{ 'modals.skills.select_all' | translate }}
+    </dv-button>
+    <dv-button variant="secondary" size="sm"
+            (clicked)="toggleAll(false)"
+            [disabled]="installing()">
+      {{ 'modals.skills.clear_selection' | translate }}
+    </dv-button>
+    <span class="pick-count">
+      {{ 'modals.skills.selected_count' | translate:{ count: selectedCount() } }}
+    </span>
+  </div>
+
+  <ul class="discover-list">
+    @for (s of filteredSkills(); track s.name + '@' + s.relativePath) {
+      <li class="discover-row">
+        <dv-checkbox
+          [ngModel]="isSelected(s.name)"
+          (valueChange)="toggleSkill(s.name)"
+          [disabled]="installing()"
+          [label]="s.name">
+        </dv-checkbox>
+        <div class="d-main">
+          @if (s.description) {
+            <div class="d-desc">{{ s.description }}</div>
+          }
+          <div class="d-meta mono">{{ s.relativePath }}</div>
+        </div>
+      </li>
+    }
+  </ul>
+
+  @if (log().length > 0) {
+    <pre class="log">{{ logText() }}</pre>
+  }
+  @if (errorMessage(); as msg) {
+    <p class="err">{{ msg }}</p>
+  }
+</section>

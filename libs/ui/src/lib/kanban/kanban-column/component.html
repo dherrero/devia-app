@@ -1,0 +1,121 @@
+<div class="dv-kanban-column__header">
+  <div class="dv-kanban-column__header-left">
+    <button
+      type="button"
+      class="dv-kanban-column__drag-handle"
+      cdkDragHandle
+      [attr.aria-label]="'Mover columna ' + column().title"
+      (click)="$event.stopPropagation()"
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 10 10"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <circle cx="3" cy="2" r="1" />
+        <circle cx="7" cy="2" r="1" />
+        <circle cx="3" cy="5" r="1" />
+        <circle cx="7" cy="5" r="1" />
+        <circle cx="3" cy="8" r="1" />
+        <circle cx="7" cy="8" r="1" />
+      </svg>
+    </button>
+    <span class="dv-kanban-column__title">{{ column().title }}</span>
+    <span [class]="wipClass()">{{ wipLabel() }}</span>
+  </div>
+  @if (!readonly()) {
+  <div class="dv-kanban-column__header-right">
+    <button
+      type="button"
+      class="dv-kanban-column__menu-btn"
+      [attr.aria-label]="'Acciones de ' + column().title"
+      (click)="onMenuClick($event)"
+    >
+      ···
+    </button>
+  </div>
+  }
+</div>
+
+<div
+  class="dv-kanban-column__list"
+  cdkDropList
+  [id]="'dv-col-' + column().id"
+  [cdkDropListData]="column().items"
+  [cdkDropListDisabled]="readonly() || (column().disabled ?? false)"
+  [cdkDropListConnectedTo]="connectedTo()"
+  (cdkDropListDropped)="onDrop($event)"
+>
+  @for (item of column().items; track item.id) {
+  <div
+    cdkDrag
+    [cdkDragData]="item"
+    [cdkDragDisabled]="(item.disabled ?? false) || readonly()"
+  >
+    <dv-kanban-card
+      [item]="item"
+      [done]="column().isDone ?? false"
+      [disabled]="item.disabled ?? false"
+      (opened)="itemClicked.emit($event)"
+    />
+    <ng-template cdkDragPlaceholder>
+      <div class="dv-kanban-column__placeholder"></div>
+    </ng-template>
+  </div>
+  } @empty {
+  <div class="dv-kanban-column__empty">Sin tarjetas.</div>
+  }
+</div>
+
+@if (!readonly()) { @if (inlineOpen()) {
+<div class="dv-kanban-column__inline-add">
+  <textarea
+    #inlineArea
+    class="dv-kanban-column__inline-textarea"
+    rows="2"
+    placeholder="Título de la tarjeta…"
+    (keydown)="onInlineKeydown($event)"
+  ></textarea>
+  <div class="dv-kanban-column__inline-actions">
+    <button
+      type="button"
+      class="dv-kanban-column__inline-submit"
+      (click)="submitInlineAdd($event)"
+    >
+      Añadir
+    </button>
+    <button
+      type="button"
+      class="dv-kanban-column__inline-cancel"
+      (click)="cancelInlineAdd($event)"
+    >
+      Cancelar
+    </button>
+  </div>
+</div>
+} @else {
+<button
+  type="button"
+  class="dv-kanban-column__quick-add"
+  [attr.aria-label]="'Añadir tarjeta a ' + column().title"
+  (click)="openInlineAdd($event)"
+>
+  <svg
+    width="11"
+    height="11"
+    viewBox="0 0 11 11"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M5.5 1v9M1 5.5h9"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+    />
+  </svg>
+  Añadir tarjeta
+</button>
+} }

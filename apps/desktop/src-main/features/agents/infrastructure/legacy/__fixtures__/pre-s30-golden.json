@@ -1,0 +1,1182 @@
+{
+  "generatedFrom": "/tmp/devia-pre-s30-dist",
+  "cases": [
+    {
+      "agentId": "codex",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "exec",
+          "--json",
+          "--skip-git-repo-check",
+          "-C",
+          "/ws/proj",
+          "--add-dir",
+          "/ws",
+          "--model",
+          "m1",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "--sandbox",
+          "danger-full-access"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "codex",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "exec",
+          "resume",
+          "sess-1",
+          "-",
+          "--json",
+          "--skip-git-repo-check",
+          "--model",
+          "m1",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "sandbox_mode=\"danger-full-access\""
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "codex",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "exec",
+          "--json",
+          "--skip-git-repo-check",
+          "-C",
+          "/ws/proj",
+          "--add-dir",
+          "/ws",
+          "--model",
+          "m1",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "--sandbox",
+          "workspace-write",
+          "-c",
+          "sandbox_workspace_write.network_access=true"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "codex",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "exec",
+          "resume",
+          "sess-1",
+          "-",
+          "--json",
+          "--skip-git-repo-check",
+          "--model",
+          "m1",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "sandbox_mode=\"workspace-write\"",
+          "-c",
+          "sandbox_workspace_write.network_access=true"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "codex",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "exec",
+          "--json",
+          "--skip-git-repo-check",
+          "-C",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "--dangerously-bypass-approvals-and-sandbox"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "codex",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "exec",
+          "resume",
+          "sess-1",
+          "-",
+          "--json",
+          "--skip-git-repo-check",
+          "--model",
+          "m1",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "--dangerously-bypass-approvals-and-sandbox"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "gemini",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "stream-json",
+          "--model",
+          "m1",
+          "--approval-mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "gemini",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "stream-json",
+          "--model",
+          "m1",
+          "--approval-mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "gemini",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "stream-json",
+          "--model",
+          "m1",
+          "--approval-mode",
+          "yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "gemini",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "stream-json",
+          "--model",
+          "m1",
+          "--approval-mode",
+          "yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "gemini",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "stream-json",
+          "--model",
+          "m1",
+          "--approval-mode",
+          "yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "gemini",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "stream-json",
+          "--model",
+          "m1",
+          "--approval-mode",
+          "yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "cursor-agent",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--stream-partial-output",
+          "--trust",
+          "--workspace",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "cursor-agent",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--stream-partial-output",
+          "--trust",
+          "--workspace",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "cursor-agent",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--stream-partial-output",
+          "--trust",
+          "--workspace",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--force"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "cursor-agent",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--stream-partial-output",
+          "--trust",
+          "--workspace",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--force"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "cursor-agent",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--stream-partial-output",
+          "--trust",
+          "--workspace",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--force"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "cursor-agent",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--stream-partial-output",
+          "--trust",
+          "--workspace",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--force"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "copilot",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "json",
+          "--add-dir",
+          "/ws",
+          "--model",
+          "m1",
+          "--allow-all-tools",
+          "--deny-tool",
+          "write",
+          "--deny-tool",
+          "shell"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "copilot",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "json",
+          "--add-dir",
+          "/ws",
+          "--model",
+          "m1",
+          "--allow-all-tools",
+          "--deny-tool",
+          "write",
+          "--deny-tool",
+          "shell"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "copilot",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "json",
+          "--add-dir",
+          "/ws",
+          "--model",
+          "m1",
+          "--allow-all-tools",
+          "--deny-tool",
+          "shell(rm:*)",
+          "--deny-tool",
+          "shell(git push)"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "copilot",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "json",
+          "--add-dir",
+          "/ws",
+          "--model",
+          "m1",
+          "--allow-all-tools",
+          "--deny-tool",
+          "shell(rm:*)",
+          "--deny-tool",
+          "shell(git push)"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "copilot",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "json",
+          "--model",
+          "m1",
+          "--allow-all"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "copilot",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--output-format",
+          "json",
+          "--model",
+          "m1",
+          "--allow-all"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "grok",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "-p",
+          "[System]\nSYS\n\n[User]\nPROMPT",
+          "--format",
+          "json",
+          "--model",
+          "m1"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "grok",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "-p",
+          "[System]\nSYS\n\n[User]\nPROMPT",
+          "--format",
+          "json",
+          "--model",
+          "m1",
+          "--session",
+          "sess-1"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "grok",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "-p",
+          "[System]\nSYS\n\n[User]\nPROMPT",
+          "--format",
+          "json",
+          "--model",
+          "m1"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "grok",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "-p",
+          "[System]\nSYS\n\n[User]\nPROMPT",
+          "--format",
+          "json",
+          "--model",
+          "m1",
+          "--session",
+          "sess-1"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "grok",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "-p",
+          "[System]\nSYS\n\n[User]\nPROMPT",
+          "--format",
+          "json",
+          "--model",
+          "m1"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "grok",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "-p",
+          "[System]\nSYS\n\n[User]\nPROMPT",
+          "--format",
+          "json",
+          "--model",
+          "m1",
+          "--session",
+          "sess-1"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "qwen",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--model",
+          "m1",
+          "--approval-mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qwen",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--model",
+          "m1",
+          "--approval-mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qwen",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--model",
+          "m1",
+          "--yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qwen",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--model",
+          "m1",
+          "--yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qwen",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "--model",
+          "m1",
+          "--yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qwen",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "--model",
+          "m1",
+          "--yolo"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "deepseek",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "exec",
+          "--auto",
+          "--model",
+          "m1",
+          "PROMPT"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "deepseek",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "exec",
+          "--auto",
+          "--model",
+          "m1",
+          "PROMPT"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "deepseek",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "exec",
+          "--auto",
+          "--model",
+          "m1",
+          "PROMPT"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "deepseek",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "exec",
+          "--auto",
+          "--model",
+          "m1",
+          "PROMPT"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "deepseek",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "exec",
+          "--auto",
+          "--model",
+          "m1",
+          "PROMPT"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "deepseek",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "exec",
+          "--auto",
+          "--model",
+          "m1",
+          "PROMPT"
+        ],
+        "stdio0": "ignore",
+        "stdin": []
+      }
+    },
+    {
+      "agentId": "qoder",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "-w",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--add-dir",
+          "/ws",
+          "--permission-mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qoder",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "-w",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--add-dir",
+          "/ws",
+          "--permission-mode",
+          "plan"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qoder",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "-w",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--add-dir",
+          "/ws",
+          "--permission-mode",
+          "accept_edits"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qoder",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "-w",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--add-dir",
+          "/ws",
+          "--permission-mode",
+          "accept_edits"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qoder",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "-w",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--permission-mode",
+          "bypass_permissions"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "qoder",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "-w",
+          "/ws/proj",
+          "--model",
+          "m1",
+          "--permission-mode",
+          "bypass_permissions"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "[System]\nSYS\n\n[User]\nPROMPT"
+        ]
+      }
+    },
+    {
+      "agentId": "kimi",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "acp"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "kimi",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "acp"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "kimi",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "acp"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "kimi",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "acp"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "kimi",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "acp"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "kimi",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "acp"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "hermes",
+      "mode": "plan",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "acp",
+          "--accept-hooks"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "hermes",
+      "mode": "plan",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "acp",
+          "--accept-hooks"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "hermes",
+      "mode": "apply",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "acp",
+          "--accept-hooks"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "hermes",
+      "mode": "apply",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "acp",
+          "--accept-hooks"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "hermes",
+      "mode": "apply-yolo",
+      "resume": false,
+      "spawn": {
+        "args": [
+          "acp",
+          "--accept-hooks"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    },
+    {
+      "agentId": "hermes",
+      "mode": "apply-yolo",
+      "resume": true,
+      "spawn": {
+        "args": [
+          "acp",
+          "--accept-hooks"
+        ],
+        "stdio0": "pipe",
+        "stdin": [
+          "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"terminal\":false},\"clientInfo\":{\"name\":\"devia\",\"version\":\"desktop\"}}}\n"
+        ]
+      }
+    }
+  ],
+  "nativeConfig": {
+    "codex": {
+      ".codex/config.toml": "# devia-mcp-start devia-ui\n[mcp_servers.devia-ui]\ncommand = \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\"\nargs = [\"/private/tmp/devia-pre-s30-dist/src-main/features/ui-tools/mcp-server/server.js\", \"--ui-dir\", \"/tmp/devia-ui/run-1\", \"--tools\", \"ask_user,todo\"]\nenv = { ELECTRON_RUN_AS_NODE = \"1\" }\nstartup_timeout_sec = 30\ndefault_tools_approval_mode = \"auto\"\n# devia-mcp-end devia-ui\n\n# devia-mcp-start devia-memory\n[mcp_servers.devia-memory]\ncommand = \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\"\nargs = [\"/private/tmp/devia-pre-s30-dist/src-main/features/memory/mcp-server/server.js\", \"--devia-dir\", \"/home/u/.devia-app\", \"--project\", \"/ws/proj\"]\nenv = { ELECTRON_RUN_AS_NODE = \"1\", DEVIA_ACTIVE_AGENT_ID = \"codex\" }\nstartup_timeout_sec = 30\ndefault_tools_approval_mode = \"auto\"\n# devia-mcp-end devia-memory\n\n# devia-mcp-start devia-kanban\n[mcp_servers.devia-kanban]\ncommand = \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\"\nargs = [\"/private/tmp/devia-pre-s30-dist/src-main/features/sdd/mcp-server/server.js\", \"--devia-dir\", \"/home/u/.devia-app\", \"--project\", \"/ws/proj\"]\nenv = { ELECTRON_RUN_AS_NODE = \"1\" }\nstartup_timeout_sec = 30\ndefault_tools_approval_mode = \"auto\"\n# devia-mcp-end devia-kanban\n"
+    },
+    "gemini": {
+      ".gemini/settings.json": "{\n  \"mcpServers\": {\n    \"devia-ui\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/ui-tools/mcp-server/server.js\",\n        \"--ui-dir\",\n        \"/tmp/devia-ui/run-1\",\n        \"--tools\",\n        \"ask_user,todo\"\n      ],\n      \"__devia_managed\": \"devia-ui\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\"\n      }\n    },\n    \"devia-memory\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/memory/mcp-server/server.js\",\n        \"--devia-dir\",\n        \"/home/u/.devia-app\",\n        \"--project\",\n        \"/ws/proj\"\n      ],\n      \"__devia_managed\": \"devia-memory\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\",\n        \"DEVIA_ACTIVE_AGENT_ID\": \"gemini\"\n      }\n    },\n    \"devia-kanban\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/sdd/mcp-server/server.js\",\n        \"--devia-dir\",\n        \"/home/u/.devia-app\",\n        \"--project\",\n        \"/ws/proj\"\n      ],\n      \"__devia_managed\": \"devia-kanban\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\"\n      }\n    }\n  }\n}\n"
+    },
+    "cursor-agent": {
+      ".cursor/mcp.json": "{\n  \"mcpServers\": {\n    \"devia-ui\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/ui-tools/mcp-server/server.js\",\n        \"--ui-dir\",\n        \"/tmp/devia-ui/run-1\",\n        \"--tools\",\n        \"ask_user,todo\"\n      ],\n      \"__devia_managed\": \"devia-ui\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\"\n      }\n    },\n    \"devia-memory\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/memory/mcp-server/server.js\",\n        \"--devia-dir\",\n        \"/home/u/.devia-app\",\n        \"--project\",\n        \"/ws/proj\"\n      ],\n      \"__devia_managed\": \"devia-memory\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\",\n        \"DEVIA_ACTIVE_AGENT_ID\": \"cursor-agent\"\n      }\n    },\n    \"devia-kanban\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/sdd/mcp-server/server.js\",\n        \"--devia-dir\",\n        \"/home/u/.devia-app\",\n        \"--project\",\n        \"/ws/proj\"\n      ],\n      \"__devia_managed\": \"devia-kanban\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\"\n      }\n    }\n  }\n}\n"
+    },
+    "copilot": {},
+    "grok": {
+      ".grok/user-settings.json": "{\n  \"mcp\": {\n    \"servers\": [\n      {\n        \"id\": \"devia-ui\",\n        \"label\": \"Devia UI\",\n        \"enabled\": true,\n        \"transport\": \"stdio\",\n        \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n        \"args\": [\n          \"/private/tmp/devia-pre-s30-dist/src-main/features/ui-tools/mcp-server/server.js\",\n          \"--ui-dir\",\n          \"/tmp/devia-ui/run-1\",\n          \"--tools\",\n          \"ask_user,todo\"\n        ],\n        \"env\": {\n          \"ELECTRON_RUN_AS_NODE\": \"1\"\n        }\n      },\n      {\n        \"id\": \"devia-memory\",\n        \"label\": \"Devia Memory\",\n        \"enabled\": true,\n        \"transport\": \"stdio\",\n        \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n        \"args\": [\n          \"/private/tmp/devia-pre-s30-dist/src-main/features/memory/mcp-server/server.js\",\n          \"--devia-dir\",\n          \"/home/u/.devia-app\",\n          \"--project\",\n          \"/ws/proj\"\n        ],\n        \"env\": {\n          \"ELECTRON_RUN_AS_NODE\": \"1\",\n          \"DEVIA_ACTIVE_AGENT_ID\": \"grok\"\n        }\n      },\n      {\n        \"id\": \"devia-kanban\",\n        \"label\": \"Devia Kanban\",\n        \"enabled\": true,\n        \"transport\": \"stdio\",\n        \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n        \"args\": [\n          \"/private/tmp/devia-pre-s30-dist/src-main/features/sdd/mcp-server/server.js\",\n          \"--devia-dir\",\n          \"/home/u/.devia-app\",\n          \"--project\",\n          \"/ws/proj\"\n        ],\n        \"env\": {\n          \"ELECTRON_RUN_AS_NODE\": \"1\"\n        }\n      }\n    ]\n  }\n}\n"
+    },
+    "qwen": {
+      ".qwen/settings.json": "{\n  \"mcpServers\": {\n    \"devia-ui\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/ui-tools/mcp-server/server.js\",\n        \"--ui-dir\",\n        \"/tmp/devia-ui/run-1\",\n        \"--tools\",\n        \"ask_user,todo\"\n      ],\n      \"__devia_managed\": \"devia-ui\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\"\n      }\n    },\n    \"devia-memory\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/memory/mcp-server/server.js\",\n        \"--devia-dir\",\n        \"/home/u/.devia-app\",\n        \"--project\",\n        \"/ws/proj\"\n      ],\n      \"__devia_managed\": \"devia-memory\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\",\n        \"DEVIA_ACTIVE_AGENT_ID\": \"qwen\"\n      }\n    },\n    \"devia-kanban\": {\n      \"command\": \"/Users/dherrero/.nvm/versions/node/v24.14.1/bin/node\",\n      \"args\": [\n        \"/private/tmp/devia-pre-s30-dist/src-main/features/sdd/mcp-server/server.js\",\n        \"--devia-dir\",\n        \"/home/u/.devia-app\",\n        \"--project\",\n        \"/ws/proj\"\n      ],\n      \"__devia_managed\": \"devia-kanban\",\n      \"env\": {\n        \"ELECTRON_RUN_AS_NODE\": \"1\"\n      }\n    }\n  }\n}\n"
+    },
+    "deepseek": {},
+    "qoder": {},
+    "kimi": {},
+    "hermes": {}
+  }
+}

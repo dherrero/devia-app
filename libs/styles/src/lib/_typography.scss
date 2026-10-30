@@ -1,0 +1,52 @@
+@use 'mixins' as dv;
+
+body {
+  font-family: var(--dv-font);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--dv-fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1 {
+  @include dv.dv-text('h1');
+}
+
+h2 {
+  @include dv.dv-text('h2');
+}
+
+h3 {
+  @include dv.dv-text('h3');
+}
+
+h4 {
+  @include dv.dv-text('body-lg');
+}
+
+h5 {
+  @include dv.dv-text('body');
+  font-weight: 600;
+}
+
+h6 {
+  @include dv.dv-text('body-sm');
+  font-weight: 600;
+}
+
+p {
+  @include dv.dv-text('body');
+  color: var(--dv-fg);
+}
+
+small {
+  @include dv.dv-text('caption');
+  color: var(--dv-muted);
+}
+
+code,
+pre {
+  font-family: var(--dv-mono);
+  font-size: 0.875em;
+}

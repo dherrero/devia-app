@@ -1,0 +1,59 @@
+<header class="dsm-titlebar">
+  <!-- Left safe zone (macOS traffic lights live here natively). -->
+  <div class="left"></div>
+
+  <!-- Window-centered brand: "D" mark + "Devia" wordmark. -->
+  <div class="center">
+    <span class="brand">
+      <span class="brand-mark">
+        <img src="assets/images/Devia.PNG" alt="Devia" draggable="false" />
+      </span>
+      <span class="brand-word">
+        <span>Devia</span>
+      </span>
+    </span>
+  </div>
+
+  <!-- Right action cluster: theme switcher + kebab menu. -->
+  <div class="titlebar-actions">
+    <dv-theme-toggle
+      class="theme-switcher"
+      [theme]="themeValue()"
+      (changed)="onThemeChanged($event)" />
+
+    <dv-menu [items]="menuItems" (itemActivated)="onMenuItem($event)">
+      <button dsMenuTriggerButton [ariaLabel]="'titlebar.menu_aria' | translate">
+        <dv-icon [icon]="LucideEllipsisVertical" size="sm" />
+      </button>
+    </dv-menu>
+  </div>
+
+  <!-- Window controls. On macOS the native traffic lights are used instead,
+       so we render nothing here (avoids a duplicate set). Windows keeps them on
+       the right; Linux uses the macOS-style order. -->
+  @if (!isMac) {
+    <div class="window-controls" aria-label="Window controls">
+      @if (isWindows) {
+        <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Minimize window" (clicked)="minimizeWindow()">
+          <dv-icon [icon]="LucideMinus" size="sm" />
+        </dv-button>
+        <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Maximize or restore window" (clicked)="toggleMaximizeWindow()">
+          <dv-icon [icon]="LucideSquare" size="sm" />
+        </dv-button>
+        <dv-button iconOnly variant="danger-soft" size="sm" ariaLabel="Close window" (clicked)="closeWindow()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      } @else {
+        <dv-button iconOnly variant="danger-soft" size="sm" ariaLabel="Close window" (clicked)="closeWindow()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+        <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Minimize window" (clicked)="minimizeWindow()">
+          <dv-icon [icon]="LucideMinus" size="sm" />
+        </dv-button>
+        <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Maximize or restore window" (clicked)="toggleMaximizeWindow()">
+          <dv-icon [icon]="LucideSquare" size="sm" />
+        </dv-button>
+      }
+    </div>
+  }
+</header>

@@ -1,0 +1,62 @@
+// Attachments strip (HT-CH-04). Tokens per `DESKTOP-PART-03-CHAT-PANEL.md`
+// sub-3.4 and `DESKTOP-PART-05-INPUT-AREA.md` "Chips de Adjuntos".
+
+:host {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 1.5rem 0;
+  flex-wrap: wrap;
+  background: var(--dv-bg);
+}
+
+.ds-attachments-bar__chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2.75rem;
+  padding: 0.25rem 0.625rem 0.25rem 0.25rem;
+  background: var(--dv-surf);
+  border: 0.5px solid var(--dv-bor-2);
+  border-radius: var(--dv-r-md);
+  font-size: var(--dv-fs-xs);
+  color: var(--dv-dim);
+  box-shadow: var(--dv-shadow-sm);
+}
+
+.ds-attachments-bar__thumb {
+  width: 2.25rem;
+  height: 2.25rem;
+  background: var(--dv-surf-3);
+  border-radius: 0.3125rem;
+  background-size: cover;
+  background-position: center;
+}
+
+.ds-attachments-bar__file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: var(--dv-surf-3);
+  border-radius: 0.3125rem;
+  color: var(--dv-muted);
+}
+
+.ds-attachments-bar__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ds-attachments-bar__size {
+  color: var(--dv-muted);
+}
+
+.ds-attachments-bar__name {
+  max-width: 11.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

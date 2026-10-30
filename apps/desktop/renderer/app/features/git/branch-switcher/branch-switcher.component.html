@@ -1,0 +1,59 @@
+<div class="branch-switcher">
+  <header class="bs-header">
+    <dv-icon class="ic" [icon]="LucideGitBranch" size="sm" />
+    <span class="title">{{ 'modals.branch_switcher.title' | translate }}</span>
+  </header>
+
+  <div class="bs-search">
+    <dv-search-input
+      size="sm"
+      (valueChange)="query.set($event)"
+      [placeholder]="'modals.branch_switcher.search_placeholder' | translate"
+      [ariaLabel]="'modals.branch_switcher.search_placeholder' | translate" />
+  </div>
+
+  @if (loading()) {
+    <div class="bs-state">{{ 'modals.branch_switcher.loading' | translate }}</div>
+  } @else if (empty()) {
+    <div class="bs-state">{{ 'modals.branch_switcher.empty' | translate }}</div>
+  } @else {
+    <div class="bs-list" role="listbox">
+      @if (groups().local.length) {
+        <div class="group-heading">{{ 'modals.branch_switcher.local' | translate }}</div>
+        @for (b of groups().local; track b.name) {
+          <button
+            type="button"
+            class="branch-item"
+            role="option"
+            [class.current]="b.isCurrent"
+            [attr.aria-selected]="b.isCurrent"
+            [disabled]="b.isCurrent"
+            (click)="onPick(b)">
+            <dv-icon class="bic" [icon]="LucideGitBranch" size="sm" />
+            <span class="name">{{ b.name }}</span>
+            @if (b.isCurrent) { <dv-icon class="check" [icon]="LucideCheck" size="sm" /> }
+            @if (b.ahead || b.behind) {
+              <span class="ab">↓{{ b.behind || 0 }} ↑{{ b.ahead || 0 }}</span>
+            }
+            <span class="when">{{ relative(b.lastCommitTs) }}</span>
+          </button>
+        }
+      }
+
+      @if (groups().remote.length) {
+        <div class="group-heading">{{ 'modals.branch_switcher.remote' | translate }}</div>
+        @for (b of groups().remote; track b.name) {
+          <button
+            type="button"
+            class="branch-item"
+            role="option"
+            (click)="onPick(b)">
+            <dv-icon class="bic" [icon]="LucideCloud" size="sm" />
+            <span class="name">{{ b.name }}</span>
+            <span class="when">{{ relative(b.lastCommitTs) }}</span>
+          </button>
+        }
+      }
+    </div>
+  }
+</div>

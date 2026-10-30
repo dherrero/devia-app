@@ -1,0 +1,52 @@
+    @if (question(); as q) {
+      <dv-ai-bubble class="question-bubble" avatarLabel="D" role="status" aria-live="polite">
+        @for (prompt of prompts(); track prompt.key) {
+          <section class="q-prompt">
+            @if (prompt.header) {
+              <h3 class="q-header">{{ prompt.header }}</h3>
+            }
+            <p class="q-text">{{ prompt.question }}</p>
+            @if (prompt.options?.length) {
+              <div class="q-options" [attr.aria-label]="prompt.question">
+                @for (opt of prompt.options; track opt.label) {
+                  <button type="button"
+                          class="q-opt"
+                          [class.primary]="$first && !requiresSubmit()"
+                          [class.selected]="isSelected(prompt, opt)"
+                          [attr.aria-pressed]="requiresSubmit() ? isSelected(prompt, opt) : null"
+                          [title]="opt.description ?? null"
+                          (click)="selectOption(prompt, opt)">
+                    <span class="q-opt-label">{{ opt.label }}</span>
+                    @if (opt.description) {
+                      <span class="q-opt-desc">{{ opt.description }}</span>
+                    }
+                  </button>
+                }
+              </div>
+            }
+          </section>
+        }
+
+        <!-- Always-present actions: optional submit (multi/multi-select) plus
+             the "write your own answer" button that focuses the composer. -->
+        <div class="q-actions">
+          @if (requiresSubmit()) {
+            <dv-button variant="primary"
+                       size="sm"
+                       [disabled]="!canSubmit()"
+                       (clicked)="submitSelections()">
+              OK
+            </dv-button>
+          }
+          <button type="button"
+                  class="q-opt q-opt--freeform"
+                  [title]="'question_card.freeform' | translate"
+                  [attr.aria-label]="'question_card.freeform' | translate"
+                  (click)="freeform.emit()">
+            <dv-icon [icon]="LucidePlus" size="sm" aria-hidden="true" />
+            <span class="q-opt-label">{{ 'question_card.freeform' | translate }}</span>
+          </button>
+        </div>
+      </dv-ai-bubble>
+    }
+  

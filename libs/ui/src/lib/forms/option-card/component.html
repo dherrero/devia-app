@@ -1,0 +1,21 @@
+<button
+  type="button"
+  class="dv-option-card__button"
+  role="radio"
+  [disabled]="disabled()"
+  [attr.aria-checked]="selected()"
+  [attr.aria-label]="ariaLabel() ?? label()"
+  data-testid="dv-option-card"
+  (click)="choose()"
+>
+  @if (icon()) {
+  <dv-icon class="dv-option-card__icon" [icon]="icon()!" size="sm" />
+  }
+  <span class="dv-option-card__content">
+    <span class="dv-option-card__label">{{ label() }}</span>
+    @if (description()) {
+    <span class="dv-option-card__description">{{ description() }}</span>
+    }
+    <ng-content />
+  </span>
+</button>

@@ -1,0 +1,90 @@
+<ds-kanban-board-header
+  [project]="project()"
+  [isEmpty]="isEmpty()"
+  [hasSpecs]="specs().length > 0"
+  [specFilterOptions]="specFilterOptions()"
+  [priorityFilterOptions]="priorityFilterOptions()"
+  [columnCount]="columnCount()"
+  [totalCards]="totalCards()"
+  [(search)]="search"
+  [(specFilter)]="specFilter"
+  [(priorityFilter)]="priorityFilter"
+  (createToggled)="toggleCreate()"
+  (closed)="closeBoard()" />
+
+@if (finishedSpec(); as spec) {
+  <div class="dsk-toolbar dsk-toolbar-finished">
+    <span class="dsk-finished-label">
+      <dv-icon [icon]="LucideCircleCheck" size="sm" />
+      {{ 'sdd.spec_finished' | translate }}
+      <span class="dsk-finished-spec">{{ spec.id }} · {{ spec.title }}</span>
+    </span>
+    <dv-button variant="secondary" size="sm" type="button" (clicked)="archiveSpec(spec.id)">
+      {{ 'sdd.close_spec' | translate }}
+    </dv-button>
+  </div>
+} @else {
+  <div class="dsk-toolbar" aria-hidden="true"></div>
+}
+
+@if (creating()) {
+  <form class="dsk-create" (submit)="$event.preventDefault(); create()">
+    <dv-select [(ngModel)]="newSpecId"
+               name="spec"
+               class="dsk-create-spec"
+               size="sm"
+               [options]="specCreateOptions()"
+               ariaLabel="spec" />
+    <dv-input class="dsk-create-input"
+           name="title"
+           size="sm"
+           [ngModel]="newTitle"
+           (ngModelChange)="newTitle = $event"
+           [placeholder]="'sdd.new_task_placeholder' | translate" />
+    <dv-button variant="primary" size="sm" type="submit" [disabled]="!newTitle.trim()">
+      {{ 'sdd.create' | translate }}
+    </dv-button>
+  </form>
+}
+
+@if (isEmpty()) {
+  <div class="dsk-empty-state">
+    @if (planningActive()) {
+      <dv-spinner size="lg" />
+      <p class="dsk-empty-title">{{ 'sdd.board_planning_title' | translate }}</p>
+      <p class="dsk-empty-sub">{{ 'sdd.board_planning_sub' | translate }}</p>
+    } @else {
+      <dv-icon [icon]="LucideRocket" size="lg" />
+      <p class="dsk-empty-title">{{ 'sdd.board_empty_title' | translate }}</p>
+      <p class="dsk-empty-sub">{{ 'sdd.board_empty_sub' | translate }}</p>
+      <dv-button variant="primary" (clicked)="prepareProject()">
+        {{ 'sdd.prepare_project' | translate }}
+      </dv-button>
+    }
+  </div>
+} @else {
+<div class="dsk-board">
+  @for (col of flowColumns; track col) {
+    <ds-kanban-column
+      [col]="col"
+      [cards]="cardsIn(col)"
+      [dropId]="dropId(col)"
+      [connectedTo]="connectedTo"
+      [specTitles]="specTitles()"
+      [showSpecTag]="!specFilter()"
+      [quickAddOpen]="quickAddColumn() === col"
+      (cardOpened)="open($event)"
+      (dropped)="onDrop($event, col)"
+      (quickAddStarted)="startQuickAdd(col)"
+      (quickAddCancelled)="cancelQuick()"
+      (quickCreated)="createQuick(col, $event)" />
+  }
+
+  <!-- Blocked column: display-only, split by reason. -->
+  <ds-kanban-blocked-column
+    [cards]="cardsIn('blocked')"
+    [specTitles]="specTitles()"
+    [showSpecTag]="!specFilter()"
+    (cardOpened)="open($event)" />
+</div>
+}

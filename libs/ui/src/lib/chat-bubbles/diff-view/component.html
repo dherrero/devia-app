@@ -1,0 +1,18 @@
+<div class="dv-diff-view">
+  @if (fileName()) {
+  <div class="dv-diff-file-header">{{ fileName() }}</div>
+  } @for (line of lines(); track $index) {
+  <div
+    class="dv-diff-row"
+    [class.dv-diff-row--add]="line.type === 'add'"
+    [class.dv-diff-row--del]="line.type === 'del'"
+    [class.dv-diff-row--ctx]="line.type === 'ctx'"
+  >
+    <span class="dv-diff-ln">{{ line.lineNum }}</span>
+    <span class="dv-diff-marker" aria-hidden="true"
+      >{{ line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ' }}</span
+    >
+    <span class="dv-diff-code">{{ line.code }}</span>
+  </div>
+  }
+</div>

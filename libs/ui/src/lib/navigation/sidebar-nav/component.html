@@ -1,0 +1,54 @@
+<div class="dv-sidebar-nav__header">
+  <ng-content select="[dvSidebarHeader]" />
+</div>
+<nav class="dv-sidebar-nav__inner">
+  @for (section of sections(); track $index) {
+  <div class="dv-sidebar-nav__section">
+    @if (section.title && !collapsed()) {
+    <span class="dv-sidebar-nav__section-title">{{ section.title }}</span>
+    } @for (item of section.items; track item.id) { @if (item.href) {
+    <a
+      class="dv-sidebar-nav__item"
+      [class.dv-sidebar-nav__item--active]="item.active"
+      [class.dv-sidebar-nav__item--disabled]="item.disabled"
+      [href]="item.href"
+      [attr.aria-current]="item.active ? 'page' : null"
+    >
+      @if (item.icon) {
+      <dv-icon
+        class="dv-sidebar-nav__icon"
+        [icon]="item.icon"
+        [decorative]="true"
+        size="sm"
+      />
+      } @if (!collapsed()) {
+      <span class="dv-sidebar-nav__label">{{ item.label }}</span>
+      }
+    </a>
+    } @else {
+    <button
+      type="button"
+      class="dv-sidebar-nav__item"
+      [class.dv-sidebar-nav__item--active]="item.active"
+      [class.dv-sidebar-nav__item--disabled]="item.disabled"
+      [disabled]="item.disabled"
+      (click)="itemActivated.emit(item)"
+    >
+      @if (item.icon) {
+      <dv-icon
+        class="dv-sidebar-nav__icon"
+        [icon]="item.icon"
+        [decorative]="true"
+        size="sm"
+      />
+      } @if (!collapsed()) {
+      <span class="dv-sidebar-nav__label">{{ item.label }}</span>
+      }
+    </button>
+    } }
+  </div>
+  }
+  <div class="dv-sidebar-nav__footer">
+    <ng-content select="[dvSidebarFooter]" />
+  </div>
+</nav>

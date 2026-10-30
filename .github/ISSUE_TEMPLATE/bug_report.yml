@@ -1,0 +1,22 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: { label: Devia version, placeholder: "0.35.0" }
+    validations: { required: true }
+  - type: input
+    id: os
+    attributes: { label: Operating system }
+    validations: { required: true }
+  - type: input
+    id: agent
+    attributes: { label: Active CLI agent and its version, placeholder: "Claude Code 2.1.x" }
+  - type: textarea
+    id: steps
+    attributes: { label: Steps to reproduce, description: What you expected and what happened }
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes: { label: Screenshots or error messages }

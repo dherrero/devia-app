@@ -1,0 +1,68 @@
+/* The tab host renders no box of its own so the projected layout keeps
+   participating directly in the modal-shell content area (pre-split DOM). */
+:host { display: contents; }
+
+.cmd {
+  display: block;
+  max-width: 100%;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-xs);
+  color: var(--dv-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+  padding: 0.875rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.catalog-card {
+  min-width: 0;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-lg);
+  padding: 0.75rem;
+  background: var(--dv-surf-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.catalog-card header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  margin-bottom: 0.375rem;
+}
+.catalog-card h4 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.catalog-card p { color: var(--dv-muted); font-size: var(--dv-fs-sm); margin: 0.25rem 0 0.5rem; }
+.source-chip {
+  flex: 0 0 auto;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-xs);
+  padding: 1px 0.5rem;
+  border-radius: 999px;
+  background: var(--dv-surf-2);
+  color: var(--dv-muted);
+}
+.env-required {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  min-width: 0;
+  color: var(--dv-warn);
+  font-size: var(--dv-fs-xs);
+}
+.env-required dv-icon { width: 0.875rem; height: 0.875rem; }
+.catalog-install { margin-top: 0.25rem; }
+
+@media (max-width: 46rem) {
+  .catalog-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,417 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+/* Calm pass (workbench): the output reads as plain transcript text inside the
+   parent tool card, not a framed box-within-a-box. No own background, border,
+   or radius — the card supplies the surface. (was tech-bg + tech-bor box) */
+.dv-command-output {
+  min-width: 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--dv-fg);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-sm);
+  line-height: 1.5;
+  box-shadow: none;
+}
+
+/* Error: a single quiet accent rail instead of a full danger-tinted fill. */
+.dv-command-output--error {
+  background: transparent;
+  border-left: 2px solid var(--dv-danger);
+  color: var(--dv-fg);
+}
+
+/* Toolbar (Raw/Rich · Full/Preview toggles + command label) removed from the
+   resting state — it was the main source of chrome noise. Full output stays
+   reachable via the parent card's own "show full" trigger. */
+.dv-command-output__toolbar {
+  display: none;
+}
+
+.dv-command-output--error .dv-command-output__toolbar {
+  border-bottom-color: var(--dv-danger-bor);
+  background: color-mix(in oklch, var(--dv-danger-lo) 42%, var(--dv-tech-head));
+}
+
+.dv-command-output__command {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dv-tech-muted);
+  font-size: var(--dv-fs-xs);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dv-command-output__spacer {
+  flex: 1 1 auto;
+}
+
+.dv-command-output__btn {
+  flex: 0 0 auto;
+  padding: 0.0625rem 0.25rem;
+  border: 0;
+  border-radius: var(--dv-r-sm);
+  background: transparent;
+  color: var(--dv-tech-muted);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--dv-font);
+  font-size: var(--dv-fs-xs);
+  font-weight: 700;
+}
+
+.dv-command-output__btn:hover {
+  background: var(--dv-tech-bg-2);
+  color: var(--dv-tech-fg);
+}
+
+.dv-command-output__btn:focus-visible {
+  outline: 2px solid var(--dv-acc);
+  outline-offset: 2px;
+}
+
+.dv-command-output__rich {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0;
+}
+
+.dv-command-output__pre {
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  color: inherit;
+  font: inherit;
+  padding: 0.625rem 0.75rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dv-command-output > .dv-command-output__pre {
+  max-height: 18rem;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.dv-command-output__text-block {
+  display: grid;
+  gap: 0.0625rem;
+  padding: 0.375rem 0.5rem;
+}
+
+.dv-command-output__line {
+  min-width: 0;
+  padding: 0.0625rem 0.25rem;
+  border-left: 2px solid transparent;
+  color: var(--dv-tech-fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dv-command-output__line[data-tone='muted'] {
+  color: var(--dv-tech-muted);
+}
+
+.dv-command-output__line[data-tone='command'] {
+  border-left-color: var(--dv-tech-muted);
+  background: var(--dv-tech-bg-2);
+  color: var(--dv-tech-fg);
+  font-weight: 600;
+}
+
+.dv-command-output__line[data-tone='success'] {
+  border-left-color: var(--dv-success-bor);
+  background: var(--dv-success-lo);
+  color: var(--dv-success);
+  font-weight: 700;
+}
+
+.dv-command-output__line[data-tone='warning'] {
+  border-left-color: var(--dv-warn-bor);
+  background: var(--dv-warn-lo);
+  color: var(--dv-warn);
+  font-weight: 700;
+}
+
+.dv-command-output__line[data-tone='error'] {
+  border-left-color: var(--dv-danger-bor);
+  background: var(--dv-danger-lo);
+  color: var(--dv-danger);
+  font-weight: 700;
+}
+
+.dv-command-output__line[data-tone='path'] {
+  color: var(--dv-info);
+  font-weight: 600;
+}
+
+.dv-command-output__pre--json {
+  color: var(--dv-tech-fg);
+  background: transparent;
+}
+
+.dv-command-output__code,
+.dv-command-output__diff {
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.dv-command-output__code-head {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.3125rem 0.5rem;
+  border-bottom: var(--dv-bd-width) var(--dv-bd-style) var(--dv-tech-bor);
+  background: var(--dv-tech-head);
+}
+
+.dv-command-output__file {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dv-tech-fg);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dv-command-output__lang {
+  margin-left: auto;
+  padding: 0 0.3125rem;
+  border: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-tech-bor);
+  border-radius: var(--dv-r-sm);
+  color: var(--dv-tech-muted);
+  font-family: var(--dv-font);
+  font-size: var(--dv-fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dv-command-output__code-body,
+.dv-command-output__diff-body {
+  max-height: 18rem;
+  overflow: auto;
+  background: transparent;
+}
+
+.dv-command-output__code-line,
+.dv-command-output__diff-line {
+  display: grid;
+  min-width: max-content;
+}
+
+.dv-command-output__code-line {
+  grid-template-columns: 3rem 1fr;
+}
+
+.dv-command-output__code-line:hover,
+.dv-command-output__diff-line:hover {
+  background: var(--dv-tech-bg-2);
+}
+
+.dv-command-output__ln,
+.dv-command-output__diff-ln {
+  padding: 0 0.5rem;
+  border-right: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-tech-bor);
+  background: var(--dv-tech-gutter);
+  color: var(--dv-tech-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  user-select: none;
+}
+
+.dv-command-output__src,
+.dv-command-output__diff-src {
+  padding: 0 0.75rem;
+  color: var(--dv-tech-fg);
+  white-space: pre;
+}
+
+[data-token='keyword'] {
+  color: var(--dv-tech-fg);
+  font-weight: 700;
+}
+[data-token='string'] {
+  color: var(--dv-tech-fg);
+}
+[data-token='comment'] {
+  color: var(--dv-syntax-comment);
+  font-style: italic;
+}
+[data-token='number'] {
+  color: var(--dv-tech-fg);
+}
+[data-token='tag'] {
+  color: var(--dv-tech-fg);
+  font-weight: 700;
+}
+[data-token='attr'] {
+  color: var(--dv-tech-muted);
+}
+
+.dv-command-output__diff-line {
+  grid-template-columns: 2.75rem 2.75rem 1.25rem 1fr;
+}
+
+.dv-command-output__diff-mark {
+  padding: 0 0.375rem;
+  background: var(--dv-tech-gutter);
+  color: var(--dv-tech-muted);
+  text-align: center;
+  user-select: none;
+}
+
+.dv-command-output__diff-line[data-kind='add'] {
+  background: var(--dv-diff-add-bg);
+  color: var(--dv-diff-add-fg);
+}
+
+.dv-command-output__diff-line[data-kind='add'] .dv-command-output__diff-mark,
+.dv-command-output__diff-line[data-kind='add'] .dv-command-output__diff-src {
+  color: var(--dv-diff-add-fg);
+}
+
+.dv-command-output__diff-line[data-kind='del'] {
+  background: var(--dv-diff-del-bg);
+  color: var(--dv-diff-del-fg);
+}
+
+.dv-command-output__diff-line[data-kind='del'] .dv-command-output__diff-mark,
+.dv-command-output__diff-line[data-kind='del'] .dv-command-output__diff-src {
+  color: var(--dv-diff-del-fg);
+}
+
+.dv-command-output__diff-line[data-kind='hunk'] {
+  grid-template-columns: 2.75rem 2.75rem 1.25rem 1fr;
+  background: var(--dv-diff-hunk-bg);
+}
+
+.dv-command-output__diff-line[data-kind='hunk'] .dv-command-output__diff-src {
+  color: var(--dv-tech-muted);
+  font-style: italic;
+}
+
+.dv-command-output__table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.dv-command-output--error .dv-command-output__table-wrap {
+  border-color: var(--dv-danger-bor);
+}
+
+.dv-command-output__table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  font: inherit;
+  text-align: left;
+}
+
+.dv-command-output__table th,
+.dv-command-output__table td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-tech-bor);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.dv-command-output__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dv-tech-head);
+  color: var(--dv-tech-fg);
+  font-weight: 700;
+}
+
+.dv-command-output__table td {
+  color: var(--dv-tech-muted);
+}
+
+.dv-command-output__table tbody tr:nth-child(even) td {
+  background: color-mix(in oklch, var(--dv-tech-bg-2) 54%, transparent);
+}
+
+.dv-command-output__table tbody tr:hover td {
+  background: var(--dv-tech-bg-2);
+  color: var(--dv-tech-fg);
+}
+
+.dv-command-output__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.dv-command-output__cell--number {
+  color: var(--dv-info) !important;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.dv-command-output__kv {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.dv-command-output__kv-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.3125rem 0.5rem;
+  border-bottom: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-tech-bor);
+}
+
+.dv-command-output__kv-row:last-child {
+  border-bottom: 0;
+}
+
+.dv-command-output__kv dt {
+  color: var(--dv-tech-muted);
+  font-weight: 700;
+}
+
+.dv-command-output__kv dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--dv-tech-fg);
+}
+
+.dv-command-output__value--path {
+  color: var(--dv-info) !important;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-command-output__btn {
+    transition: none;
+  }
+}

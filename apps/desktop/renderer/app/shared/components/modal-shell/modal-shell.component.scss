@@ -1,0 +1,149 @@
+    :host {
+      --r-sm: var(--dv-r-sm, 0.3125rem);
+      --r-md: var(--dv-r-md, 0.5rem);
+      --r-xl: var(--dv-r-xl, 1rem);
+      display: flex;
+      flex-direction: column;
+      width: 44rem;
+      max-width: calc(100vw - 2rem);
+      height: min(36rem, calc(100vh - 2rem));
+      max-height: calc(100vh - 2rem);
+      min-height: 0;
+      overflow: hidden;
+      background: var(--dv-surf);
+      border: 1px solid var(--dv-bor);
+      border-radius: var(--r-xl);
+      box-shadow: var(--dv-shadow-lg, 0 12px 48px oklch(0% 0 0 / 0.12));
+      color: var(--dv-fg);
+    }
+
+    .ms-head {
+      height: 3.25rem;
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0 1rem;
+      border-bottom: 1px solid var(--dv-bor);
+      background: var(--dv-surf);
+    }
+    .ms-head[data-tone='surface2'] {
+      background: var(--dv-surf-2);
+    }
+    .ms-title {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-weight: 600; font-size: 0.9375rem; min-width: 0;
+      color: var(--dv-fg);
+    }
+    .ms-title-icon {
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: var(--r-sm);
+      background: var(--dv-acc-lo);
+      border: 1px solid var(--dv-acc-bor);
+      color: var(--dv-acc);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    }
+    .ms-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .ms-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ms-nav {
+      flex: 0 0 auto;
+      display: flex;
+      gap: 0;
+      padding: 0 0.75rem;
+      border-right: 0;
+      border-bottom: 1px solid var(--dv-bor);
+      overflow-x: auto;
+      min-height: 0;
+      background: var(--dv-surf);
+    }
+    .ms-nav-item {
+      display: flex; align-items: center; gap: 0.625rem;
+      width: auto;
+      text-align: left;
+      padding: 0.5625rem 0.875rem;
+      border-bottom: 2px solid transparent;
+      border-left: 0;
+      border-right: 0;
+      border-top: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--dv-muted);
+      font: inherit;
+      font-size: 0.8125rem;
+      cursor: pointer;
+      position: relative;
+      transition:
+        background var(--dv-dur-quick) var(--dv-ease-out),
+        color      var(--dv-dur-quick) var(--dv-ease-out);
+    }
+    .ms-nav-item:hover { background: var(--dv-surf-2); color: var(--dv-fg); }
+    .ms-nav-item.active {
+      background: transparent;
+      color: var(--dv-acc);
+      font-weight: 600;
+      border-bottom-color: var(--dv-acc);
+    }
+    .ms-nav-item.active::before {
+      content: none;
+    }
+    @keyframes ds-nav-indicator {
+      from { transform: scaleY(0); opacity: 0; }
+      to   { transform: scaleY(1); opacity: 1; }
+    }
+    .ms-nav-icon { flex: 0 0 auto; }
+    .ms-nav .ms-nav-icon { display: none; }
+    .ms-nav-label {
+      flex: 0 0 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ms-nav-badge {
+      flex: 0 0 auto;
+      font-size: var(--dv-fs-xs);
+      background: var(--dv-surf-3); color: var(--dv-muted);
+      border-radius: 999px; padding: 0 0.4375rem; min-width: 1.125rem; text-align: center;
+    }
+
+    .ms-content {
+      flex: 1 1 auto; min-width: 0; min-height: 0;
+      overflow-y: auto;
+      padding: 0;
+      animation: ds-section-enter var(--dv-dur-enter) var(--dv-ease-out);
+    }
+    @keyframes ds-section-enter {
+      from { opacity: 0; transform: translateX(0.5rem); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    .ms-foot {
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: flex-end; gap: 0.625rem;
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--dv-bor);
+      background: var(--dv-surf);
+    }
+    .ms-foot[data-tone='surface2'] {
+      background: var(--dv-surf-2);
+    }
+    /* Consumers project their action buttons inside a single
+       [shellActions] wrapper, so the footer's own gap can't reach them.
+       Lay the wrapper out as a flex row with the same standard spacing so
+       every modal's footer buttons are evenly separated. */
+    .ms-foot ::ng-deep [shellActions] {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.625rem;
+    }
+    /* No projected actions ? no empty bar. */
+    .ms-foot:not(:has(> *)) { display: none; }
+  

@@ -1,0 +1,142 @@
+<dv-ai-bubble class="msg-asst" avatarLabel="D" avatarImageSrc="assets/images/devia-mascot-pixel.png" avatarBlinkSrc="assets/images/devia-mascot-blink.png" [avatarState]="avatarState()" [avatarActive]="isLatest()">
+  <div class="body-col">
+    @if (hasThinking()) {
+      <details class="thinking-block" [class.thinking-active]="msg().streaming">
+        <summary class="thinking-summary">
+          <dv-icon class="thinking-icon" [icon]="LucideBrain" size="sm" aria-hidden="true" />
+          @if (msg().streaming) {
+            <span class="thinking-pulse"></span>
+          }
+          <span>{{ 'bubble_progress.thinking' | translate }}</span>
+        </summary>
+        @if (thinkingUsePlainText()) {
+          <pre class="thinking-body">{{ msg().thinking }}</pre>
+        } @else {
+          <div class="thinking-body" [innerHTML]="renderedThinkingHtml()"></div>
+        }
+      </details>
+    }
+    @if (displayBlocks(); as blocks) {
+      <!-- Ordered content: text segments and tool-call cards interleaved
+           in the exact order the agent produced them.
+           All markdown rendering is done in the computed signal — no
+           expensive calls in the template. -->
+      <div class="content-blocks">
+        @for (block of blocks; track trackBlock($index, block)) {
+          @if (block.kind === 'text') {
+            <!-- Text streams in live and already formatted (markdown),
+                 interleaved in order with the tool cards, so the reply
+                 is readable as it arrives instead of popping in all at
+                 once when the run ends. -->
+            @if (block.raw.trim()) {
+              <div class="message-segment">
+                @if (block.html !== null && !block.plainTextFallback) {
+                  <div class="md-content" [innerHTML]="block.html"></div>
+                } @else {
+                  <pre class="stream-text">{{ block.raw }}</pre>
+                }
+              </div>
+            }
+          } @else if (block.kind === 'question') {
+            <!-- Answered AskUserQuestion: the question + the user's
+                 selection stay on the agent's side of the transcript. -->
+            <ds-question-answered-card [toolCall]="block.toolCall" />
+          } @else if (block.kind === 'tool_ref' && block.toolCall) {
+            <ds-tool-call-card [toolCall]="block.toolCall" [active]="isToolInFlight(block.toolCall)" />
+          } @else if (block.kind === 'tool_group') {
+            <!-- Improvement #2: grouped tool-call <details> -->
+            <details class="tool-group" [open]="block.hasInFlight || msg().streaming">
+              <summary class="tg-summary">
+                <dv-icon class="tg-icon" [icon]="LucideLayers" size="sm" aria-hidden="true" />
+                <span class="tg-label">{{ groupLabel(block) }}</span>
+                @if (block.hasError) {
+                  <span class="tg-err-dot" aria-hidden="true"></span>
+                }
+              </summary>
+              <div class="tg-cards">
+                @for (tc of block.toolCalls; track tc.id) {
+                  <ds-tool-call-card [toolCall]="tc" [active]="isToolInFlight(tc)" />
+                }
+              </div>
+            </details>
+          }
+        }
+      </div>
+    } @else {
+      <!-- Legacy rendering: flat text + tool calls below (old messages) -->
+      <div class="legacy-content">
+        @if (!msg().streaming) {
+          @if (htmlUsePlainText()) {
+            <pre class="stream-text" [dsTypewriter]="justCompleted()">{{ msg().text }}</pre>
+          } @else {
+            <div class="md-content" [innerHTML]="renderedHtml()" [dsTypewriter]="justCompleted()"></div>
+          }
+        }
+      </div>
+      @if (legacyAnsweredQuestions().length) {
+        <div class="tool-uses">
+          @for (tc of legacyAnsweredQuestions(); track tc.id) {
+            <ds-question-answered-card [toolCall]="tc" />
+          }
+        </div>
+      }
+      @if (legacyToolCalls().length) {
+        <div class="tool-uses">
+          @for (tc of legacyToolCalls(); track tc.id) {
+            <ds-tool-call-card [toolCall]="tc" [active]="isToolInFlight(tc)" />
+          }
+        </div>
+      } @else if (msg().tools?.length) {
+        <div class="tool-uses">
+          @for (t of msg().tools!; track $index) {
+            <div
+              class="tool-use"
+              [attr.data-status]="
+                msg().streaming && $last ? 'run' : 'done'
+              "
+            >
+              <span class="ic">
+                @if (msg().streaming && $last) {
+                  <dv-icon class="spin" [icon]="LucideLoader" size="sm" />
+                } @else {
+                  <dv-icon [icon]="LucideCheck" size="sm" />
+                }
+              </span>
+              <span class="tname">{{ toolLabel(t) }}</span>
+            </div>
+          }
+        </div>
+      }
+    }
+
+    <!-- Improvement #1: streaming progress line -->
+    @if (msg().streaming && msg().role === 'assistant') {
+      <div class="progress-line" aria-live="polite" aria-atomic="true">
+        <span class="progress-dot" aria-hidden="true">●</span>
+        <span class="progress-text">{{ progressLabel() }}</span>
+        @if (progressArg()) {
+          <span class="progress-arg">{{ progressArg() }}</span>
+        }
+      </div>
+    }
+
+    @if (!msg().streaming || usageLabel()) {
+      <div class="bubble-footer">
+        @if (usageLabel(); as label) {
+          <span class="usage-line">{{ label }}</span>
+        }
+        @if (!msg().streaming) {
+          <span class="copy-btn-slot" [class.is-copied]="copied()">
+            <dv-button iconOnly
+                       variant="ghost"
+                       size="sm"
+                       [ariaLabel]="'message_bubble.copy_aria' | translate"
+                       (clicked)="copyToClipboard()">
+              <dv-icon [icon]="copied() ? LucideCheck : LucideCopy" size="sm" />
+            </dv-button>
+          </span>
+        }
+      </div>
+    }
+  </div>
+</dv-ai-bubble>

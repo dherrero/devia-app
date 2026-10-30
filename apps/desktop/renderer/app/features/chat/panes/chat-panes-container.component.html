@@ -1,0 +1,62 @@
+<div class="panes" [class.is-multi]="columns().length > 1 || columns()[0].panes.length > 1">
+  @for (column of columns(); track $index; let ci = $index) {
+    <div class="pane-col">
+      @for (pane of column.panes; track pane.id; let ri = $index) {
+        <section
+          class="pane"
+          [class.focused]="pane.id === focusedPaneId()"
+          (click)="onFocus(pane.id)">
+
+          <!-- Floating per-pane controls: split (only on the column's first row)
+               + close (only on additional panes). Kept as a small overlay so the
+               single-pane view stays visually unchanged but for one control. -->
+          <div class="pane-controls">
+            @if (ri === 0 && splitIcon(ci) !== 'none') {
+              <dv-button
+                iconOnly
+                variant="ghost"
+                size="sm"
+                (clicked)="onSplit(ci)"
+                [dvTooltip]="(splitIcon(ci) === 'vertical' ? 'panes.split_vertical' : 'panes.split_horizontal') | translate"
+                [ariaLabel]="(splitIcon(ci) === 'vertical' ? 'panes.split_vertical' : 'panes.split_horizontal') | translate">
+                <dv-icon [icon]="splitIcon(ci) === 'vertical' ? LucideColumns2 : LucideRows2" size="sm" />
+              </dv-button>
+            }
+            @if (pane.id !== 'primary') {
+              <dv-button
+                iconOnly
+                variant="ghost"
+                size="sm"
+                (clicked)="onRequestClose(pane)"
+                [dvTooltip]="'panes.close' | translate"
+                [ariaLabel]="'panes.close' | translate">
+                <dv-icon [icon]="LucideX" size="sm" />
+              </dv-button>
+            }
+          </div>
+
+          <ds-chat-panel
+            [project]="pane.sessionRef.baseProject || null"
+            [runKey]="runKeyFor(pane)"
+            [isolate]="isolatedFor(pane)"
+            [workdir]="isolatedFor(pane) ? pane.sessionRef.workdir : null"
+            [worktreeBranch]="isolatedFor(pane) ? (pane.sessionRef.branch ?? null) : null"
+            [sessionId]="pane.sessionRef.sessionId || null" />
+        </section>
+      }
+    </div>
+  }
+</div>
+
+@if (pendingClose(); as pane) {
+  <div class="close-modal-backdrop" (click)="cancelClose()">
+    <div class="close-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <h3>{{ 'panes.close_running_title' | translate }}</h3>
+      <p>{{ 'panes.close_running_body' | translate }}</p>
+      <div class="close-modal-actions">
+        <dv-button variant="secondary" (clicked)="cancelClose()">{{ 'panes.cancel' | translate }}</dv-button>
+        <dv-button variant="danger" (clicked)="confirmClose()">{{ 'panes.close_anyway' | translate }}</dv-button>
+      </div>
+    </div>
+  </div>
+}

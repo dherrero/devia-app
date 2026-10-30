@@ -1,0 +1,42 @@
+@switch (msg().role) {
+  @case ("user") {
+    <ds-user-turn [msg]="msg()" />
+  }
+  @case ("system") {
+    @if (errorCardData(); as ecd) {
+      <!-- Classified error card (improvement #3) -->
+      <div class="msg-error-card">
+        <dv-error-bubble
+          [message]="ecd.titleKey | translate"
+          [detail]="msg().text ?? ''"
+          avatarImageSrc="assets/images/Devia-enfado.png"
+          [retryLabel]="'message_bubble.retry' | translate"
+          [showRetry]="showRetry()"
+          [continueLabel]="'message_bubble.continue' | translate"
+          [showContinue]="showRetry()"
+          (retry)="retry.emit()"
+          (continueRun)="continueRun.emit()"
+        />
+      </div>
+    } @else {
+      <!-- Plain divider line (no errorClassification) -->
+      <div class="msg-sys">
+        <dv-system-pill [content]="msg().text ?? ''" />
+        @if (showRetry()) {
+          <dv-button variant="secondary" size="sm" (clicked)="retry.emit()">
+            <dv-icon [icon]="LucideRefreshCw" size="sm" /> {{ 'message_bubble.retry' | translate }}
+          </dv-button>
+          <dv-button variant="secondary" size="sm" (clicked)="continueRun.emit()">
+            {{ 'message_bubble.continue' | translate }}
+          </dv-button>
+        }
+      </div>
+    }
+  }
+  @case ("assistant") {
+    <ds-assistant-turn [msg]="msg()" [isLatest]="isLatest()" />
+  }
+  @case ("outbox") {
+    <ds-outbox-card [msg]="msg()" />
+  }
+}

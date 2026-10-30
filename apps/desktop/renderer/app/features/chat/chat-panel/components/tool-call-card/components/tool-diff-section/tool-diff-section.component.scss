@@ -1,0 +1,40 @@
+:host {
+  display: block;
+}
+
+/* Inline diff section (TS-CLI-10) — collapsed by default */
+.tc-diff {
+  border-top: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-bor);
+}
+.tc-diff-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.625rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: var(--dv-fs-xs);
+  font-family: var(--dv-font);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dv-muted);
+}
+.tc-diff-summary::-webkit-details-marker { display: none; }
+.tc-diff-summary:hover { color: var(--dv-fg); background: var(--dv-surf3); }
+.tc-diff-icon {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex-shrink: 0;
+  color: var(--dv-muted);
+}
+.tc-diff ds-diff-viewer {
+  display: block;
+  max-height: 25rem;
+  overflow-y: auto;
+}
+
+.tc-review-action-slot {
+  margin-left: auto;
+}

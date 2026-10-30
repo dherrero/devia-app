@@ -1,0 +1,16 @@
+    <div class="ds-registry-viewer">
+      <header>
+        <h2 class="ds-rv-title">
+          <dv-icon [icon]="LucideFileText" size="sm" />
+          {{ data.title }}
+        </h2>
+        <code class="path">{{ data.relativePath }}</code>
+      </header>
+      <div class="ds-rv-content">
+        <article class="ds-registry-md" [innerHTML]="html()"></article>
+      </div>
+      <div class="ds-rv-actions">
+        <dv-button variant="secondary" (clicked)="ref?.close()">{{ 'registry_viewer.close' | translate }}</dv-button>
+      </div>
+    </div>
+  

@@ -1,0 +1,214 @@
+@use '_index' as dv;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.dv-select__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dv-fg);
+}
+
+.dv-select__wrapper {
+  position: relative;
+}
+
+.dv-select__control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.375rem;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-family: var(--dv-font);
+  text-align: left;
+  color: var(--dv-fg);
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  cursor: pointer;
+  transition:
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    box-shadow var(--dv-dur-quick) var(--dv-ease-out),
+    background var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover:not(:disabled),
+  &--open {
+    border-color: var(--dv-bor-2);
+    background: var(--dv-surf-2);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px var(--dv-acc-lo),
+      0 0 0 1px var(--dv-acc);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.dv-select__control--placeholder {
+  color: var(--dv-muted);
+}
+
+.dv-select__value {
+  @include dv.dv-truncate;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.dv-select__chevron {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  opacity: 0.7;
+  transform: translateY(-65%) rotate(45deg);
+  transition: transform var(--dv-dur-fast) var(--dv-ease-out);
+}
+
+.dv-select__control--open .dv-select__chevron {
+  transform: translateY(-35%) rotate(225deg);
+}
+
+:host(.dv-select-host--invalid) .dv-select__control {
+  border-color: var(--dv-danger);
+  box-shadow: 0 0 0 3px var(--dv-danger-lo);
+}
+
+.dv-select__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  max-height: min(18rem, calc(100vh - 2rem));
+  min-width: 10rem;
+  padding: 0.25rem;
+  overflow: auto;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-lg);
+  box-shadow: var(--dv-shadow-lg);
+  outline: none;
+  animation: dv-select-in var(--dv-dur-fast) var(--dv-ease-out) both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+.dv-select__option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.4375rem 0.625rem;
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  color: var(--dv-fg);
+  background: transparent;
+  border: 0;
+  border-radius: var(--dv-r-md);
+  cursor: pointer;
+  outline: none;
+  transition:
+    background var(--dv-dur-fast) var(--dv-ease-out),
+    color var(--dv-dur-fast) var(--dv-ease-out);
+  user-select: none;
+
+  &:hover:not(:disabled),
+  &--active:not(:disabled) {
+    background: var(--dv-surf-2);
+  }
+
+  &:focus-visible {
+    @include dv.dv-focus-ring;
+  }
+
+  &:active:not(:disabled) {
+    background: var(--dv-surf-3);
+    transform: scale(0.99);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.dv-select__option--selected {
+  color: var(--dv-acc);
+  background: var(--dv-acc-lo);
+}
+
+.dv-select__option-label {
+  @include dv.dv-truncate;
+  flex: 1;
+  min-width: 0;
+}
+
+.dv-select__option-check {
+  width: 0.75rem;
+  height: 0.375rem;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.dv-select__empty {
+  display: block;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--dv-muted);
+}
+
+.dv-select__projected-options {
+  display: none;
+}
+
+.dv-select__error {
+  font-size: 0.75rem;
+  color: var(--dv-danger);
+}
+.dv-select__hint {
+  font-size: 0.75rem;
+  color: var(--dv-muted);
+}
+
+:host(.dv-select-host--sm) .dv-select__control {
+  min-height: 2rem;
+  padding-block: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+:host(.dv-select-host--lg) .dv-select__control {
+  min-height: 2.75rem;
+  padding-block: 0.625rem;
+  font-size: 0.9375rem;
+}
+
+@keyframes dv-select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

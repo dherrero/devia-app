@@ -1,0 +1,467 @@
+:host {
+  display: block;
+}
+
+/* ── Assistant ───────────────────────────────────────────────── */
+.msg-asst {
+  display: block;
+}
+.msg-asst .body-col {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.msg-asst { cursor: default; }
+
+/* ── Thinking block (collapsible) ────────────────────────────── */
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+.thinking-pulse {
+  display: inline-block;
+  width: 0.4375rem; height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--dv-acc, #7c6af6);
+  animation: thinking-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.thinking-block {
+  margin-bottom: 0.375rem;
+  border: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-surf2);
+  overflow: hidden;
+}
+.thinking-summary {
+  cursor: pointer;
+  min-height: 1.875rem;
+  padding: 0.3125rem 0.75rem;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-md);
+  font-weight: 600;
+  color: var(--dv-fg);
+  background: var(--dv-surf);
+  user-select: none;
+  list-style: none;
+  display: flex; align-items: center; gap: 0.375rem;
+}
+.thinking-summary::-webkit-details-marker { display: none; }
+.thinking-summary:hover { background: var(--dv-surf2); }
+.thinking-icon {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex-shrink: 0;
+  color: var(--dv-muted);
+}
+.thinking-body {
+  padding: 0.5rem 0.75rem 0.625rem;
+  background: var(--dv-surf2);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-sm);
+  color: var(--dv-dim);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  border-top: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-bor);
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+/* ── Tool-call group (improvement #2) ───────────────────────── */
+.tool-group {
+  flex: 0 0 100%;
+  border: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-surf2);
+  overflow: hidden;
+}
+.tg-summary {
+  cursor: pointer;
+  min-height: 1.875rem;
+  padding: 0.3125rem 0.75rem;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-md);
+  font-weight: 600;
+  color: var(--dv-fg);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: var(--dv-surf);
+}
+.tg-summary::-webkit-details-marker { display: none; }
+.tg-summary:hover { background: var(--dv-surf2); }
+.tg-icon {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex-shrink: 0;
+  color: var(--dv-muted);
+}
+.tg-label { flex: 1; }
+.tg-err-dot {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--dv-danger);
+  flex-shrink: 0;
+}
+.tg-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem 0.5rem;
+  border-top: var(--dv-bd-thin) var(--dv-bd-style) var(--dv-bor);
+}
+.tg-cards > ds-tool-call-card {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* ── Streaming progress line (improvement #1) ───────────────── */
+@keyframes progress-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.progress-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  font-size: var(--dv-fs-xs);
+  color: var(--dv-dim);
+  font-family: var(--dv-mono);
+  line-height: 1.4;
+  min-height: 1.2em;
+}
+.progress-dot {
+  color: var(--dv-acc);
+  animation: progress-blink 1.4s ease-in-out infinite;
+  font-size: 0.5rem;
+  line-height: 1;
+  align-self: center;
+}
+.progress-text {
+  color: var(--dv-dim);
+}
+.progress-arg {
+  color: var(--dv-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 20rem;
+}
+
+/* ── Footer: token-usage line + copy button (bottom-right) ──── */
+/* V1 refinement: telemetry is secondary information — it rests dimmed
+   and comes to full strength when the turn is hovered (or the copy
+   button is focused), cutting per-turn visual noise in long sessions. */
+.msg-asst .bubble-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  opacity: 0.45;
+  transition: opacity var(--dv-dur-quick) var(--dv-ease-out);
+}
+.msg-asst:hover .bubble-footer,
+.msg-asst .bubble-footer:focus-within {
+  opacity: 1;
+}
+.usage-line {
+  font-size: var(--dv-fs-2xs);
+  color: var(--dv-dim);
+  font-family: var(--dv-mono);
+  line-height: 1.4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-asst .message-segment,
+.msg-asst .legacy-content {
+  color: var(--dv-fg);
+  padding: 0;
+  font-size: var(--dv-fs-md);
+  line-height: 1.65;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Copy button — lives in the bubble footer, to the right of the
+ token-usage line (no longer an absolute overlay). */
+.msg-asst .copy-btn-slot {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.stream-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Ordered content blocks: text bubbles always take their own row; tool
+   cards flow side-by-side as chips when collapsed and expand to a full
+   row when the user opens them. The :has(details[open]) selector lets
+   the parent layout react to the card's open state without us needing
+   to mirror it in component state. */
+.content-blocks {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: flex-start;
+  gap: 0.375rem;
+}
+.content-blocks > .message-segment {
+  flex: 0 0 100%;
+  margin: 0;
+}
+/* Tool cards render as full-width stacked rows (audit v2 · 05) so the mono
+   header can show the file path / command argument without truncating to a
+   chip. */
+.content-blocks > ds-tool-call-card {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+.content-blocks > ds-question-answered-card,
+.tool-uses > ds-question-answered-card {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+/* Legacy rendering path uses the same chip-flow layout for parity. */
+.tool-uses {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-flow: row wrap;
+  align-items: flex-start;
+  gap: 0.375rem;
+}
+.tool-uses > ds-tool-call-card {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+.tool-use {
+  display: grid;
+  grid-template-columns: 1rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--dv-font);
+  font-size: var(--dv-fs-xs);
+  color: var(--dv-muted);
+  padding: 0.125rem 0;
+}
+.tool-use .ic { display: inline-grid; place-items: center;
+}
+.tool-use[data-status="done"] .ic {
+  color: var(--dv-acc);
+}
+.tool-use[data-status="run"] .ic {
+  color: var(--dv-warn);
+}
+.tool-use .ic dv-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.tool-use .tname {
+  color: var(--dv-dim);
+  font-weight: 500;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Markdown content (assistant body) ───────────────────────── */
+/* CRITICAL — these rules use ::ng-deep because the markdown is injected
+ via [innerHTML] from marked.parse(). With Angular's default Emulated
+ view encapsulation, descendants of .md-content that come from innerHTML
+ do NOT get the _ngcontent-xxx attribute, so a plain .md-content pre
+ rule gets rewritten with attribute selectors on both .md-content and
+ pre and never matches. Without ::ng-deep, the browser default
+ <pre> { white-space: pre } kicks in and long code lines refuse to wrap
+ — overflowing the chat bubble even though every container in the
+ chain has min-width:0 and max-width:100%. ::ng-deep is deprecated but
+ still the standard escape hatch for exactly this case (innerHTML
+ descendants); the alternative is ViewEncapsulation.None on the whole
+ component, which would leak the bubble layout styles globally. */
+:host ::ng-deep .md-content {
+  white-space: normal;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+:host ::ng-deep .md-content > * {
+  max-width: 100%;
+}
+:host ::ng-deep .md-content > *:first-child {
+  margin-top: 0;
+}
+:host ::ng-deep .md-content > *:last-child {
+  margin-bottom: 0;
+}
+:host ::ng-deep .md-content :is(p, li, blockquote, a) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+:host ::ng-deep .md-content img {
+  max-width: 100%;
+  height: auto;
+}
+:host ::ng-deep .md-content :is(p) {
+  margin: 0 0 0.5rem;
+}
+:host ::ng-deep .md-content :is(h1, h2, h3) {
+  margin: 0.625rem 0 0.375rem;
+  font-size: var(--dv-fs-md);
+  font-weight: 600;
+  color: var(--dv-fg);
+}
+:host ::ng-deep .md-content :is(ul, ol) {
+  margin: 0.375rem 0;
+  padding-left: 1.375rem;
+}
+:host ::ng-deep .md-content li {
+  margin: 0.125rem 0;
+}
+:host ::ng-deep .md-content a {
+  color: var(--dv-acc);
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+}
+:host ::ng-deep .md-content code {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-sm);
+  background: var(--dv-surf-2);
+  padding: 0.0625rem 0.375rem;
+  border: 0.5px solid var(--dv-bor-2);
+  border-radius: 0.25rem;
+  color: var(--dv-fg);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* Wrap fenced blocks instead of horizontal scroll — chat bubbles are
+ narrow and a sideways scrollbar inside a message is awful UX. We keep
+ <pre> semantics for indentation via pre-wrap, and use overflow-wrap
+ to break long unbreakable tokens (package names, URLs, hashes). */
+:host ::ng-deep .md-content pre {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-sm);
+  background: var(--dv-surf-2);
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 0.5px solid var(--dv-bor-2);
+  margin: 0.5rem 0;
+  line-height: 1.55;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+:host ::ng-deep .md-content pre code {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+}
+:host ::ng-deep .md-content pre code.json-code {
+  color: inherit;
+}
+:host ::ng-deep .md-content .json-token {
+  font: inherit;
+}
+:host ::ng-deep .md-content .json-key {
+  color: color-mix(in oklch, oklch(72% 0.2 235) 90%, var(--dv-fg));
+}
+:host ::ng-deep .md-content .json-string {
+  color: color-mix(in oklch, oklch(70% 0.2 145) 88%, var(--dv-fg));
+}
+:host ::ng-deep .md-content .json-number {
+  color: color-mix(in oklch, oklch(72% 0.2 70) 90%, var(--dv-fg));
+}
+:host ::ng-deep .md-content .json-boolean,
+:host ::ng-deep .md-content .json-null {
+  color: color-mix(in oklch, oklch(70% 0.22 25) 86%, var(--dv-fg));
+}
+:host ::ng-deep .md-content .json-punctuation {
+  color: color-mix(in oklch, var(--dv-muted) 72%, var(--dv-fg));
+}
+:host ::ng-deep .md-content table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--dv-fs-sm);
+  margin: 0.5rem 0;
+  border: 0.5px solid var(--dv-bor-2);
+  border-radius: 0.5rem;
+  background: var(--dv-surf-2);
+  scrollbar-width: thin;
+}
+:host ::ng-deep .md-content thead {
+  background: color-mix(in oklch, var(--dv-acc) 12%, var(--dv-surf-2));
+}
+:host ::ng-deep .md-content tbody tr:nth-child(even) {
+  background: color-mix(in oklch, var(--dv-fg) 3%, transparent);
+}
+:host ::ng-deep .md-content tbody tr:hover {
+  background: color-mix(in oklch, var(--dv-acc) 8%, transparent);
+}
+:host ::ng-deep .md-content blockquote {
+  margin: 0.5rem 0;
+  padding: 0.375rem 0.75rem;
+  border-left: 3px solid var(--dv-acc-med);
+  background: var(--dv-surf-2);
+  color: var(--dv-dim);
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+:host ::ng-deep .md-content :is(th, td) {
+  border: 0.5px solid var(--dv-bor-2);
+  border-width: 0 0.5px 0.5px 0;
+  padding: 0.375rem 0.625rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  min-width: 7rem;
+}
+:host ::ng-deep .md-content th {
+  color: var(--dv-fg);
+  font-weight: 600;
+}
+:host ::ng-deep .md-content td {
+  color: var(--dv-dim);
+}
+:host ::ng-deep .md-content tr > :last-child {
+  border-right-width: 0;
+}
+:host ::ng-deep .md-content tbody tr:last-child > td {
+  border-bottom-width: 0;
+}
+:host ::ng-deep .md-content td code,
+:host ::ng-deep .md-content th code {
+  font-size: var(--dv-fs-xs);
+  padding: 0.0625rem 0.25rem;
+}

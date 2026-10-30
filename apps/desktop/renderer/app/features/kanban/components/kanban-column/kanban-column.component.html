@@ -1,0 +1,47 @@
+<header class="dsk-col-head">
+  <span>{{ ('sdd.col_' + col()) | translate }}</span>
+  <span class="dsk-count">{{ cards().length }}</span>
+  <button class="dsk-col-menu" type="button" aria-label="Opciones de columna">
+    <span aria-hidden="true">...</span>
+  </button>
+</header>
+<div class="dsk-col-body"
+     [id]="dropId()"
+     cdkDropList
+     [cdkDropListData]="cards()"
+     [cdkDropListConnectedTo]="connectedTo()"
+     (cdkDropListDropped)="dropped.emit($event)">
+  @for (card of cards(); track card.id) {
+    <ds-kanban-card cdkDrag
+                    [card]="card"
+                    [showSpecTag]="showSpecTag()"
+                    [specTitle]="specTitles()[card.specId] ?? card.specId"
+                    (opened)="cardOpened.emit(card)" />
+  }
+  @if (cards().length === 0) {
+    <div class="dsk-col-empty">
+      <dv-icon [icon]="LucideInbox" size="sm" />
+      <span>{{ 'sdd.col_empty' | translate }}</span>
+    </div>
+  }
+</div>
+<footer class="dsk-quick-add">
+  @if (quickAddOpen()) {
+    <div class="dsk-task-form">
+      <dv-input class="dsk-task-form-input"
+             size="sm"
+             [ngModel]="quickTitle"
+             (ngModelChange)="quickTitle = $event"
+             [ngModelOptions]="{ standalone: true }"
+             placeholder="Titulo de la tarjeta"
+             (keydown.enter)="$event.preventDefault(); quickCreated.emit(quickTitle)"
+             (keydown.escape)="quickAddCancelled.emit()" />
+      <span class="dsk-task-form-hint">Enter para crear · Esc para cancelar</span>
+    </div>
+  } @else {
+    <button class="dsk-quick-add-btn" type="button" (click)="startQuickAdd()">
+      <dv-icon [icon]="LucidePlus" size="sm" />
+      Añadir tarjeta
+    </button>
+  }
+</footer>

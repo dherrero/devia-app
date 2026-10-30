@@ -1,0 +1,39 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.dv-theme-toggle__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--dv-r-pill);
+  border: 1px solid var(--dv-bor);
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    background var(--dv-dur-quick) var(--dv-ease-out),
+    border-color var(--dv-dur-quick) var(--dv-ease-out),
+    color var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover {
+    background: var(--dv-surf-2);
+    border-color: var(--dv-bor-2);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px var(--dv-acc-lo),
+      0 0 0 1px var(--dv-acc);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+}

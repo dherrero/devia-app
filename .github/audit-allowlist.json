@@ -1,0 +1,4 @@
+{
+  "$comment": "Runtime advisories ignored by scripts/audit-runtime.mjs. Only for advisories with NO fixed version that our code cannot reach. Every entry must say why, and expires on reviewBy.",
+  "advisories": []
+}

@@ -1,0 +1,45 @@
+    <div class="nf-modal" role="dialog" aria-modal="true" aria-labelledby="rf-title">
+      <header class="nf-head rename-head">
+        <span class="nf-icon-badge" aria-hidden="true">
+          <dv-icon [icon]="LucidePencil" size="sm" />
+        </span>
+        <div class="nf-head-text">
+          <h2 class="nf-title" id="rf-title">{{ 'modals.rename_folder.title' | translate }}</h2>
+          <span class="nf-subtitle">"{{ data.currentName }}"</span>
+        </div>
+        <dv-button variant="secondary" size="sm" iconOnly ariaLabel="Cerrar" (clicked)="cancel()" [disabled]="renaming()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      </header>
+
+      <section class="nf-body">
+        <div class="nf-field">
+          <div class="nf-input-wrap">
+            <dv-input #inputRef
+                   [ngModel]="name()"
+                   (ngModelChange)="onNameChange($event)"
+                   [placeholder]="'modals.rename_folder.placeholder' | translate"
+                   [disabled]="renaming()"
+                   [spellcheck]="false"
+                   ariaLabel="Nombre de la carpeta"
+                   [attr.aria-invalid]="errorMessage() !== null"
+                   [attr.aria-describedby]="errorMessage() ? 'rf-error-msg' : null"
+                   (keydown.enter)="rename()" />
+          </div>
+          <div class="nf-error" [class.hidden]="errorMessage() === null" id="rf-error-msg" role="alert">
+            <span class="nf-error-dot" aria-hidden="true">!</span>
+            {{ errorMessage() }}
+          </div>
+        </div>
+      </section>
+
+      <footer class="nf-footer rename-footer">
+        <dv-button variant="ghost" type="button" (clicked)="cancel()" [disabled]="renaming()">
+          {{ 'modals.rename_folder.cancel' | translate }}
+        </dv-button>
+        <dv-button variant="primary" type="button" [disabled]="!canRename()" [loading]="renaming()" (clicked)="rename()">
+          {{ 'modals.rename_folder.rename' | translate }}
+        </dv-button>
+      </footer>
+    </div>
+  

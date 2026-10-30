@@ -1,0 +1,12 @@
+:host {
+  display: inline;
+  padding: 0 0.25rem;
+  background: var(--dv-surf2);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-sm);
+  // Inline code reads as code, not a link: foreground ink keeps the accent
+  // (magenta in violet-dark) from shouting in every paragraph.
+  color: var(--dv-fg);
+  font-family: var(--dv-mono);
+  font-size: 0.8em;
+}

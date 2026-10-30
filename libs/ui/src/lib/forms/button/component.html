@@ -1,0 +1,36 @@
+<button
+  [type]="type()"
+  [disabled]="disabled() || loading()"
+  [attr.aria-label]="ariaLabel()"
+  [attr.aria-busy]="loading() ? 'true' : null"
+  [class]="'dv-button dv-button--' + variant() + ' dv-button--' + size()"
+  [class.dv-button--full-width]="fullWidth()"
+  [class.dv-button--icon-only]="iconOnly()"
+  [class.dv-button--loading]="loading()"
+  [class.dv-button--pill]="shape() === 'pill'"
+  [class.dv-is-rippling]="isRippling()"
+  (click)="handleClick($event)"
+  data-testid="dv-button"
+>
+  @if (loading()) {
+  <dv-spinner
+    [size]="size() === 'lg' ? 'md' : 'sm'"
+    class="dv-button__spinner"
+  />
+  }
+  <span
+    class="dv-button__icon"
+    [class.dv-button__icon--hidden]="loading()"
+    aria-hidden="true"
+  >
+    <ng-content select="dv-icon" />
+  </span>
+  @if (!iconOnly()) {
+  <span
+    class="dv-button__content"
+    [class.dv-button__content--hidden]="loading()"
+  >
+    <ng-content />
+  </span>
+  }
+</button>

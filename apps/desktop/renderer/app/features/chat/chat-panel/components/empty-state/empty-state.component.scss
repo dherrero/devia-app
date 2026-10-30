@@ -1,0 +1,55 @@
+    :host { flex: 1; display: block; min-height: 0; }
+    .dsm-empty {
+      height: 100%;
+      display: grid; place-items: center;
+      padding: 2.5rem;
+      background: var(--dv-bg);
+    }
+    .inner {
+      text-align: center;
+      max-width: 22.5rem;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 0.875rem;
+    }
+    .glyph {
+      width: 4.5rem; height: 4.5rem;
+      border-radius: var(--dv-r-xl);
+      background: var(--dv-acc-lo);
+      display: grid; place-items: center;
+      color: var(--dv-muted);
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--dv-shadow-inset);
+    }
+    .ic {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    h3 {
+      margin: 0;
+      font-size: var(--dv-fs-lg);
+      font-weight: 600;
+      letter-spacing: -0.005em;
+      color: var(--dv-fg);
+    }
+    p {
+      margin: 0;
+      font-size: var(--dv-fs-sm);
+      color: var(--dv-muted);
+      line-height: 1.55;
+    }
+    kbd {
+      display: inline-grid; place-items: center;
+      height: 1.125rem; min-width: 1.125rem; padding: 0 0.3125rem;
+      background: var(--dv-surf-3);
+      border: 0.5px solid var(--dv-bor-2);
+      border-radius: var(--dv-r-xs);
+      font-family: var(--dv-mono);
+      font-size: var(--dv-fs-2xs);
+      color: var(--dv-muted);
+      vertical-align: middle;
+    }
+  

@@ -1,0 +1,48 @@
+@for (item of items(); track item.label; let i = $index) {
+  @if (item.dividerBefore && i > 0) {
+    <hr class="dv-menu-panel__divider" aria-hidden="true" />
+  }
+  @if (isZoomControl(item)) {
+    <div
+      class="dv-menu-panel__zoom"
+      role="group"
+      [attr.aria-label]="item.label"
+    >
+      <span class="dv-menu-panel__zoom-label">{{ item.label }}</span>
+      <div class="dv-menu-panel__zoom-controls">
+        <button
+          type="button"
+          class="dv-menu-panel__zoom-button"
+          [attr.aria-label]="item.decreaseAction.label"
+          [disabled]="item.decreaseAction.disabled"
+          (click)="onZoomAction(item, item.decreaseAction)"
+        >
+          -
+        </button>
+        <button
+          type="button"
+          class="dv-menu-panel__zoom-value"
+          [attr.aria-label]="item.resetAction.label"
+          [disabled]="item.resetAction.disabled"
+          (click)="onZoomAction(item, item.resetAction)"
+        >
+          {{ item.valueLabel }}
+        </button>
+        <button
+          type="button"
+          class="dv-menu-panel__zoom-button"
+          [attr.aria-label]="item.increaseAction.label"
+          [disabled]="item.increaseAction.disabled"
+          (click)="onZoomAction(item, item.increaseAction)"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  } @else {
+    <dv-menu-item
+      [item]="asActionItem(item)"
+      (activated)="onItemActivated($event)"
+    />
+  }
+}

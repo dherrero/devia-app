@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Devia</title>
+  <base href="./" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* Keep the frameless Electron window transparent outside the app shell.
+       The Angular root paints the themed surface once it bootstraps. */
+    html, body { margin: 0; height: 100%; background: transparent; color: #1c1140; }
+  </style>
+  <script>
+    // Apply persisted theme (light/dark/navy/navy-dark) before first paint.
+    (function () {
+      try {
+        var theme = localStorage.getItem('devia.theme') || 'light';
+        var validThemes = { light: 1, dark: 1, navy: 1, 'navy-dark': 1 };
+        if (!validThemes[theme]) theme = 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.style.background = 'transparent';
+
+        // Apply persisted style family (rounded/sharp)
+        var styleVal = localStorage.getItem('devia.style') || 'rounded';
+        if (styleVal === 'sharp') document.documentElement.setAttribute('data-style', 'sharp');
+
+        var zoom = parseInt(localStorage.getItem('devia.renderer.zoom') || '100', 10);
+        if (!Number.isFinite(zoom)) zoom = 100;
+        zoom = Math.min(140, Math.max(80, Math.round(zoom / 10) * 10));
+        document.documentElement.style.fontSize = zoom + '%';
+      } catch (_) { /* private mode / SSR — fall back to literal default */ }
+    })();
+  </script>
+</head>
+<body class="mat-typography">
+  <ds-root></ds-root>
+</body>
+</html>

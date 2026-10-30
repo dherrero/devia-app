@@ -1,0 +1,117 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.dv-stepper__root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.dv-stepper__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: var(--dv-fs-xs);
+}
+
+.dv-stepper__progress-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--dv-fg);
+}
+
+.dv-stepper__current {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dv-muted);
+}
+
+.dv-stepper__toggle {
+  @include dv.dv-button-reset;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-pill);
+  font-size: var(--dv-fs-xs);
+  color: var(--dv-muted);
+  transition: color var(--dv-dur-quick) var(--dv-ease-out);
+
+  &:hover {
+    color: var(--dv-fg);
+  }
+  &:focus-visible {
+    @include dv.dv-focus-ring;
+  }
+}
+
+.dv-stepper__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dv-stepper__step {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  color: var(--dv-muted);
+  font-size: var(--dv-fs-sm);
+
+  &--active {
+    color: var(--dv-fg);
+  }
+  &--done .dv-stepper__label {
+    text-decoration: line-through;
+  }
+}
+
+.dv-stepper__marker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--dv-bor);
+  border-radius: 50%;
+  font-size: var(--dv-fs-2xs, 0.625rem);
+
+  .dv-stepper__step--active & {
+    border-color: var(--dv-acc);
+    color: var(--dv-acc-fg);
+    background: var(--dv-acc);
+  }
+  .dv-stepper__step--done & {
+    border-color: var(--dv-acc-bor);
+    color: var(--dv-acc);
+  }
+}
+
+.dv-stepper__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.dv-stepper__note {
+  font-size: var(--dv-fs-xs);
+  color: var(--dv-muted);
+}
+
+.dv-stepper__content {
+  margin-top: 0.375rem;
+}

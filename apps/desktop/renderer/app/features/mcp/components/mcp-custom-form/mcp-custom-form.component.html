@@ -1,0 +1,60 @@
+<div class="custom-form">
+  <dv-input
+    label="id"
+    [ngModel]="form().id"
+    (ngModelChange)="updateFormText('id', $event)"
+  />
+  <dv-input
+    [label]="'mcp.modal.field_name' | translate"
+    [ngModel]="form().name"
+    (ngModelChange)="updateFormText('name', $event)"
+  />
+  <dv-input
+    [label]="'mcp.modal.field_description' | translate"
+    [ngModel]="form().description"
+    (ngModelChange)="updateFormText('description', $event)"
+  />
+  <dv-input
+    [label]="'mcp.modal.field_command' | translate"
+    [ngModel]="form().command"
+    (ngModelChange)="updateFormText('command', $event)"
+  />
+  <dv-input
+    [label]="'mcp.modal.field_args' | translate"
+    [ngModel]="form().argsText"
+    (ngModelChange)="updateFormText('argsText', $event)"
+    [placeholder]="'mcp.modal.field_args_placeholder' | translate"
+  />
+  <dv-textarea
+    [label]="'mcp.modal.field_env' | translate"
+    [rows]="3"
+    [ngModel]="form().envText"
+    (ngModelChange)="updateFormText('envText', $event)"
+    [placeholder]="'mcp.modal.field_env_placeholder' | translate"
+  />
+
+  <fieldset class="agents-fs">
+    <legend>{{ 'mcp.modal.field_agents' | translate }}</legend>
+    <div class="agents-grid">
+      @for (a of allAgents; track a.id) {
+        <dv-checkbox
+          [ngModel]="form().agents.has(a.id)"
+          (valueChange)="toggleAgent(a.id, $event)"
+          [label]="a.label">
+        </dv-checkbox>
+      }
+    </div>
+  </fieldset>
+
+  @if (projectPath()) {
+    <fieldset class="scope-fs">
+      <legend>{{ 'mcp.modal.field_scope' | translate }}</legend>
+      <dv-radio-group
+        class="scope-radio"
+        [options]="scopeOptions()"
+        [ngModel]="form().scope"
+        (ngModelChange)="setScope($event)"
+      />
+    </fieldset>
+  }
+</div>

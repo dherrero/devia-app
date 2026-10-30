@@ -1,0 +1,219 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+}
+
+.modal-head,
+.modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.modal-head {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--dv-bor);
+}
+
+.modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.modal-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--dv-r-sm);
+  background: var(--dv-acc-lo);
+  color: var(--dv-acc);
+}
+
+.modal-title {
+  font-weight: 600;
+}
+
+.modal-body {
+  // Plain block scroll container — NOT a flex column. A flex column here makes
+  // each `.ci-project` a shrinkable flex item, and because the sections set
+  // `overflow:hidden` their `min-height` resolves to 0, so flex-shrink crushes
+  // them and the rows collapse/overlap. Block flow keeps natural heights.
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+}
+
+.ci-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--dv-muted);
+}
+
+.ci-intro {
+  margin: 0 0 1rem;
+  color: var(--dv-muted);
+  font-size: 0.875rem;
+}
+
+.ci-selectall {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--dv-fg);
+}
+
+.ci-hint {
+  margin: 0;
+  color: var(--dv-muted);
+  font-size: 0.875rem;
+}
+
+.ci-agent {
+  & + & {
+    margin-top: 1.5rem;
+  }
+}
+
+.ci-agent-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+
+.ci-agent-name {
+  color: var(--dv-fg);
+  font-weight: 700;
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ci-project {
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  overflow: hidden;
+
+  & + & {
+    margin-top: 0.75rem;
+  }
+}
+
+.ci-project-head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--dv-surf-2);
+  border-bottom: 1px solid var(--dv-bor);
+}
+
+.ci-project-name {
+  color: var(--dv-fg);
+  font-weight: 600;
+}
+
+.ci-project-path {
+  color: var(--dv-muted);
+  font-size: 0.75rem;
+}
+
+.ci-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ci-session {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--dv-bor);
+}
+
+.ci-session:last-child {
+  border-bottom: none;
+}
+
+.ci-session.locked {
+  opacity: 0.55;
+}
+
+.ci-session-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.ci-session-title {
+  font-size: 0.875rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ci-session-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--dv-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.ci-badge {
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--dv-r-sm);
+  background: var(--dv-acc-lo);
+  color: var(--dv-acc);
+  font-size: 0.6875rem;
+}
+
+.ci-badge-resume {
+  background: color-mix(in srgb, var(--dv-ok, #3fb950) 18%, transparent);
+  color: var(--dv-ok, #3fb950);
+}
+
+.ci-badge-replay {
+  background: var(--dv-surf-2);
+  color: var(--dv-muted);
+}
+
+.modal-footer {
+  justify-content: space-between;
+  border-top: 1px solid var(--dv-bor);
+}
+
+.ci-force {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--dv-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 0.625rem;
+}

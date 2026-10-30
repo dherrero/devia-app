@@ -1,0 +1,72 @@
+@use '../../section-base';
+
+/* The host is transparent to layout: the sections participate directly in the
+   parent's .content-scroll flex column, exactly as before the split. */
+:host { display: contents; }
+
+/* ── Control remoto (E-DSK-14) ─────────────────────────────────── */
+.remote-integration {
+  border: 1px solid var(--dv-bor); border-radius: 10px;
+  padding: 0.875rem 1rem; gap: 0.625rem;
+}
+.remote-int-head { display: flex; align-items: center; gap: 0.5rem; }
+.remote-int-head dv-icon { color: var(--dv-acc); }
+.remote-int-name { font-weight: 600; }
+.remote-status {
+  margin-left: auto; font-size: var(--dv-fs-xs);
+  padding: 2px 0.625rem; border-radius: 999px;
+  background: var(--dv-surf-3); color: var(--dv-muted);
+}
+.remote-status[data-state='connected'] { color: var(--dv-acc); }
+.remote-status[data-state='auth-error'],
+.remote-status[data-state='error'] { color: var(--dv-danger); }
+
+.remote-integration,
+.info-callout {
+  background: var(--dv-surf-2);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--r-md);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--dv-muted);
+  line-height: 1.6;
+}
+
+.remote-int-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.remote-int-name {
+  font-weight: 600;
+  color: var(--dv-fg);
+}
+
+/* .remote-status half of the former `.remote-status, .test-result` restyle
+   rules (the .test-result half lives in _section-base.scss). */
+.remote-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  font-size: 0.6875rem;
+  font-family: var(--dv-mono);
+  padding: 0.1875rem 0.4375rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--dv-bor);
+  color: var(--dv-muted);
+  background: var(--dv-surf-2);
+}
+
+.remote-status[data-state='connected'] {
+  background: var(--dv-success-lo);
+  color: var(--dv-success);
+  border-color: var(--dv-success-bor);
+}
+
+.remote-status[data-state='auth-error'],
+.remote-status[data-state='error'] {
+  background: var(--dv-danger-lo);
+  color: var(--dv-danger);
+  border-color: var(--dv-danger-bor);
+}

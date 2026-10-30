@@ -1,0 +1,62 @@
+<div class="tc-card" [class.tc-card--open]="!collapsed()">
+  <div class="tc-summary"
+       role="button"
+       tabindex="0"
+       [attr.aria-expanded]="!collapsed()"
+       (click)="toggleCollapsed()"
+       (keydown.enter)="toggleCollapsed()"
+       (keydown.space)="toggleCollapsed(); $event.preventDefault()">
+    <span class="tc-summary-content">
+      @if (toolIconLucide(); as icon) {
+        <dv-icon class="tc-tool-icon"
+                 [icon]="icon"
+                 [attr.aria-label]="toolCall().name"
+                 [attr.title]="toolCall().name"
+                 size="sm" />
+      }
+      <span class="tc-name" [attr.title]="toolCall().name">
+        {{ displayTitle().key | translate: displayTitle().params }}
+      </span>
+      @if (mcpServerLabel(); as mcp) {
+        <span class="tc-mcp-chip" [title]="'mcp.tool_chip.tooltip' | translate">{{ mcp }}</span>
+      }
+      @if (headerArg(); as arg) {
+        <span class="tc-arg" [title]="headerArgTitle() ?? arg">{{ arg }}</span>
+      }
+      <span class="tc-status-pill" [attr.data-state]="statusClass()">
+        <dv-chat-status-badge [status]="chatBadgeStatus()">
+          @if (isRunning()) {
+            <dv-icon class="tc-spin" [icon]="LucideLoader" size="sm" aria-hidden="true" />
+          }
+          {{ summary().key | translate: summary().params }}
+        </dv-chat-status-badge>
+      </span>
+    </span>
+  </div>
+
+  <div class="tc-body" [class.tc-body--open]="!collapsed()">
+    <div class="tc-body-inner">
+
+      <!-- ① BURBUJA-TERMINAL: Bash / Execute special render -->
+      @if (isTerminalTool()) {
+        <ds-tool-terminal-block [toolCall]="toolCall()" />
+      }
+
+      <!-- ③ TARJETA-PLAN/TODO: TodoWrite render -->
+      @else if (isTodoTool()) {
+        <ds-tool-todo-block [toolCall]="toolCall()" />
+      }
+
+      <!-- Generic render (non-terminal, non-todo) -->
+      @else {
+        <ds-tool-generic-block [toolCall]="toolCall()" [filePath]="filePathArg()" />
+      }
+
+      <!-- ④ DIFF → "REVISAR EN CAMBIOS" -->
+      @if (hasDiff()) {
+        <ds-tool-diff-section [toolCall]="toolCall()" [filePath]="filePathArg()" />
+      }
+
+    </div>
+  </div>
+</div>

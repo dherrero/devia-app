@@ -1,0 +1,25 @@
+<svg
+  [attr.width]="svgSize()"
+  [attr.height]="svgSize()"
+  [attr.viewBox]="'0 0 ' + svgSize() + ' ' + svgSize()"
+  fill="none"
+  class="dv-spinner__svg"
+>
+  <circle
+    class="dv-spinner__track"
+    [attr.cx]="svgSize() / 2"
+    [attr.cy]="svgSize() / 2"
+    [attr.r]="radius()"
+    stroke-width="2"
+  />
+  <circle
+    class="dv-spinner__arc"
+    [attr.cx]="svgSize() / 2"
+    [attr.cy]="svgSize() / 2"
+    [attr.r]="radius()"
+    stroke-width="2"
+    [attr.stroke-dasharray]="circumference()"
+    [attr.stroke-dashoffset]="dashOffset()"
+  />
+</svg>
+<span class="dv-visually-hidden">Loading</span>

@@ -1,0 +1,96 @@
+@if (label()) {
+<label [id]="uid + '-label'" [for]="uid" class="dv-select__label"
+  >{{ label() }}</label
+>
+}
+<div class="dv-select__wrapper" cdkOverlayOrigin #origin="cdkOverlayOrigin">
+  <button
+    #trigger
+    [id]="uid"
+    type="button"
+    class="dv-select__control"
+    role="combobox"
+    aria-haspopup="listbox"
+    [disabled]="disabledState()"
+    [attr.aria-required]="required() ? 'true' : null"
+    [attr.aria-invalid]="error() ? 'true' : null"
+    [attr.aria-describedby]="ariaDescribedBy()"
+    [attr.aria-labelledby]="label() ? uid + '-label ' + uid : null"
+    [attr.aria-label]="label() ? null : ariaLabel()"
+    [attr.aria-expanded]="isOpen()"
+    [attr.aria-controls]="isOpen() ? listboxId : null"
+    [attr.aria-activedescendant]="activeOptionId()"
+    [class.dv-select__control--placeholder]="!selectedOption()"
+    [class.dv-select__control--open]="isOpen()"
+    (click)="toggle()"
+    (keydown)="onTriggerKeydown($event)"
+  >
+    <span class="dv-select__value">
+      @if (selectedOption()?.template; as selectedTemplate) {
+      <ng-container [ngTemplateOutlet]="selectedTemplate" />
+      } @else { {{ selectedLabel() }} }
+    </span>
+    <span class="dv-select__chevron" aria-hidden="true"></span>
+  </button>
+
+  <ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="origin"
+    [cdkConnectedOverlayOpen]="isOpen()"
+    [cdkConnectedOverlayPositions]="positions"
+    [cdkConnectedOverlayMinWidth]="overlayMinWidth()"
+    [cdkConnectedOverlayHasBackdrop]="true"
+    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+    [cdkConnectedOverlayPush]="true"
+    (backdropClick)="close()"
+    (detach)="close(false)"
+  >
+    <div
+      #listbox
+      [id]="listboxId"
+      class="dv-select__panel"
+      role="listbox"
+      tabindex="-1"
+      [style.min-width.px]="overlayMinWidth()"
+      [attr.aria-labelledby]="label() ? uid + '-label' : null"
+      [attr.aria-label]="label() ? null : ariaLabel()"
+      [attr.aria-activedescendant]="activeOptionId()"
+      (keydown)="onListboxKeydown($event)"
+    >
+      @for (option of allOptions(); track option.value; let i = $index) {
+      <button
+        type="button"
+        class="dv-select__option"
+        role="option"
+        [id]="optionId(i)"
+        [disabled]="option.disabled"
+        [attr.aria-selected]="value() === option.value"
+        [class.dv-select__option--active]="activeIndex() === i"
+        [class.dv-select__option--selected]="value() === option.value"
+        (click)="selectOption(option)"
+        (mouseenter)="setActive(i)"
+      >
+        <span class="dv-select__option-label">
+          @if (option.template) {
+          <ng-container [ngTemplateOutlet]="option.template" />
+          } @else { {{ option.label }} }
+        </span>
+        @if (value() === option.value) {
+        <span class="dv-select__option-check" aria-hidden="true"></span>
+        }
+      </button>
+      } @empty {
+      <span class="dv-select__empty">Sin opciones</span>
+      }
+    </div>
+  </ng-template>
+
+  <span class="dv-select__projected-options" aria-hidden="true">
+    <ng-content select="dv-select-option" />
+  </span>
+</div>
+@if (error()) {
+<span [id]="uid + '-error'" class="dv-select__error">{{ error() }}</span>
+} @else if (hint()) {
+<span [id]="uid + '-hint'" class="dv-select__hint">{{ hint() }}</span>
+}

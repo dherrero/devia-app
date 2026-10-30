@@ -1,0 +1,22 @@
+<div class="catalog-grid">
+  @for (entry of catalog(); track entry.slug) {
+    <article class="catalog-card">
+      <header>
+        <h4>{{ entry.name }}</h4>
+        <span class="source-chip" [attr.data-source]="entry.source">{{ entry.source }}</span>
+      </header>
+      <p>{{ entry.description }}</p>
+      <code class="cmd">{{ entry.command }} {{ entry.args.join(' ') }}</code>
+      @if (entry.requiredEnvKeys?.length) {
+        <p class="env-required">
+          <dv-icon [icon]="LucideKeyRound" size="sm" />
+          {{ 'mcp.modal.env_required' | translate }}: {{ entry.requiredEnvKeys?.join(', ') }}
+        </p>
+      }
+      <dv-button class="catalog-install" variant="primary" size="sm" type="button" (clicked)="installRequested.emit(entry)">
+        <dv-icon [icon]="LucidePlus" size="sm" />
+        {{ 'mcp.modal.install' | translate }}
+      </dv-button>
+    </article>
+  }
+</div>

@@ -1,0 +1,44 @@
+<section>
+  <h4>Directorio principal</h4>
+  <label>{{ 'modals.settings.workspace_label' | translate }}</label>
+  <div class="picker">
+    <dv-input
+      [ngModel]="workspaceForm().workspaceRoot"
+      (ngModelChange)="updateWorkspaceForm('workspaceRoot', $event)"
+    />
+    <dv-button variant="secondary" size="sm" shape="pill" (clicked)="pickFolder('workspaceRoot')">{{ 'modals.settings.browse' | translate }}</dv-button>
+  </div>
+
+  <label>{{ 'modals.settings.ignore_folders' | translate }} <span class="hint">{{ 'modals.settings.ignore_hint' | translate }}</span></label>
+  <dv-input
+    [ngModel]="workspaceForm().ignoreFolders"
+    (ngModelChange)="updateWorkspaceForm('ignoreFolders', $event)"
+    [placeholder]="'modals.settings.ignore_placeholder' | translate"
+  />
+</section>
+
+<div class="hr"></div>
+
+<section>
+  <h4>Historial</h4>
+  <label>{{ 'modals.settings.snapshot_label' | translate }} <span class="hint">{{ 'modals.settings.snapshot_hint' | translate }}</span></label>
+  <dv-button variant="secondary" size="sm" shape="pill" type="button" (clicked)="openSnapshotHistory()">
+    {{ 'modals.settings.snapshot_button' | translate }}
+  </dv-button>
+</section>
+
+<div class="hr"></div>
+
+<section>
+  <h4>Localización</h4>
+  <label>{{ 'modals.settings.language_label' | translate }}</label>
+  <dv-select
+    size="sm"
+    [ngModel]="i18n.currentLanguage()"
+    (valueChange)="i18n.setLanguage($event)"
+    [options]="languages.map(l => ({value: l.code, label: l.nativeLabel}))">
+  </dv-select>
+
+  <label class="config-file-label">Archivo de configuración</label>
+  <code class="config-file">{{ configPath() || 'settings.json' }}</code>
+</section>

@@ -1,0 +1,61 @@
+:host {
+  display: flex;
+  align-items: center;
+  color: var(--dv-muted);
+  font-size: 0.75rem;
+
+  &.dv-divider--horizontal {
+    width: 100%;
+
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--dv-bor);
+    }
+
+    &::before {
+      margin-right: 0.75rem;
+    }
+    &::after {
+      margin-left: 0.75rem;
+    }
+  }
+
+  &.dv-divider--vertical {
+    flex-direction: column;
+    height: 100%;
+
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      width: 1px;
+      background: var(--dv-bor);
+    }
+
+    &::before {
+      margin-bottom: 0.75rem;
+    }
+    &::after {
+      margin-top: 0.75rem;
+    }
+  }
+}
+
+/* No label — single line */
+:host:not(:has(.dv-divider__label)) {
+  &.dv-divider--horizontal::before {
+    margin-right: 0;
+  }
+  &.dv-divider--horizontal::after {
+    display: none;
+  }
+  &.dv-divider--vertical::before {
+    margin-bottom: 0;
+  }
+  &.dv-divider--vertical::after {
+    display: none;
+  }
+}

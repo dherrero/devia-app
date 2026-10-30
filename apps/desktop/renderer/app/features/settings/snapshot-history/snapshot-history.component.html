@@ -1,0 +1,99 @@
+    <div class="snap-modal" role="dialog" aria-labelledby="snap-title" aria-describedby="snap-desc">
+      <header class="snap-header">
+        <div class="snap-header-left">
+          <span class="snap-icon" aria-hidden="true">
+            <dv-icon [icon]="LucideHistory" size="sm" />
+          </span>
+          <div class="snap-header-text">
+            <h2 class="snap-title" id="snap-title">{{ 'snapshot.history.title' | translate }}</h2>
+            <p class="snap-subtitle" id="snap-desc">{{ rows().length }} snapshots</p>
+          </div>
+        </div>
+        <dv-button variant="ghost" size="sm" iconOnly ariaLabel="Cerrar" (clicked)="ref?.close()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      </header>
+
+      <div class="snap-toolbar">
+        <dv-search-input
+          class="snap-search"
+          size="sm"
+          placeholder="Buscar snapshot..."
+          ariaLabel="Buscar snapshot"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+          clearAriaLabel="Limpiar búsqueda"
+        />
+        <dv-button-toggle-group
+          [items]="filterItems"
+          [value]="filter()"
+          (valueChange)="setFilter($event)"
+          ariaLabel="Filtro de snapshots"
+        />
+      </div>
+
+      <section class="snap-body">
+        @if (loading()) {
+          <div class="snap-empty"><dv-spinner size="lg" /></div>
+        } @else if (rows().length === 0) {
+          <div class="snap-empty">
+            <span class="snap-empty-title">{{ 'snapshot.history.empty' | translate }}</span>
+          </div>
+        } @else if (filteredRows().length === 0) {
+          <div class="snap-empty">
+            <span class="snap-empty-title">Sin resultados</span>
+          </div>
+        } @else {
+          <ul class="snap-list" role="list">
+            @for (row of filteredRows(); track row.id; let last = $last) {
+              <li class="snap-row" role="listitem" [attr.data-pinned]="row.pinned ? 'true' : null">
+                <div class="snap-timeline">
+                  <span class="snap-dot" [class.manual]="snapshotKind(row) === 'manual'" [class.auto]="snapshotKind(row) === 'auto'"></span>
+                  @if (!last) {
+                    <span class="snap-line"></span>
+                  }
+                </div>
+
+                <div class="snap-row-body">
+                  <div class="snap-row-top">
+                    <span class="snap-reason" [title]="row.reason">{{ row.reason }}</span>
+                    <span class="snap-kind" [class.manual]="snapshotKind(row) === 'manual'">{{ snapshotKind(row) }}</span>
+                  </div>
+                  <div class="snap-row-meta">
+                    <time>{{ formatDate(row.createdAt) }}</time>
+                    <span>{{ row.feature }}</span>
+                    <span>{{ row.fileCount }} {{ 'snapshot.history.files' | translate }}</span>
+                    @if (row.projectPath) {
+                      <span class="snap-project" [title]="row.projectPath">{{ row.projectPath }}</span>
+                    }
+                  </div>
+                </div>
+
+                <div class="snap-actions">
+                  <dv-button variant="secondary" size="sm" iconOnly (clicked)="togglePin(row)"
+                          [ariaLabel]="(row.pinned ? 'snapshot.history.unpin' : 'snapshot.history.pin') | translate">
+                    <dv-icon [icon]="LucidePin" size="sm" />
+                  </dv-button>
+                  <dv-button variant="secondary" size="sm" (clicked)="restore(row)">
+                    {{ 'snapshot.history.restore' | translate }}
+                  </dv-button>
+                  <dv-button variant="danger-soft" size="sm" iconOnly (clicked)="remove(row)"
+                          [ariaLabel]="'snapshot.history.delete' | translate">
+                    <dv-icon [icon]="LucideTrash2" size="sm" />
+                  </dv-button>
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <footer class="snap-footer">
+        <div class="snap-hint"><kbd>Esc</kbd> para cerrar</div>
+        <div class="snap-footer-actions">
+          <dv-button variant="secondary" type="button" (clicked)="ref?.close()">{{ 'snapshot.history.close' | translate }}</dv-button>
+          <dv-button variant="primary" type="button" (clicked)="createSnapshot()">Crear snapshot</dv-button>
+        </div>
+      </footer>
+    </div>
+  

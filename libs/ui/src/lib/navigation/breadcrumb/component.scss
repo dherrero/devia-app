@@ -1,0 +1,29 @@
+.dv-breadcrumb__list {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dv-breadcrumb__link {
+  color: var(--dv-muted);
+  font-size: 0.8125rem;
+  text-decoration: none;
+
+  &:hover {
+    color: var(--dv-fg);
+  }
+}
+
+.dv-breadcrumb__item--current span {
+  font-size: 0.8125rem;
+  color: var(--dv-fg);
+  font-weight: 500;
+}
+
+.dv-breadcrumb__sep {
+  color: var(--dv-dim);
+  font-size: 0.8125rem;
+}

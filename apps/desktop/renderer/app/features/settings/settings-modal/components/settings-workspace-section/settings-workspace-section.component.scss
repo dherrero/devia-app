@@ -1,0 +1,21 @@
+@use '../../section-base';
+
+/* The host is transparent to layout: the sections participate directly in the
+   parent's .content-scroll flex column, exactly as before the split. */
+:host { display: contents; }
+
+.config-file-label {
+  color: var(--dv-dim);
+  font-size: 0.75rem;
+}
+.config-file {
+  display: block;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--r-sm, var(--dv-r-sm));
+  background: var(--dv-surf-2);
+  color: var(--dv-dim);
+  font-family: var(--dv-mono);
+  font-size: 0.6875rem;
+  word-break: break-all;
+}

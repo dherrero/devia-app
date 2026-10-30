@@ -1,0 +1,29 @@
+<div
+  class="dv-tabs__list"
+  role="tablist"
+  [attr.aria-orientation]="orientation()"
+  (keydown)="onKeydown($event)"
+>
+  @for (tab of tabs(); track tab.id) {
+  <button
+    type="button"
+    role="tab"
+    class="dv-tabs__tab"
+    [class.dv-tabs__tab--active]="value() === tab.id"
+    [class.dv-tabs__tab--disabled]="tab.disabled"
+    [attr.aria-selected]="value() === tab.id"
+    [attr.tabindex]="value() === tab.id ? 0 : -1"
+    [attr.aria-controls]="'panel-' + tab.id"
+    [id]="'tab-' + tab.id"
+    [disabled]="tab.disabled"
+    (click)="selectTab(tab)"
+  >
+    {{ tab.label }} @if (tab.badge) {
+    <span class="dv-tabs__badge">{{ tab.badge }}</span>
+    }
+  </button>
+  }
+</div>
+<div class="dv-tabs__panels">
+  <ng-content />
+</div>

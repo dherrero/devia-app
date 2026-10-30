@@ -1,0 +1,7 @@
+    <div class="ds-terminal-host" #host></div>
+    @if (exitCode() !== null) {
+      <div class="ds-terminal-exit">
+        {{ 'terminal.finished' | translate:{ code: exitCode() } }}
+      </div>
+    }
+  

@@ -1,0 +1,78 @@
+    :host { display: contents; }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      width: 100%;
+      min-height: 22px;
+      padding: 0 0.5rem 0 calc(0.5rem + var(--depth, 0) * 0.875rem);
+      border: 0;
+      background: transparent;
+      color: var(--dv-fg);
+      font: inherit;
+      font-size: 0.75rem;
+      text-align: left;
+      cursor: pointer;
+      user-select: none;
+    }
+    .row:hover { background: var(--dv-acc-lo); }
+    .row:focus-visible {
+      outline: 2px solid var(--dv-acc);
+      outline-offset: -2px;
+    }
+
+    .caret {
+      flex: 0 0 14px;
+      width: 0.875rem; height: 0.875rem;
+      color: var(--dv-muted);
+    }
+    .icon {
+      flex: 0 0 16px;
+      width: 1rem; height: 1rem;
+      color: var(--dv-muted);
+    }
+    .row.is-dir .icon { color: var(--dv-dim); }
+
+    .name {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    /* Git status colors apply to the file name, plus a tiny badge letter
+       on the right. Folders containing changed files get the same accent
+       on the folder icon instead. */
+    .row[data-status="modified"] .name { color: var(--dv-git-modified); }
+    .row[data-status="added"]    .name { color: var(--dv-git-added); }
+    .row[data-status="untracked"] .name { color: var(--dv-git-untracked); }
+    .row[data-status="deleted"]  .name { color: var(--dv-git-deleted); text-decoration: line-through; }
+    .row[data-status="renamed"]  .name { color: var(--dv-git-renamed); }
+
+    .row.has-changes .icon { color: var(--dv-git-modified); }
+
+    .badge {
+      flex: 0 0 auto;
+      min-width: 0.875rem;
+      text-align: center;
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--dv-muted);
+    }
+    .row[data-status="modified"] .badge { color: var(--dv-git-modified); }
+    .row[data-status="added"]    .badge { color: var(--dv-git-added); }
+    .row[data-status="untracked"] .badge { color: var(--dv-git-untracked); }
+    .row[data-status="deleted"]  .badge { color: var(--dv-git-deleted); }
+    .row[data-status="renamed"]  .badge { color: var(--dv-git-renamed); }
+
+    .loading, .error {
+      padding: 0.25rem 0.5rem 0.25rem calc(0.5rem + var(--depth, 0) * 0.875rem);
+      font-size: 0.6875rem;
+      color: var(--dv-muted);
+      font-style: italic;
+    }
+    .error { color: var(--dv-danger); }
+  

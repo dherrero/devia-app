@@ -1,0 +1,80 @@
+// Token usage micro-meter — `[model] [used / limit] [bar]`. Sits in the
+// statusbar (HT-ST-01 will integrate it), so type scale is anchored at
+// `--dv-fs-2xs` (11px) and the bar is intentionally narrow to coexist with
+// the rest of the bottom bar without crowding it.
+
+:host {
+  display: inline-flex;
+}
+
+.ds-token-meter__wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-fs-2xs);
+  line-height: 1;
+  color: var(--dv-muted);
+}
+
+.ds-token-meter__model {
+  color: var(--dv-dim);
+  white-space: nowrap;
+}
+
+.ds-token-meter__count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ds-token-meter__used {
+  color: var(--dv-muted);
+  font-weight: 600;
+}
+
+.ds-token-meter__count[data-tone='warning'] .ds-token-meter__used {
+  color: var(--dv-warn);
+}
+
+.ds-token-meter__count[data-tone='danger'] .ds-token-meter__used {
+  color: var(--dv-danger);
+}
+
+.ds-token-meter__sep,
+.ds-token-meter__limit {
+  color: var(--dv-dim);
+}
+
+// Track — 3rem wide so it fits next to the model id without elbowing
+// the version label. 1px height is allowed under the project's px policy
+// (border / outline / shadow / hairline visuals).
+.ds-token-meter__bar {
+  position: relative;
+  display: inline-block;
+  width: 3rem;
+  height: 1px;
+  border-radius: var(--dv-r-pill);
+  background: var(--dv-surf-3);
+  overflow: hidden;
+}
+
+.ds-token-meter__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dv-acc);
+  transition: width var(--dv-dur-quick) var(--dv-ease-out),
+              background var(--dv-dur-quick) var(--dv-ease-out);
+}
+
+.ds-token-meter__fill[data-tone='warning'] {
+  background: var(--dv-warn);
+}
+
+.ds-token-meter__fill[data-tone='danger'] {
+  background: var(--dv-danger);
+}

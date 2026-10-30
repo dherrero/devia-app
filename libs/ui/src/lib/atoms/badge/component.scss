@@ -1,0 +1,76 @@
+@use '_index' as dv;
+
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 500;
+  border-radius: var(--dv-r-pill);
+  white-space: nowrap;
+
+  &.dv-badge--sm {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+  }
+
+  &.dv-badge--md {
+    padding: 0.1875rem 0.625rem;
+    font-size: 0.75rem;
+  }
+
+  &.dv-badge--lg {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  &.dv-badge--neutral {
+    background: var(--dv-surf-2);
+    color: var(--dv-muted);
+    border: 1px solid var(--dv-bor);
+  }
+
+  &.dv-badge--accent {
+    background: var(--dv-acc-lo);
+    color: var(--dv-acc);
+    border: 1px solid var(--dv-acc-bor);
+  }
+
+  &.dv-badge--success {
+    background: var(--dv-success-lo);
+    color: var(--dv-success);
+    border: 1px solid var(--dv-success-bor);
+  }
+
+  &.dv-badge--warn {
+    background: var(--dv-warn-lo);
+    color: var(--dv-warn);
+    border: 1px solid var(--dv-warn-bor);
+  }
+
+  &.dv-badge--danger {
+    background: var(--dv-danger-lo);
+    color: var(--dv-danger);
+    border: 1px solid var(--dv-danger-bor);
+  }
+
+  &.dv-badge--info {
+    background: var(--dv-info-lo);
+    color: var(--dv-info);
+    border: 1px solid var(--dv-info-bor);
+  }
+
+  &.dv-badge--mono {
+    background: var(--dv-surf-3);
+    color: var(--dv-fg);
+    border: 1px solid var(--dv-bor);
+    font-family: var(--dv-mono);
+  }
+}
+
+.dv-badge__dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}

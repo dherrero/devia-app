@@ -1,0 +1,43 @@
+    <header class="ms-head" [attr.data-tone]="headerTone()">
+      <div class="ms-title">
+        @if (headingIcon()) {
+          <dv-icon class="ms-title-icon" [icon]="headingIcon()!" size="sm" />
+        }
+        <span>{{ heading() }}</span>
+      </div>
+      <dv-button iconOnly variant="ghost" size="sm" [ariaLabel]="'common.close' | translate" (clicked)="close()">
+        <dv-icon [icon]="LucideX" size="sm" />
+      </dv-button>
+    </header>
+
+    <div class="ms-body">
+      <nav class="ms-nav" role="tablist" [attr.aria-label]="heading()">
+        @for (s of sections(); track s.id) {
+          <button
+            type="button"
+            class="ms-nav-item"
+            role="tab"
+            [class.active]="active() === s.id"
+            [attr.aria-selected]="active() === s.id"
+            (click)="active.set(s.id)"
+          >
+            @if (s.icon) {
+              <dv-icon class="ms-nav-icon" [icon]="s.icon" size="sm" />
+            }
+            <span class="ms-nav-label">{{ s.label }}</span>
+            @if (s.badge !== undefined) {
+              <span class="ms-nav-badge">{{ s.badge }}</span>
+            }
+          </button>
+        }
+      </nav>
+
+      <section class="ms-content" role="tabpanel">
+        <ng-content />
+      </section>
+    </div>
+
+    <footer class="ms-foot" [attr.data-tone]="footerTone()">
+      <ng-content select="[shellActions]" />
+    </footer>
+  

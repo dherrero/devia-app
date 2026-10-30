@@ -1,0 +1,30 @@
+@use '_index' as dv;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 3rem 2rem;
+  animation: dv-slide-up var(--dv-dur-base) var(--dv-ease-out) both;
+}
+
+.dv-empty-state__icon {
+  color: var(--dv-dim);
+}
+.dv-empty-state__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dv-fg);
+  margin: 0;
+}
+.dv-empty-state__body {
+  font-size: 0.875rem;
+  color: var(--dv-muted);
+  margin: 0;
+}
+.dv-empty-state__action {
+  margin-top: 0.25rem;
+}

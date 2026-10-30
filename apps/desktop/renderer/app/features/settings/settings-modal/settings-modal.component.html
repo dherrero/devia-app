@@ -1,0 +1,119 @@
+<div class="modal-head">
+  <div class="modal-title-wrap">
+    <div class="modal-icon">
+      <dv-icon [icon]="LucideSettings" size="sm" />
+    </div>
+    <span class="modal-title">{{ 'modals.settings.title' | translate }}</span>
+  </div>
+  <dv-button iconOnly variant="ghost" size="sm" ariaLabel="Cerrar" (clicked)="ref?.close()">
+    <dv-icon [icon]="LucideX" size="sm" />
+  </dv-button>
+</div>
+
+<div class="modal-body">
+  <nav class="settings-nav" role="menu" aria-label="Secciones de configuracion">
+    <span class="nav-section-lbl">Secciones</span>
+    @for (item of settingsMenuItems(); track item.id) {
+      <dv-menu-item
+        [item]="item"
+        [active]="active() === item.id"
+        (activated)="activateSection($event)"
+      />
+    }
+  </nav>
+
+  <div class="settings-content">
+    <div class="content-scroll">
+      @switch (active()) {
+        @case ('workspace') {
+          <ds-settings-workspace-section
+            [(workspaceForm)]="workspaceForm"
+            [configPath]="configPath()"
+          />
+
+          <!-- S-3 F1.2: which ref session worktrees (split panes) branch from. -->
+          <div class="dsm-worktree-baseref">
+            <label for="worktree-baseref-select">{{ 'modals.settings.worktree_baseref_label' | translate }}</label>
+            <dv-select
+              id="worktree-baseref-select"
+              size="sm"
+              [ngModel]="worktreeBaseRef()"
+              (ngModelChange)="worktreeBaseRef.set($event)"
+              [options]="[
+                { value: 'default-branch', label: ('modals.settings.worktree_baseref_default' | translate) },
+                { value: 'current', label: ('modals.settings.worktree_baseref_current' | translate) }
+              ]">
+            </dv-select>
+            <p class="hint">{{ 'modals.settings.worktree_baseref_hint' | translate }}</p>
+          </div>
+        }
+
+        @case ('execution') {
+          <ds-settings-execution-section
+            [agents]="agents()"
+            [loadingAgents]="loadingAgents()"
+            [selectedAgentId]="selectedAgentId()"
+            [(agentForm)]="agentForm"
+            [(autoContinueSessions)]="autoContinueSessions"
+            (agentSelected)="selectAgent($event)"
+            (importSessions)="openSessionImport()"
+          />
+        }
+
+        @case ('appearance') {
+          <ds-settings-appearance-section
+            [isDark]="isDark()"
+            [isSharp]="isSharp()"
+            (themeSelected)="setTheme($event)"
+            (styleSelected)="setStyle($event)"
+          />
+        }
+
+        @case ('memory') {
+          <ds-settings-memory-section
+            [(memoryEnabled)]="memoryEnabled"
+            [(memoryBlockExternal)]="memoryBlockExternal"
+            [selectedAgentId]="selectedAgentId()"
+            [selectedAgent]="selectedAgent()"
+          />
+        }
+
+        @case ('ui-tools') {
+          <ds-settings-ui-tools-section
+            [(enabled)]="uiToolsEnabled"
+            [selectedAgentId]="selectedAgentId()"
+            [selectedAgent]="selectedAgent()"
+            [project]="state.selectedProject() ?? ''"
+          />
+        }
+
+        @case ('remote-control') {
+          <ds-settings-remote-section
+            [(remoteForm)]="remoteForm"
+            [(remoteStatus)]="remoteStatus"
+          />
+        }
+      }
+
+      @if (errorBanner()) {
+        <dv-alert variant="danger" [title]="errorBanner()!" />
+      }
+    </div>
+  </div>
+</div>
+
+<div class="modal-footer">
+  <span class="footer-hint" [class.dirty]="hasChanges()">
+    @if (hasChanges()) {
+      Cambios sin guardar
+    } @else {
+      Esc para cerrar
+    }
+  </span>
+  <div class="footer-actions">
+    <dv-button variant="ghost" (clicked)="ref?.close()">{{ 'modals.settings.cancel' | translate }}</dv-button>
+    <dv-button variant="primary" (clicked)="save()" [disabled]="saving() || !hasChanges()">
+      {{ 'modals.settings.save' | translate }}
+    </dv-button>
+  </div>
+</div>

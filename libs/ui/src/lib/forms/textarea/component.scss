@@ -1,0 +1,68 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+}
+
+.dv-field__label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dv-fg);
+  margin-bottom: 0.375rem;
+}
+
+.dv-field__required {
+  color: var(--dv-danger);
+  margin-left: 0.125rem;
+}
+
+.dv-textarea {
+  display: block;
+  width: 100%;
+  background: var(--dv-surf);
+  border: 1px solid var(--dv-bor);
+  border-radius: var(--dv-r-md);
+  padding: 0.5rem 0.75rem;
+  font-family: var(--dv-font);
+  font-size: 0.875rem;
+  color: var(--dv-fg);
+  outline: none;
+  transition:
+    border-color var(--dv-dur-fast) var(--dv-ease-out),
+    box-shadow var(--dv-dur-fast) var(--dv-ease-out);
+
+  &::placeholder {
+    color: var(--dv-muted);
+  }
+
+  &.dv-textarea--focused {
+    border-color: var(--dv-acc);
+    box-shadow: 0 0 0 3px var(--dv-acc-lo);
+  }
+
+  &.dv-textarea--error {
+    border-color: var(--dv-danger);
+    box-shadow: 0 0 0 3px var(--dv-danger-lo);
+  }
+
+  &.dv-textarea--disabled,
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.dv-field__hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--dv-muted);
+}
+
+.dv-field__error {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--dv-danger);
+}

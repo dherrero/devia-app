@@ -1,0 +1,92 @@
+// Input bar (HT-IN-01). Tokens per `DESKTOP-PART-05-INPUT-AREA.md`.
+// 14 px is hardcoded as a soft-rectangle accent intentionally distinct
+// from the message bubbles' --dv-r-md (8 px) — the spec calls it out.
+
+:host {
+  display: block;
+}
+
+// Drag handle to grow the writing area (like the panel splitters): a centred
+// grey bar that brightens to the accent on hover, with a row-resize grab zone.
+.ds-input-bar__resize {
+  height: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  user-select: none;
+  background: var(--dv-bg);
+}
+.ds-input-bar__resize-handle {
+  display: block;
+  width: 2.25rem;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dv-bor-2);
+  transition: background var(--dv-dur-quick) var(--dv-ease-out);
+}
+.ds-input-bar__resize:hover .ds-input-bar__resize-handle {
+  background: var(--dv-acc);
+}
+
+.ds-input-bar__wrap {
+  padding: 0 1.5rem 1.125rem;
+  display: flex;
+  background: var(--dv-bg);
+}
+
+.ds-input-bar__box {
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  align-items: end;
+  gap: 0.5rem;
+  background: var(--dv-surf);
+  border: 0.5px solid var(--dv-bor-2);
+  // Use the active theme's radius (Navy/Sharp variants get tighter corners).
+  border-radius: var(--dv-r-xl);
+  padding: 0.625rem 0.625rem 0.625rem 0.75rem;
+  box-shadow: var(--dv-shadow-sm);
+  transition: border-color var(--dv-dur-quick) var(--dv-ease-out),
+              box-shadow var(--dv-dur-quick) var(--dv-ease-out);
+
+  // The composer is the app's primary control: on focus it earns a visible
+  // accent halo + a slightly deeper shadow so the eye lands on it.
+  &:focus-within {
+    border-color: var(--dv-acc);
+    box-shadow: 0 0 0 3px var(--dv-acc-lo), var(--dv-shadow-md);
+  }
+}
+
+.ds-input-bar__textarea {
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dv-fg);
+  font: var(--dv-fs-md) / 1.5 var(--dv-font);
+  padding: 0.375rem 0.25rem;
+  min-height: 1.625rem;
+  // Hard max for the very first paint before autosize() runs (no flash).
+  // The authoritative max is set in JS using the real computed
+  // line-height — 6 lines + padding.
+  max-height: calc(6 * 1.5em + 0.75rem);
+  overflow-y: hidden;
+
+  // The focus halo belongs to the wrapping box, not the inner textarea —
+  // cancel the global textarea:focus-visible ring so it isn't doubled.
+  &:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  &::placeholder {
+    color: var(--dv-muted);
+    opacity: 0.8;
+  }
+}
+
+.ds-input-bar__send-icon {
+  display: inline-flex;
+  align-items: center;
+}

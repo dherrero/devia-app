@@ -1,0 +1,139 @@
+@use 'mixins' as dv;
+
+/* ═══════════════════════════════════════════════════════════════════
+   Auth Layout — shared structural classes for login / signup /
+   forgot-password / reset-password screens.
+
+   Classes are prefixed with `dv-auth-` and are part of the global
+   visual API. Do not rename without a migration.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Two-column wrapper ─────────────────────────────────────────── */
+
+.dv-auth-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+}
+
+/* ── Left column (form side) ────────────────────────────────────── */
+
+.dv-auth-side {
+  background: var(--dv-surf);
+  display: flex;
+  flex-direction: column;
+  padding: 3rem 3.75rem;
+}
+
+/* ── Topbar row inside form side ────────────────────────────────── */
+
+.dv-auth-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: auto;
+}
+
+/* ── Logo link ──────────────────────────────────────────────────── */
+
+.dv-auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--dv-fg);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+/* ── Centered form body ─────────────────────────────────────────── */
+
+.dv-auth-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 23.75rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 3rem 0;
+}
+
+/* ── Page heading ───────────────────────────────────────────────── */
+
+.dv-auth-heading {
+  font-size: 1.625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: var(--dv-fg);
+  margin-bottom: 0.375rem;
+}
+
+/* ── Subtitle / hint beneath heading ───────────────────────────── */
+
+.dv-auth-sub {
+  @include dv.dv-text('sm');
+  color: var(--dv-muted);
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+/* ── Footer note / back-link row ────────────────────────────────── */
+
+.dv-auth-footer {
+  text-align: center;
+  margin-top: 1.75rem;
+  @include dv.dv-text('sm');
+  color: var(--dv-muted);
+}
+
+/* ── Right column (brand / visual side) ─────────────────────────── */
+
+.dv-auth-visual {
+  background: oklch(11% 0.014 270);
+  color: oklch(95% 0.005 270);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  padding: 3.75rem;
+}
+
+/* ── Glow decoration inside visual side ─────────────────────────── */
+
+.dv-auth-glow {
+  position: absolute;
+  top: -7.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 37.5rem;
+  height: 31.25rem;
+  background: radial-gradient(
+    ellipse at center top,
+    var(--dv-acc-lo) 0%,
+    transparent 65%
+  );
+  pointer-events: none;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+
+@media (max-width: 53.75rem) {
+  .dv-auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dv-auth-visual {
+    display: none;
+  }
+
+  .dv-auth-side {
+    padding: 2.25rem 1.75rem;
+  }
+
+  .dv-auth-body {
+    padding: 2rem 0;
+  }
+}

@@ -1,0 +1,1 @@
+export { EmptyStateComponent } from './component';

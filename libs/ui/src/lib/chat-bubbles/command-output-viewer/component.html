@@ -1,0 +1,128 @@
+<div class="dv-command-output" [class.dv-command-output--error]="isError()">
+  <div class="dv-command-output__toolbar">
+    @if (command()) {
+    <span class="dv-command-output__command" [title]="command()"
+      >{{ command() }}</span
+    >
+    }
+    <span class="dv-command-output__spacer"></span>
+    @if (isLong()) {
+    <button
+      type="button"
+      class="dv-command-output__btn"
+      (click)="toggleExpanded()"
+      [attr.aria-pressed]="expanded()"
+    >
+      {{ expanded() ? previewLabel() : fullLabel() }}
+    </button>
+    }
+    <button
+      type="button"
+      class="dv-command-output__btn"
+      (click)="toggleRaw()"
+      [attr.aria-pressed]="showRaw()"
+    >
+      {{ showRaw() ? richLabel() : rawLabel() }}
+    </button>
+  </div>
+
+  @if (showRaw()) {
+  <pre class="dv-command-output__pre">{{ model().raw }}</pre>
+  } @else {
+  <div class="dv-command-output__rich">
+    @for (segment of model().segments; track $index) { @switch (segment.kind) {
+    @case ('text') {
+    <div class="dv-command-output__text-block">
+      @for (line of textLines(segment.content); track $index) {
+      <div class="dv-command-output__line" [attr.data-tone]="line.tone">
+        {{ line.text || ' ' }}
+      </div>
+      }
+    </div>
+    } @case ('code') {
+    <section
+      class="dv-command-output__code"
+      [attr.data-language]="segment.language"
+    >
+      <header class="dv-command-output__code-head">
+        <span class="dv-command-output__file">{{ segment.fileName }}</span>
+        <span class="dv-command-output__lang">{{ segment.language }}</span>
+      </header>
+      <div class="dv-command-output__code-body">
+        @for (line of segment.lines; track line.lineNumber) {
+        <div class="dv-command-output__code-line">
+          <span class="dv-command-output__ln">{{ line.lineNumber }}</span>
+          <span class="dv-command-output__src">
+            @for (token of line.tokens; track $index) {
+            <span [attr.data-token]="token.kind">{{ token.text }}</span>
+            }
+          </span>
+        </div>
+        }
+      </div>
+    </section>
+    } @case ('diff') {
+    <section class="dv-command-output__diff">
+      <header class="dv-command-output__code-head">
+        <span class="dv-command-output__file">{{ segment.fileName }}</span>
+        <span class="dv-command-output__lang">diff</span>
+      </header>
+      <div class="dv-command-output__diff-body">
+        @for (line of segment.lines; track $index) {
+        <div class="dv-command-output__diff-line" [attr.data-kind]="line.kind">
+          <span class="dv-command-output__diff-ln"
+            >{{ line.oldLine ?? '' }}</span
+          >
+          <span class="dv-command-output__diff-ln"
+            >{{ line.newLine ?? '' }}</span
+          >
+          <span class="dv-command-output__diff-mark">{{ line.marker }}</span>
+          <span class="dv-command-output__diff-src">{{ line.content }}</span>
+        </div>
+        }
+      </div>
+    </section>
+    } @case ('json') {
+    <pre class="dv-command-output__pre dv-command-output__pre--json">
+{{ segment.content }}</pre
+    >
+    } @case ('keyValue') {
+    <dl class="dv-command-output__kv">
+      @for (row of segment.rows; track row.key + row.value) {
+      <div class="dv-command-output__kv-row">
+        <dt>{{ row.key }}</dt>
+        <dd [class.dv-command-output__value--path]="isPathLike(row.value)">
+          {{ row.value }}
+        </dd>
+      </div>
+      }
+    </dl>
+    } @case ('table') {
+    <div class="dv-command-output__table-wrap">
+      <table class="dv-command-output__table">
+        <thead>
+          <tr>
+            @for (column of segment.columns; track $index) {
+            <th scope="col">{{ column }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of segment.rows; track $index) {
+          <tr>
+            @for (cell of row; track $index) {
+            <td [class.dv-command-output__cell--number]="isNumericCell(cell)">
+              {{ cell }}
+            </td>
+            }
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    } } } @empty {
+    <pre class="dv-command-output__pre dv-command-output__pre--plain"></pre>
+    }
+  </div>
+  }
+</div>

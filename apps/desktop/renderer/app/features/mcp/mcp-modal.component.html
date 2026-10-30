@@ -1,0 +1,50 @@
+<ds-modal-shell
+  [heading]="'mcp.modal.title' | translate"
+  [headingIcon]="LucideZap"
+  headerTone="surface2"
+  footerTone="surface2"
+  [sections]="sections()"
+  [(active)]="active"
+>
+  @switch (active()) {
+    <!-- -- Instaladas ----------------------------------------- -->
+    @case ('installed') {
+      <ds-mcp-installed-tab
+        [servers]="servers()"
+        [loading]="loading()"
+        (removeRequested)="remove($event)"
+        (addRequested)="active.set('custom')"
+      />
+    }
+    <!-- -- Catálogo curado ------------------------------------ -->
+    @case ('catalog') {
+      <ds-mcp-catalog-tab
+        [catalog]="catalog"
+        (installRequested)="openCatalogInstall($event)"
+      />
+    }
+
+    <!-- -- Personalizada -------------------------------------- -->
+    @case ('custom') {
+      <ds-mcp-custom-form
+        [(form)]="form"
+        [projectPath]="data.projectPath"
+      />
+    }
+  }
+
+  <div shellActions>
+    @if (active() === 'custom') {
+      <dv-button variant="primary" size="sm" type="button"
+              [disabled]="!canInstallCustom() || installing()"
+              [loading]="installing()"
+              (clicked)="installCustom()">
+        @if (!installing()) {
+          <dv-icon [icon]="LucidePlus" size="sm" />
+        }
+        {{ 'mcp.modal.install' | translate }}
+      </dv-button>
+    }
+    <dv-button variant="ghost" size="sm" type="button" (clicked)="ref?.close()">{{ 'mcp.modal.close' | translate }}</dv-button>
+  </div>
+</ds-modal-shell>

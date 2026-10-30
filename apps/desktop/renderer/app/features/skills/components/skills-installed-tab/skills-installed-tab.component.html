@@ -1,0 +1,118 @@
+@if (loading()) {
+  <div class="ds-skill-loading" role="status" aria-live="polite">
+    @for (i of [1,2,3,4,5,6]; track i) {
+      <div class="ds-skill-skeleton"></div>
+    }
+  </div>
+} @else if (filteredSkills().length === 0) {
+  <div class="empty-state">
+    <div class="empty-icon">
+      <dv-icon [icon]="LucidePackageSearch" size="lg" />
+    </div>
+    <div class="empty-title">
+      @if (query() && (projectSkills().length > 0 || globalSkills().length > 0)) {
+        {{ 'modals.skills.no_match' | translate }}
+      } @else {
+        {{ 'modals.skills.empty_project' | translate }}
+      }
+    </div>
+    <p class="empty-desc">{{ 'modals.skills.empty_global' | translate }}</p>
+  </div>
+} @else {
+  <div class="modal-split">
+    <aside class="skill-sidebar">
+      <div class="skill-search">
+        <dv-search-input
+          size="sm"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+          [placeholder]="'modals.skills.search_placeholder' | translate"
+          [clearAriaLabel]="'modals.skills.search_clear' | translate"
+        />
+      </div>
+      <div class="skill-list">
+        <div class="section-lbl">{{ 'modals.skills.scope_project' | translate }}</div>
+        @for (s of filteredProjectSkills(); track installedKey(s)) {
+          <button
+            class="skill-item"
+            type="button"
+            [class.active]="installedKey(s) === selectedKey()"
+            (click)="selectedKey.set(installedKey(s))">
+            <span class="skill-item-status s-green"></span>
+            <span>
+              <span class="skill-item-name">{{ s.name }}</span>
+              <span class="skill-item-scope">project</span>
+            </span>
+          </button>
+        }
+        <div class="section-lbl">{{ 'modals.skills.scope_global' | translate }}</div>
+        @for (s of filteredGlobalSkills(); track installedKey(s)) {
+          <button
+            class="skill-item"
+            type="button"
+            [class.active]="installedKey(s) === selectedKey()"
+            (click)="selectedKey.set(installedKey(s))">
+            <span class="skill-item-status s-green"></span>
+            <span>
+              <span class="skill-item-name">{{ s.name }}</span>
+              <span class="skill-item-scope">global</span>
+            </span>
+          </button>
+        }
+      </div>
+      <div class="skill-sidebar-footer">
+        <dv-button fullWidth variant="ghost" size="sm" (clicked)="refreshRequested.emit()" [disabled]="loading()">
+          <dv-icon [icon]="LucideRefreshCw" size="sm" />
+          {{ 'modals.skills.refresh_tooltip' | translate }}
+        </dv-button>
+      </div>
+    </aside>
+
+    @if (selectedSkill(); as s) {
+      <section class="skill-detail">
+        <div class="detail-header">
+          <div>
+            <div class="detail-name">{{ s.name }}</div>
+            <div class="detail-ver">v1.0.0 · {{ s.scope }}</div>
+          </div>
+          <span class="badge badge-success badge-dot">Activo</span>
+        </div>
+
+        <p class="detail-desc">{{ s.description || 'Sin descripción.' }}</p>
+        <code class="detail-path" [title]="s.absolutePath">{{ s.absolutePath }}</code>
+
+        <div>
+          <div class="section-title">{{ 'modals.skills.agents_label' | translate }}</div>
+          <div class="agent-chips">
+            @for (a of s.agents; track a) {
+              <span class="badge badge-accent">{{ agentLabel(a) }}</span>
+            }
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Comandos</div>
+          <div class="cmd-list">
+            <div class="cmd-row">
+              <span class="cmd-name">/{{ s.name }}</span>
+              <span class="cmd-key">skill</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-actions">
+          @for (a of s.agents; track a) {
+            <dv-button
+              variant="danger-soft"
+              size="sm"
+              (clicked)="removeRequested.emit({ skill: s, agent: a, scope: s.scope })"
+              [disabled]="busy()">
+              <dv-icon [icon]="LucideTrash2" size="sm" />
+              {{ agentLabel(a) }}
+            </dv-button>
+          }
+        </div>
+      </section>
+    }
+  </div>
+}

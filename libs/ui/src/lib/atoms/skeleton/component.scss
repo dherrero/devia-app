@@ -1,0 +1,40 @@
+@use '_index' as dv;
+
+:host {
+  display: block;
+}
+
+.dv-skeleton__line {
+  display: block;
+  height: 0.875rem;
+  border-radius: var(--dv-r-sm);
+  margin-bottom: 0.375rem;
+  @include dv.dv-skeleton;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &.dv-skeleton__line--last {
+    width: 60%;
+  }
+}
+
+.dv-skeleton__circle {
+  display: block;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  @include dv.dv-skeleton;
+}
+
+:host.dv-skeleton--title .dv-skeleton__line {
+  height: 1.5rem;
+  border-radius: var(--dv-r-md);
+}
+
+:host.dv-skeleton--rect .dv-skeleton__line {
+  height: 100%;
+  border-radius: var(--dv-r-md);
+  margin-bottom: 0;
+}

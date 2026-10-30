@@ -1,0 +1,14 @@
+<div class="section-lbl">Responder</div>
+<dv-textarea
+  [rows]="3"
+  [placeholder]="placeholder()"
+  [ngModel]="draft()"
+  (ngModelChange)="draft.set($event)"
+  (keydown.meta.enter)="send()"
+  (keydown.control.enter)="send()" />
+<div class="reply-actions">
+  <dv-button variant="secondary" size="sm" [disabled]="!draft().trim()" (clicked)="send()">
+    <dv-icon [icon]="LucideSend" size="sm" />
+    Enviar respuesta
+  </dv-button>
+</div>

@@ -1,0 +1,20 @@
+<button
+  type="button"
+  class="dv-theme-toggle__btn"
+  data-testid="theme-toggle-light-dark"
+  (click)="toggle()"
+  [attr.aria-label]="resolvedLightDarkLabel()"
+  [title]="resolvedLightDarkLabel()"
+>
+  <dv-icon [icon]="lightDarkIcon()" size="sm" [decorative]="true" />
+</button>
+<button
+  type="button"
+  class="dv-theme-toggle__btn dv-theme-toggle__btn--group"
+  data-testid="theme-toggle-group"
+  (click)="switchGroup()"
+  [attr.aria-label]="resolvedGroupLabel()"
+  [title]="resolvedGroupLabel()"
+>
+  <dv-icon [icon]="groupIcon()" size="sm" [decorative]="true" />
+</button>

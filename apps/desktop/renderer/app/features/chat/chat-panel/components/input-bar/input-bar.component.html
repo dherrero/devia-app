@@ -1,0 +1,84 @@
+<div class="ds-input-bar__resize"
+     role="separator"
+     aria-orientation="horizontal"
+     [title]="'sidebar.splitter_title' | translate"
+     (mousedown)="startResize($event)"
+     (dblclick)="resetHeight()">
+  <span class="ds-input-bar__resize-handle"></span>
+</div>
+<div class="ds-input-bar__wrap">
+  <div class="ds-input-bar__box">
+    <dv-button
+            iconOnly
+            [variant]="micState() === 'recording' ? 'danger-soft' : 'ghost'"
+            size="sm"
+            [disabled]="micState() === 'transcribing'"
+            (clicked)="voice.emit()"
+            [dvTooltip]="micTooltip()"
+            [ariaLabel]="micTooltip()">
+      @if (micState() === 'recording') {
+        <dv-icon [icon]="LucideSquare" size="sm" />
+      } @else {
+        <dv-icon [icon]="LucideMic" size="sm" />
+      }
+    </dv-button>
+
+    <dv-button
+            iconOnly
+            variant="ghost"
+            size="sm"
+            (clicked)="fileInput.click()"
+            [dvTooltip]="'chat.attach_tooltip' | translate"
+            [ariaLabel]="'chat.attach_tooltip' | translate">
+      <dv-icon [icon]="LucidePaperclip" size="sm" />
+    </dv-button>
+    <input #fileInput
+           type="file"
+           multiple
+           hidden
+           (change)="onFilesPicked(fileInput)" />
+
+    <textarea #inputEl
+              class="ds-input-bar__textarea"
+              [placeholder]="'chat.input_placeholder' | translate"
+              [(ngModel)]="draft"
+              (input)="onInput()"
+              (keydown.enter)="onEnter($event)"
+              (paste)="onPaste($event)"
+              rows="1"></textarea>
+
+    @if (running()) {
+      <dv-button
+              variant="danger"
+              size="sm"
+              (clicked)="stop.emit()"
+              [dvTooltip]="'chat.stop_tooltip' | translate"
+              [ariaLabel]="'chat.stop_aria' | translate">
+        {{ 'chat.stop_button' | translate }} <dv-icon [icon]="LucideSquare" size="sm" />
+      </dv-button>
+    } @else {
+      <dv-button
+              variant="primary"
+              size="sm"
+              [disabled]="!canSend()"
+              (clicked)="submitted.emit()">
+        {{ 'chat.send_button' | translate }}
+        <span class="ds-input-bar__send-icon">
+          <dv-icon [icon]="LucideArrowRight" size="sm" />
+        </span>
+      </dv-button>
+    }
+
+    <!-- "Nueva sesión" — destructive-ish refresh icon at the right edge,
+         visually quieter than the primary send button. -->
+    <dv-button
+            iconOnly
+            variant="ghost"
+            size="sm"
+            (clicked)="resetRequested.emit()"
+            [dvTooltip]="'chat.new_chat_tooltip' | translate"
+            [ariaLabel]="'chat.new_chat_aria' | translate">
+      <dv-icon [icon]="LucideRefreshCw" size="sm" />
+    </dv-button>
+  </div>
+</div>

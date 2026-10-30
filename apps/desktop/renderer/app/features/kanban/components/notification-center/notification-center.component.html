@@ -1,0 +1,41 @@
+    <button #triggerEl
+            class="dsn-btn"
+            type="button"
+            (click)="togglePanel()"
+            [dvTooltip]="'sdd.notifications' | translate"
+            dvTooltipPosition="left"
+            [attr.aria-expanded]="isOpen()"
+            [attr.aria-haspopup]="'true'"
+            [attr.aria-label]="ariaLabel()">
+      <span class="dsn-icon-wrap">
+        <dv-icon [icon]="LucideBell" size="sm" />
+      </span>
+      @if (unread() > 0) {
+        <span class="dsn-count">{{ unread() }}</span>
+      }
+    </button>
+
+    <ng-template #panelTpl>
+      <div class="dsn-panel" role="dialog" [attr.aria-label]="'sdd.notifications' | translate">
+        <div class="dsn-head">
+          <span>{{ 'sdd.notifications' | translate }}</span>
+          @if (items().length > 0) {
+            <dv-button variant="ghost" size="sm" type="button" (clicked)="clear()">{{ 'sdd.clear' | translate }}</dv-button>
+          }
+        </div>
+        @if (items().length === 0) {
+          <p class="dsn-empty">{{ 'sdd.notifications_empty' | translate }}</p>
+        } @else {
+          @for (n of items(); track n.id) {
+            <button class="dsn-item" type="button" [attr.data-kind]="n.kind" (click)="openTask(n)">
+              <dv-icon [icon]="icon(n.kind)" size="sm" />
+              <span class="dsn-item-body">
+                <span class="dsn-item-title">{{ titleKey(n) | translate }}</span>
+                <span class="dsn-item-sub">{{ bodyOf(n) }}</span>
+              </span>
+            </button>
+          }
+        }
+      </div>
+    </ng-template>
+  

@@ -1,0 +1,29 @@
+<section>
+  <h4>Tema</h4>
+  <div class="theme-swatches">
+    <button type="button" class="theme-swatch" [class.selected]="!isDark() && !isSharp()" (click)="selectPreset('light', 'rounded')">
+      <span class="swatch-preview"><span class="swatch-sidebar violet-light-side"></span><span class="violet-light-main"></span></span>
+      <span class="swatch-label">Violet L</span>
+    </button>
+    <button type="button" class="theme-swatch" [class.selected]="isDark() && !isSharp()" (click)="selectPreset('dark', 'rounded')">
+      <span class="swatch-preview"><span class="swatch-sidebar violet-dark-side"></span><span class="violet-dark-main"></span></span>
+      <span class="swatch-label">Violet D</span>
+    </button>
+    <button type="button" class="theme-swatch" [class.selected]="!isDark() && isSharp()" (click)="selectPreset('light', 'sharp')">
+      <span class="swatch-preview"><span class="swatch-sidebar navy-light-side"></span><span class="navy-light-main"></span></span>
+      <span class="swatch-label">Navy L</span>
+    </button>
+    <button type="button" class="theme-swatch" [class.selected]="isDark() && isSharp()" (click)="selectPreset('dark', 'sharp')">
+      <span class="swatch-preview"><span class="swatch-sidebar navy-dark-side"></span><span class="navy-dark-main"></span></span>
+      <span class="swatch-label">Navy D</span>
+    </button>
+  </div>
+  <div class="toggle-row">
+    <span>Bordes cuadrados (estilo Navy)</span>
+    <dv-toggle
+      [ngModel]="isSharp()"
+      (valueChange)="styleSelected.emit($event ? 'sharp' : 'rounded')"
+      ariaLabel="Bordes cuadrados"
+    />
+  </div>
+</section>

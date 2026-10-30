@@ -1,0 +1,26 @@
+@if (todoItems(); as todos) {
+  <div class="tc-section tc-todo">
+    <div class="tc-todo-header">
+      <span class="tc-todo-progress-text">
+        {{ 'tool_card.plan_progress' | translate: { done: todoDone(), total: todos.length } }}
+      </span>
+    </div>
+    <div class="tc-todo-bar">
+      <div class="tc-todo-bar-fill"
+           [style.width.%]="todos.length > 0 ? (todoDone() / todos.length * 100) : 0">
+      </div>
+    </div>
+    <ul class="tc-todo-list">
+      @for (item of todos; track $index) {
+        <li class="tc-todo-item" [attr.data-status]="item.status">
+          <span class="tc-todo-icon" aria-hidden="true">
+            @if (item.status === 'completed') { ✓ }
+            @else if (item.status === 'in_progress') { ◐ }
+            @else { ○ }
+          </span>
+          <span class="tc-todo-text">{{ item.content }}</span>
+        </li>
+      }
+    </ul>
+  </div>
+}

@@ -1,0 +1,68 @@
+    <header class="header">
+      <span class="title">{{ 'rightRail.docker_header' | translate }}</span>
+      <span class="actions">
+        <dv-button iconOnly
+                   variant="ghost"
+                   size="sm"
+                   [disabled]="!canRun()"
+                   (clicked)="run('deploy')"
+                   [dvTooltip]="'rightRail.docker_deploy' | translate"
+                   [ariaLabel]="'rightRail.docker_deploy' | translate">
+          <dv-icon [icon]="LucidePlay" size="sm" />
+        </dv-button>
+        <dv-button iconOnly
+                   variant="ghost"
+                   size="sm"
+                   [disabled]="!canRun()"
+                   (clicked)="run('down')"
+                   [dvTooltip]="'rightRail.docker_down' | translate"
+                   [ariaLabel]="'rightRail.docker_down' | translate">
+          <dv-icon [icon]="LucideSquare" size="sm" />
+        </dv-button>
+        <dv-button iconOnly
+                   variant="ghost"
+                   size="sm"
+                   [disabled]="!canRun()"
+                   (clicked)="run('logs')"
+                   [dvTooltip]="'rightRail.docker_logs' | translate"
+                   [ariaLabel]="'rightRail.docker_logs' | translate">
+          <dv-icon [icon]="LucideScrollText" size="sm" />
+        </dv-button>
+        <dv-button iconOnly
+                   variant="ghost"
+                   size="sm"
+                   [disabled]="!state().log"
+                   (clicked)="clear()"
+                   [dvTooltip]="'rightRail.docker_clear' | translate"
+                   [ariaLabel]="'rightRail.docker_clear' | translate">
+          <dv-icon [icon]="LucideTrash2" size="sm" />
+        </dv-button>
+      </span>
+    </header>
+
+    <div #body class="body">
+      @if (!state().detected) {
+        <div class="muted">{{ 'rightRail.docker_detecting' | translate }}</div>
+      } @else if (state().composeFile === null) {
+        <div class="notice">
+          <dv-icon [icon]="LucideInfo" size="sm" />
+          <p class="notice-text">
+            {{ (state().searched ? 'rightRail.docker_not_found' : 'rightRail.docker_no_compose') | translate }}
+          </p>
+          <dv-button variant="secondary" size="sm" [disabled]="state().searching" (clicked)="search()">
+            <dv-icon [icon]="state().searching ? LucideLoader : LucideSearch" size="sm" />
+            {{ (state().searching ? 'rightRail.docker_searching' : 'rightRail.docker_search') | translate }}
+          </dv-button>
+        </div>
+      } @else {
+        <p class="using" [dvTooltip]="state().composeFile!">
+          {{ 'rightRail.docker_using' | translate: { file: state().composeFile } }}
+        </p>
+        @if (state().log) {
+          <pre class="log">{{ state().log }}</pre>
+        } @else {
+          <div class="muted">{{ 'rightRail.docker_empty' | translate }}</div>
+        }
+      }
+    </div>
+  

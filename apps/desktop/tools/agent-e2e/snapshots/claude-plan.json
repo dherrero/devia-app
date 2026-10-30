@@ -1,0 +1,67 @@
+{
+  "agent": "claude",
+  "scenario": "plan",
+  "wiring": {
+    "command": "claude",
+    "argv": [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
+      "--verbose",
+      "--model",
+      "haiku",
+      "--permission-mode",
+      "default",
+      "--disallowedTools",
+      "WebSearch,WebFetch,Edit,Write,MultiEdit,Bash",
+      "--append-system-prompt",
+      "<TEXT>",
+      "--resume",
+      "<UUID>",
+      "--mcp-config",
+      "<DEVIA>/tmp/mcp-<ID>.json",
+      "--strict-mcp-config"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "user"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "argv",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": true
+    },
+    "uiServer": {
+      "skillsDirs": 0,
+      "subagentsDir": false
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "raw",
+      "session_started",
+      "status",
+      "text_delta",
+      "tool_use",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [
+      "mcp__devia-kanban__kanban_list_specs"
+    ],
+    "uiCards": [],
+    "wroteFile": false
+  }
+}

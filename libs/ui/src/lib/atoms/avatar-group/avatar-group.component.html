@@ -1,0 +1,21 @@
+@for (avatar of visibleAvatars(); track avatar.id) {
+  <dv-avatar
+    [src]="avatar.avatarUrl ?? null"
+    [initials]="avatar.initials ?? ''"
+    [size]="size()"
+    [attr.aria-label]="avatar.name"
+    class="dv-avatar-group__item"
+  />
+}
+@if (overflowCount() > 0) {
+  <span
+    class="dv-avatar-group__overflow dv-avatar-group__item"
+    [class]="
+      'dv-avatar-group__overflow dv-avatar-group__item dv-avatar-group__overflow--' +
+      size()
+    "
+    aria-hidden="true"
+  >
+    +{{ overflowCount() }}
+  </span>
+}

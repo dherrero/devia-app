@@ -1,0 +1,25 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dv-r-sm);
+  color: var(--dv-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+:host(:hover),
+:host(:focus-visible) {
+  color: var(--dv-fg);
+  background: var(--dv-surf-3);
+}
+
+:host(.ds-menu-trigger-button--text) {
+  min-width: 2rem;
+  width: auto;
+  padding-inline: 0.375rem;
+}

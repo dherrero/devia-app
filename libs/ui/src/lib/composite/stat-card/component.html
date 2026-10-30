@@ -1,0 +1,15 @@
+<p class="dv-stat-card__label">{{ label() }}</p>
+@if (loading()) {
+<div class="dv-stat-card__skeleton" aria-busy="true"></div>
+} @else {
+<p class="dv-stat-card__value">{{ value() }}</p>
+} @if (delta() !== null && !loading()) {
+<p
+  class="dv-stat-card__delta"
+  [class.dv-stat-card__delta--positive]="deltaSign() === 'positive'"
+  [class.dv-stat-card__delta--negative]="deltaSign() === 'negative'"
+>
+  {{ deltaSign() === 'positive' ? '↑' : '↓' }} {{ delta()! >= 0 ? '+' : '' }}{{
+  delta() }}{{ deltaLabel() ? ' ' + deltaLabel() : '' }}
+</p>
+}
