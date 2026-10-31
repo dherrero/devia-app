@@ -215,7 +215,7 @@ npm run typecheck      # tsc --noEmit on both tsconfigs (does NOT compile Angula
 
 ## Build & run
 
-A single npm project at the repository root (Node `>=24.14.1`, see `.nvmrc`). There is no monorepo tooling: every script below is plain `tsc` / `ng` / `vitest` / `electron-builder`. `package.json` is both the project manifest and the electron-builder config (`build` field); only `electron-updater` and `node-pty` are `dependencies` (what gets packaged) — everything the Angular build bundles is a `devDependency` on purpose.
+A single npm project at the repository root (Node `>=26.13.0` (Node 26 LTS), see `.nvmrc`). There is no monorepo tooling: every script below is plain `tsc` / `ng` / `vitest` / `electron-builder`. `package.json` is both the project manifest and the electron-builder config (`build` field); only `electron-updater` and `node-pty` are `dependencies` (what gets packaged) — everything the Angular build bundles is a `devDependency` on purpose.
 
 ```bash
 npm install

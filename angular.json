@@ -16,7 +16,7 @@
       "prefix": "ds",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@angular/build:application",
           "options": {
             "outputPath": "dist/renderer",
             "index": "src/renderer/index.html",
@@ -73,7 +73,7 @@
           "defaultConfiguration": "production"
         },
         "serve": {
-          "builder": "@angular-devkit/build-angular:dev-server",
+          "builder": "@angular/build:dev-server",
           "options": {
             "buildTarget": "devia-renderer:build:development",
             "host": "127.0.0.1",
