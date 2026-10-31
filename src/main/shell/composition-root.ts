@@ -449,7 +449,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     // S-20 (generalises S-18): import pre-existing CLI-agent sessions into Devia.
     buildSessionImportFeature({ config, sessions: sessionStore }),
     buildStatusFeature({ registry, git: gitBuilt.exports.inspector }),
-    buildShellFeature(),
+    buildShellFeature({ config }),
     buildAutoUpdateFeature(),
     buildOutboxFeature(),
     buildAttachmentsFeature(),
