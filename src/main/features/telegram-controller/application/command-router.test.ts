@@ -13,6 +13,7 @@ import { TelegramApiError } from '../infrastructure/telegram-client';
 import { RunGateway, type RunEndEvent } from '../../../shared/run-gateway';
 import type { IncomingMessage } from './telegram-controller';
 import type { ConfigRepository } from '../../../shared/ports';
+import { RunModeStore } from '../../../shared/run-mode-store';
 import { DEFAULT_CONFIG, type DeviaConfig } from '../../../../shared/domain/config';
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -530,6 +531,44 @@ describe('createCommandRouter — project commands', () => {
     expect(replies[0]).toContain('yolo');
     await router(makeMsg('haz algo', replies));
     expect(modes).toEqual(['apply-yolo']);
+  });
+
+  it('shares the run mode with the desktop store: defaults to plan, /mode and /status use it', async () => {
+    const gateway = new RunGateway();
+    const modes: Array<string | undefined> = [];
+    gateway.bindSubmit((_p, _t, opts) => { modes.push(opts?.mode); return { queued: false }; });
+    const runModes = new RunModeStore();
+    const router = createCommandRouter({
+      gateway, runModes, activeProject: mutableProject('devia/app'), ports: fakePorts(), now: () => 0, heartbeatMs: 1e9,
+    });
+    const replies: string[] = [];
+    await router(makeMsg('arregla el bug', replies));
+    expect(modes).toEqual(['plan']);
+
+    runModes.set('devia/app', 'apply', 'desktop'); // changed from the app
+    await router(makeMsg('/status', replies));
+    expect(replies.at(-1)).toContain('apply');
+
+    await router(makeMsg('/mode yolo', replies));
+    expect(runModes.get('devia/app')).toBe('apply-yolo');
+  });
+
+  it('a leading plan/execute keyword switches the shared mode (execute only from plan)', async () => {
+    const gateway = new RunGateway();
+    const modes: Array<string | undefined> = [];
+    gateway.bindSubmit((_p, _t, opts) => { modes.push(opts?.mode); return { queued: false }; });
+    const runModes = new RunModeStore();
+    const router = createCommandRouter({
+      gateway, runModes, activeProject: mutableProject('devia/app'), ports: fakePorts(), now: () => 0, heartbeatMs: 1e9,
+    });
+    const replies: string[] = [];
+    await router(makeMsg('ejecuta el plan', replies));
+    expect(runModes.get('devia/app')).toBe('apply');
+    await router(makeMsg('ejecuta otra cosa', replies));
+    expect(runModes.get('devia/app')).toBe('apply');
+    await router(makeMsg('analiza esto', replies));
+    expect(runModes.get('devia/app')).toBe('plan');
+    expect(modes).toEqual(['apply', 'apply', 'plan']);
   });
 
   it('/agent shows the active agent', async () => {

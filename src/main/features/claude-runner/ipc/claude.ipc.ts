@@ -21,6 +21,8 @@ export interface ClaudeRunnerIpcDeps {
   stopProject: StopProjectUseCase;
   stopAll: StopAllUseCase;
   resetSession: ResetSessionUseCase;
+  /** Called after a session reset (Telegram `/clean` or the app) so per-session state such as the run mode returns to its default. */
+  onSessionReset?: (project: string) => void;
   attachments: AttachmentEnricher;
   queue: QueueService;
   registry: ProcessTrackingRegistry;
@@ -487,6 +489,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
     cancelAutoResume(project, 'reset');
     const ok = deps.resetSession.execute(project);
     deps.queue.clear(project);
+    deps.onSessionReset?.(project);
     return ok;
   };
   // Telegram `/clean`: the use case only resets the main-process registry, so

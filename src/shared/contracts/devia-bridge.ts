@@ -44,6 +44,7 @@ import type {
   GitInfoChangedEvent,
   NotificationClickEvent,
   RemoteSelectProjectEvent,
+  RunModeChangedEvent,
   TerminalDataEvent,
   TerminalExitEvent,
   QuestionAskEvent,
@@ -740,6 +741,19 @@ export interface DeviaBridge {
     onStatus(cb: (s: RemoteControlStatus) => void): void;
     /** The controller asked the app to switch to a project (Telegram `/use`). */
     onSelectProject(cb: (e: RemoteSelectProjectEvent) => void): void;
+  };
+
+  /**
+   * Run mode per session. Main owns the value (so Telegram and the app share
+   * it); the renderer mirrors it and pushes its own changes with `set`.
+   */
+  readonly runMode: {
+    /** The desktop changed a session's mode. */
+    set(project: string, mode: RunModeChangedEvent['mode']): Promise<void>;
+    /** Every session's current mode (non-default only), to hydrate on load. */
+    getAll(): Promise<RunModeChangedEvent[]>;
+    /** A mode changed in main (Telegram `/mode`, a keyword, a session reset). */
+    onChanged(cb: (e: RunModeChangedEvent) => void): void;
   };
 
   /**

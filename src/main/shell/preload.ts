@@ -294,6 +294,13 @@ const bridge: DeviaBridge = {
     onSelectProject: (cb)   => { ipcRenderer.on('remoteControl:select-project', (_e, d) => cb(d)); },
   },
 
+  // Run mode per session — main is the source of truth.
+  runMode: {
+    set:       (project, mode) => ipcRenderer.invoke('runMode:set', project, mode),
+    getAll:    ()              => ipcRenderer.invoke('runMode:get'),
+    onChanged: (cb)            => { ipcRenderer.on('runMode:changed', (_e, d) => cb(d)); },
+  },
+
   update: {
     check:    ()   => ipcRenderer.invoke('update:check'),
     install:  ()   => ipcRenderer.invoke('update:install'),
