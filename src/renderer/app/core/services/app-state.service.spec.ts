@@ -57,6 +57,9 @@ const mockApi: Partial<ElectronApiService> = {
   onSddNotification: noop as any,
   onRemoteControlStatus: noop as any,
   onRemoteSelectProject: noop as any,
+  onRunModeChanged: noop as any,
+  getRunModes: (() => Promise.resolve([])) as any,
+  setRunModeRemote: (() => Promise.resolve()) as any,
 };
 
 const mockToast: Partial<ToastService> = {

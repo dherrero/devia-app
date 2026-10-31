@@ -67,6 +67,7 @@ describe('AppStateService.checkoutBranch — guards', () => {
       onQuestionAsk: noop, onDiffSnapshot: noop, onAgentsDetected: noop, onSkillRegistryChanged: noop,
       onMcpListChanged: noop, onSubAgentsChanged: noop, onKanbanChanged: noop, onAgentWake: noop,
       onSddNotification: noop, onRemoteControlStatus: noop, onRemoteSelectProject: noop,
+      onRunModeChanged: noop, getRunModes: () => Promise.resolve([]), setRunModeRemote: () => Promise.resolve(),
       ...api,
     } as unknown as ElectronApiService;
 
@@ -128,6 +129,7 @@ describe('AppStateService.pullGit — guards', () => {
       onQuestionAsk: noop, onDiffSnapshot: noop, onAgentsDetected: noop, onSkillRegistryChanged: noop,
       onMcpListChanged: noop, onSubAgentsChanged: noop, onKanbanChanged: noop, onAgentWake: noop,
       onSddNotification: noop, onRemoteControlStatus: noop, onRemoteSelectProject: noop,
+      onRunModeChanged: noop, getRunModes: () => Promise.resolve([]), setRunModeRemote: () => Promise.resolve(),
       ...api,
     } as unknown as ElectronApiService;
 
