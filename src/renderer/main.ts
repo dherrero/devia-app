@@ -1,6 +1,5 @@
 import { importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { provideAnimations } from '@angular/platform-browser/animations';
 import { HttpClient, provideHttpClient } from '@angular/common/http';
 import { provideRouter, withHashLocation } from '@angular/router';
 import { DialogModule } from '@angular/cdk/dialog';
@@ -28,7 +27,6 @@ function httpTranslateLoader(http: HttpClient) {
 bootstrapApplication(AppComponent, {
   providers: [
     provideZoneChangeDetection(),
-    provideAnimations(),
     provideHttpClient(),
     importProvidersFrom(DialogModule),
     provideRouter(routes, withHashLocation()),
