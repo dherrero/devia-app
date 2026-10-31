@@ -1,15 +1,22 @@
 @if (imageSrc(); as src) {
 <span class="dv-chat-avatar__face">
   <img class="dv-chat-avatar__img" [src]="src" alt="" draggable="false" />
-  @if (blinkSrc(); as bsrc) {
-  <img
-    class="dv-chat-avatar__img dv-chat-avatar__img--blink"
-    [src]="bsrc"
-    alt=""
-    draggable="false"
-    aria-hidden="true"
-  />
-  }
+  @if (speaking()) { @if (speakFrames(); as sf) {
+  <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--a" [src]="sf.a.open" alt="" draggable="false" aria-hidden="true" />
+  <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--c" [src]="sf.consonants.open" alt="" draggable="false" aria-hidden="true" />
+  <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--o" [src]="sf.ou.open" alt="" draggable="false" aria-hidden="true" />
+  <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--e" [src]="sf.ei.open" alt="" draggable="false" aria-hidden="true" />
+  } } @if (blinkSrc(); as bsrc) { @if (active()) {
+  <span class="dv-chat-avatar__blink">
+    <img class="dv-chat-avatar__img" [src]="bsrc" alt="" draggable="false" aria-hidden="true" />
+    @if (speaking()) { @if (speakFrames(); as sf) {
+    <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--a" [src]="sf.a.blink" alt="" draggable="false" aria-hidden="true" />
+    <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--c" [src]="sf.consonants.blink" alt="" draggable="false" aria-hidden="true" />
+    <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--o" [src]="sf.ou.blink" alt="" draggable="false" aria-hidden="true" />
+    <img class="dv-chat-avatar__img dv-chat-avatar__mouth dv-chat-avatar__mouth--e" [src]="sf.ei.blink" alt="" draggable="false" aria-hidden="true" />
+    } }
+  </span>
+  } }
 </span>
 } @else {
 <span class="dv-chat-avatar__label">{{ label() }}</span>

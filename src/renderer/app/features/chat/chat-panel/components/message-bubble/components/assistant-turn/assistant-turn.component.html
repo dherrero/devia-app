@@ -1,4 +1,4 @@
-<dv-ai-bubble class="msg-asst" avatarLabel="D" avatarImageSrc="assets/images/devia-mascot-pixel.png" avatarBlinkSrc="assets/images/devia-mascot-blink.png" [avatarState]="avatarState()" [avatarActive]="isLatest()">
+<dv-ai-bubble class="msg-asst" avatarLabel="D" [avatarImageSrc]="avatarOpenSrc" [avatarBlinkSrc]="avatarBlinkSrc" [avatarSpeakFrames]="avatarSpeakFrames" [avatarState]="avatarState()" [avatarActive]="isLatest()">
   <div class="body-col">
     @if (hasThinking()) {
       <details class="thinking-block" [class.thinking-active]="msg().streaming">
