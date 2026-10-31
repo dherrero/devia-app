@@ -6,7 +6,9 @@ import {
   PLAN_STEP_LIMITS,
   UI_TOOL_NAMES,
   buildPlanFollowUpPrompt,
+  classifyUiDecision,
   isBlockingUiTool,
+  isPlanRunDecision,
   normalizeConfirmInput,
   normalizeNotifyInput,
   normalizePickInput,
@@ -299,6 +301,39 @@ describe('result renderers', () => {
     const text = renderPlanApproveResult({ decision: 'reject', comment: 'usa signals' });
     expect(text).toContain('REJECTED');
     expect(text).toContain('usa signals');
+  });
+
+  it('tells the agent to refine the plan on the board on keep_planning', () => {
+    const text = renderPlanApproveResult({ decision: 'keep_planning', comment: 'falta Telegram' });
+    expect(text).toContain('KEEP PLANNING');
+    expect(text).toContain('falta Telegram');
+    expect(text).toContain('duplicate spec');
+    expect(text).not.toContain('End your turn');
+  });
+
+  it('marks yolo approvals so the audit log can tell them apart from apply', () => {
+    const yolo = renderPlanApproveResult({ decision: 'approve_and_run_yolo' });
+    expect(yolo).toContain('End your turn');
+    expect(classifyUiDecision('plan_approve', yolo)).toBe('approved_and_run_yolo');
+    expect(classifyUiDecision('plan_approve', renderPlanApproveResult({ decision: 'approve_and_run' }))).toBe(
+      'approved_and_run',
+    );
+    expect(classifyUiDecision('plan_approve', renderPlanApproveResult({ decision: 'keep_planning' }))).toBe(
+      'keep_planning',
+    );
+  });
+
+  it('builds the follow-up prompt per mode', () => {
+    const plan = { title: 'T', plan: 'cuerpo' };
+    expect(buildPlanFollowUpPrompt(plan)).toContain('switched to apply mode.');
+    expect(buildPlanFollowUpPrompt(plan, true)).toContain('without permission prompts');
+  });
+
+  it('only run decisions start an execution', () => {
+    expect(isPlanRunDecision('approve_and_run')).toBe(true);
+    expect(isPlanRunDecision('approve_and_run_yolo')).toBe(true);
+    expect(isPlanRunDecision('keep_planning')).toBe(false);
+    expect(isPlanRunDecision('approve')).toBe(false);
   });
 
   it('never renders a refusal as success', () => {

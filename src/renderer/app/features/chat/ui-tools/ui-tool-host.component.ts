@@ -5,6 +5,7 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
 
 import {
   buildPlanFollowUpPrompt,
+  isPlanRunDecision,
   renderConfirmResult,
   renderPickResult,
   type ConfirmInput,
@@ -148,11 +149,14 @@ export class UiToolHostComponent {
     // plan lands in the thread before the follow-up's own message.
     const plan = this.uiTools.resolvePlan(this.sessionKey(), request.callId, result);
 
-    if (result.decision !== 'approve_and_run' || !plan) return;
+    // `keep_planning` launches nothing: the agent is still in this turn and
+    // refines the plan once the tool result reaches it.
+    if (!isPlanRunDecision(result.decision) || !plan) return;
+    const yolo = result.decision === 'approve_and_run_yolo';
     this.followUp.emit({
-      prompt: buildPlanFollowUpPrompt(plan),
-      displayText: `Ejecuta el plan aprobado: ${plan.title}`,
-      mode: 'apply',
+      prompt: buildPlanFollowUpPrompt(plan, yolo),
+      displayText: `Ejecuta el plan aprobado${yolo ? ' (sin preguntar)' : ''}: ${plan.title}`,
+      mode: yolo ? 'apply-yolo' : 'apply',
     });
   }
 
