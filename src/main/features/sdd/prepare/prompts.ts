@@ -44,7 +44,7 @@ export function buildLanguageLine(langCode?: string): string {
 }
 
 /** Shared reminder of the kanban tool contract appended to every prompt. */
-const KANBAN_TOOLBOX = [
+export const KANBAN_TOOLBOX = [
   'You have access to the devia-kanban MCP tools to drive the project board:',
   '- kanban_create_spec(title, description) → returns a spec id (S-n).',
   '- kanban_create_task(specId, title, body, dependsOn?, column?) → returns a task id (T-n). column "todo" puts it straight into the active plan; "backlog" (default) is for later/uncertain ideas. Use dependsOn for tasks that must run after others.',

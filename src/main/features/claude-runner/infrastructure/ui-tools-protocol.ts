@@ -21,7 +21,7 @@ const TOOL_LINES: Record<UiToolName, string> = {
     'You MAY use `devia_ask_user` to let the user pick between a few discrete options: pass one or more `questions`, each with its `options` (label plus an optional description), and `multiSelect` when several answers are valid. It blocks until the user picks, so wait for the answer instead of assuming one. For open-ended clarifications, just ask inline in your normal text response.',
   todo: 'Use `devia_todo` to publish and keep updating your step list on any task with several steps, sending the COMPLETE list each time. It returns immediately and never asks anything.',
   plan_approve:
-    'When your plan is ready, call `devia_plan_approve` instead of starting to edit files, listing its `steps`, and wait: the user approves, approves-and-runs, or rejects it with a comment you must act on.',
+    'When your plan is ready and saved on the kanban, call `devia_plan_approve` instead of starting to edit files, listing its `steps` (reference the kanban ids), and wait: the user either keeps planning with a comment you must act on (update the board, then call it again), or accepts it — asking before each action, or without asking.',
   request_review:
     'After a non-trivial change, call `devia_request_review` so the user can review your diff line by line; their comments come back as the tool result.',
   confirm:
