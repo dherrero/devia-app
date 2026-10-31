@@ -4,6 +4,7 @@ import {
   ButtonComponent,
   DvAiBubbleComponent,
   IconComponent,
+  type DvChatAvatarSpeakFrames,
   type DvChatAvatarState,
 } from '@devia/ui';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
@@ -62,6 +63,18 @@ const AVATAR_PLAN_TOOLS = new Set([
 const AVATAR_SEARCH_TOOLS = new Set(['Read', 'NotebookRead', 'Grep', 'Glob', 'WebFetch', 'WebSearch']);
 const AVATAR_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'file_change']);
 const AVATAR_TERMINAL_TOOLS = new Set(['Bash', 'Execute']);
+
+/** 256px-wide copies of the Devia frames, sized for the avatar (not the full-res art). */
+const AVATAR_IMG = 'assets/images/avatar';
+const AVATAR_OPEN = `${AVATAR_IMG}/Devia.PNG`;
+const AVATAR_BLINK = `${AVATAR_IMG}/Devia_blink.png`;
+/** Mouth poses (open + closed-eye twin) cycled while the agent streams text. */
+const AVATAR_SPEAK_FRAMES: DvChatAvatarSpeakFrames = {
+  consonants: { open: `${AVATAR_IMG}/Devia_consonantes.png`, blink: `${AVATAR_IMG}/Devia_consonantes_blink.png` },
+  a: { open: `${AVATAR_IMG}/Devia_vocal_A.png`, blink: `${AVATAR_IMG}/Devia_vocal_A_blink.png` },
+  ei: { open: `${AVATAR_IMG}/Devia_vocal_E-i.png`, blink: `${AVATAR_IMG}/Devia_vocal_E-i_blink.png` },
+  ou: { open: `${AVATAR_IMG}/Devia_vocal_O-U.png`, blink: `${AVATAR_IMG}/Devia_vocal_O-U_blink.png` },
+};
 
 /** Minimum consecutive tool_ref blocks to collapse into a group. */
 const GROUP_THRESHOLD = 3;
@@ -404,6 +417,10 @@ export class AssistantTurnComponent {
    * 15-state mascot contract. Derived from the same signals the bubble already
    * uses, so it tracks real run/tool state instead of a timer:
    */
+  readonly avatarOpenSrc = AVATAR_OPEN;
+  readonly avatarBlinkSrc = AVATAR_BLINK;
+  readonly avatarSpeakFrames = AVATAR_SPEAK_FRAMES;
+
   readonly avatarState = computed<DvChatAvatarState>(() => {
     if (!this.isLatest()) return 'idle';
 
