@@ -384,6 +384,8 @@ Each agent is treated independently; the core is agent-AGNOSTIC.
 
 Per-run configs live in `<deviaDir>/tmp/`, owner-only, removed after the run: a user server's tokens must never be written into the user's repository. Opening the kanban board no longer writes agent config — every run delivers kanban through its mapper.
 
+**This repository's own sub-agents** live in `.claude/agents/` (`desktop-developer`, `qa-desktop`, `devia-safe-angular-implementer`), inherited from the original monorepo and adapted to this layout. Devia's auto-import copies them into `.devia/sub-agents/` when the project is opened. Typical flow: `desktop-developer` implements → `qa-desktop` validates. Backend, database, mobile, docs and OpenDesign agents stay in the SaaS/mobile repos on purpose.
+
 **Agent E2E harness** (`tools/agent-e2e/`, README there): drives real Claude / pi / OpenCode through the real pipeline (headless composition over `dist/main`), 4 scenarios (apply, resume, plan, harness), snapshots split into `wiring` (what reached the CLI — must not change) and `behaviour` (model-dependent, warns). Costs money, never in CI. grok is excluded: its MCP config is GLOBAL (`~/.grok/user-settings.json`) — anything delivering to grok writes the developer's real file, so sandbox `HOME` in scripts/tests.
 
 **Adding an agent:** record fixtures with the harness → `wire.ts` → decoder + golden test → `mapper.ts` (+ tests) → register in `DEDICATED_MAPPERS` → snapshot it in the harness.
