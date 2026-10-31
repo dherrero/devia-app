@@ -51,44 +51,64 @@ describe('UiPlanCardComponent (S-25 F2.2)', () => {
     expect(el.querySelector('.dsm-plan__body')).not.toBeNull();
   });
 
-  it('emits approve without asking anything else', async () => {
-    const { el, decisions } = await render(PLAN);
-    buttonByText(el, 'approve').click();
+  it('offers exactly keep planning, accept-and-ask and accept-without-asking', async () => {
+    const { el } = await render(PLAN);
 
-    expect(decisions).toEqual([{ decision: 'approve' }]);
+    const labels = [...el.querySelectorAll('button')].map((b) => (b.textContent ?? '').trim());
+    expect(labels).toEqual([
+      'ui_tools.plan.keep_planning',
+      'ui_tools.plan.approve_ask',
+      'ui_tools.plan.approve_yolo',
+    ]);
   });
 
-  it('emits approve_and_run as a distinct decision', async () => {
+  it('emits approve_and_run (apply mode, asks before acting)', async () => {
     const { el, decisions } = await render(PLAN);
-    buttonByText(el, 'approve_and_run').click();
+    buttonByText(el, 'approve_ask').click();
 
     expect(decisions).toEqual([{ decision: 'approve_and_run' }]);
   });
 
-  it('refuses to send a rejection with no reason', async () => {
-    const { el, decisions, detect } = await render(PLAN);
-    buttonByText(el, 'reject').click();
-    detect();
+  it('emits approve_and_run_yolo as a distinct decision', async () => {
+    const { el, decisions } = await render(PLAN);
+    buttonByText(el, 'approve_yolo').click();
 
-    // A rejection with no reason makes the agent re-propose the same plan, so
-    // the send button stays disabled until the user says why.
-    expect(buttonByText(el, 'send_reject').disabled).toBe(true);
-    buttonByText(el, 'send_reject').click();
-    expect(decisions).toEqual([]);
+    expect(decisions).toEqual([{ decision: 'approve_and_run_yolo' }]);
   });
 
-  it('emits the rejection with the comment once one is typed', async () => {
+  it('lets the user keep planning with no comment at all', async () => {
     const { el, decisions, detect } = await render(PLAN);
-    buttonByText(el, 'reject').click();
+    buttonByText(el, 'keep_planning').click();
+    detect();
+    buttonByText(el, 'send_keep_planning').click();
+
+    expect(decisions).toEqual([{ decision: 'keep_planning' }]);
+  });
+
+  it('emits keep_planning with the trimmed comment once one is typed', async () => {
+    const { el, decisions, detect } = await render(PLAN);
+    buttonByText(el, 'keep_planning').click();
     detect();
 
     const textarea = el.querySelector('textarea') as HTMLTextAreaElement;
-    textarea.value = '  usa signals  ';
+    textarea.value = '  falta el caso de Telegram  ';
     textarea.dispatchEvent(new Event('input'));
     detect();
-    buttonByText(el, 'send_reject').click();
+    buttonByText(el, 'send_keep_planning').click();
 
-    expect(decisions).toEqual([{ decision: 'reject', comment: 'usa signals' }]);
+    expect(decisions).toEqual([{ decision: 'keep_planning', comment: 'falta el caso de Telegram' }]);
+  });
+
+  it('cancelling the comment goes back to the three choices and discards it', async () => {
+    const { el, decisions, detect } = await render(PLAN);
+    buttonByText(el, 'keep_planning').click();
+    detect();
+    buttonByText(el, 'ui_tools.plan.cancel').click();
+    detect();
+
+    expect(el.querySelector('textarea')).toBeNull();
+    expect(buttonByText(el, 'approve_yolo')).toBeTruthy();
+    expect(decisions).toEqual([]);
   });
 
   it('renders nothing for a payload with no plan body', async () => {

@@ -159,7 +159,23 @@ export interface PlanApproveInput {
 
 export const PLAN_STEP_LIMITS = { count: 20, text: 200 } as const;
 
-export type PlanDecision = 'approve' | 'approve_and_run' | 'reject';
+/**
+ * What the user chose on the plan card. The card offers `keep_planning`,
+ * `approve_and_run` (apply: asks before acting) and `approve_and_run_yolo`
+ * (apply-yolo: never asks). `approve` and `reject` are no longer offered; they
+ * stay in the type so plans already stored in a thread still render.
+ */
+export type PlanDecision =
+  | 'keep_planning'
+  | 'approve_and_run'
+  | 'approve_and_run_yolo'
+  | 'approve'
+  | 'reject';
+
+/** Decisions that start an execution run (and so carry a follow-up). */
+export function isPlanRunDecision(decision: PlanDecision): boolean {
+  return decision === 'approve_and_run' || decision === 'approve_and_run_yolo';
+}
 
 export interface PlanApproveResult {
   decision: PlanDecision;
@@ -178,12 +194,21 @@ export interface PlanRecord extends PlanApproveInput {
 
 /** Plain-text rendering for `ChatMessage.text`, so text-only consumers keep working. */
 export function planRecordText(record: PlanRecord): string {
-  const verdict = record.decision === 'reject' ? 'Plan rechazado' : 'Plan aprobado';
+  const verdict =
+    record.decision === 'reject'
+      ? 'Plan rechazado'
+      : record.decision === 'keep_planning'
+        ? 'Seguimos planeando'
+        : record.decision === 'approve_and_run_yolo'
+          ? 'Plan aprobado (sin preguntar)'
+          : 'Plan aprobado';
   const steps =
     record.steps && record.steps.length > 0
       ? `\n${record.steps.map((st, i) => `${i + 1}. ${st.text}`).join('\n')}`
       : '';
-  const comment = record.comment ? `\nMotivo: ${record.comment}` : '';
+  const comment = record.comment
+    ? `\n${record.decision === 'keep_planning' ? 'Comentario' : 'Motivo'}: ${record.comment}`
+    : '';
   return `${verdict}: ${record.title}${steps}${comment}`;
 }
 
@@ -485,6 +510,19 @@ export function normalizeUiToolInput(tool: UiToolName, input: unknown): unknown 
 export function renderPlanApproveResult(result: PlanApproveResult): string {
   const comment = result.comment ? `\nUser comment: ${result.comment}` : '';
   switch (result.decision) {
+    case 'keep_planning':
+      return (
+        'The user wants to KEEP PLANNING. Do not start executing. Take their comment into account, ' +
+        'refine the plan in this same turn — update the existing kanban spec and tasks instead of creating ' +
+        'a duplicate spec — and call devia_plan_approve again when it is ready.' + comment
+      );
+    case 'approve_and_run_yolo':
+      return (
+        'The user APPROVED the plan and switched Devia to apply mode WITHOUT permission prompts (yolo). ' +
+        'End your turn now with a one-line confirmation — do not start editing in this turn. ' +
+        'Devia has already queued a follow-up instruction that will execute the approved plan ' +
+        'in the next turn, with write access.' + comment
+      );
     case 'approve_and_run':
       return (
         'The user APPROVED the plan and switched Devia to apply mode. ' +
@@ -519,7 +557,7 @@ export function renderPlanApproveResult(result: PlanApproveResult): string {
  * The plan is inlined verbatim rather than referenced, so the follow-up run does
  * not depend on the agent "remembering" what it proposed.
  */
-export function buildPlanFollowUpPrompt(plan: PlanApproveInput): string {
+export function buildPlanFollowUpPrompt(plan: PlanApproveInput, yolo = false): string {
   const files =
     plan.filesTouched && plan.filesTouched.length > 0
       ? `\n\nFiles the plan expects to touch:\n${plan.filesTouched.map((f) => `- ${f}`).join('\n')}`
@@ -531,7 +569,7 @@ export function buildPlanFollowUpPrompt(plan: PlanApproveInput): string {
         plan.steps.map((st) => `- ${st.id}: ${st.text}`).join('\n')
       : '';
   return (
-    `The user approved this plan and Devia switched to apply mode. Execute it now.\n\n` +
+    `The user approved this plan and Devia switched to ${yolo ? 'apply mode without permission prompts' : 'apply mode'}. Execute it now.\n\n` +
     `## ${plan.title}\n\n${plan.plan}${files}${steps}`
   );
 }
@@ -590,6 +628,8 @@ export function classifyUiDecision(tool: UiToolName, answer: string): string | n
   }
   if (tool === 'plan_approve') {
     if (answer.includes('REJECTED')) return 'rejected';
+    if (answer.includes('KEEP PLANNING')) return 'keep_planning';
+    if (answer.includes('(yolo)')) return 'approved_and_run_yolo';
     if (answer.includes('apply mode')) return 'approved_and_run';
     if (answer.includes('APPROVED')) return 'approved';
     return null;

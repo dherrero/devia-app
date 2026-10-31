@@ -30,7 +30,28 @@ export class PlanMessageComponent {
 
   protected readonly plan = computed<PlanRecord | null>(() => this.msg().plan ?? null);
 
-  protected readonly rejected = computed(() => this.plan()?.decision === 'reject');
+  /** Not an approval: the plan was rejected or the user chose to keep planning. */
+  protected readonly rejected = computed(() => {
+    const decision = this.plan()?.decision;
+    return decision === 'reject' || decision === 'keep_planning';
+  });
+
+  protected readonly verdictKey = computed(() => {
+    switch (this.plan()?.decision) {
+      case 'reject':
+        return 'ui_tools.plan.decided_rejected';
+      case 'keep_planning':
+        return 'ui_tools.plan.decided_keep_planning';
+      case 'approve_and_run_yolo':
+        return 'ui_tools.plan.decided_yolo';
+      default:
+        return 'ui_tools.plan.decided_approved';
+    }
+  });
+
+  protected readonly commentKey = computed(() =>
+    this.plan()?.decision === 'keep_planning' ? 'ui_tools.plan.keep_comment' : 'ui_tools.plan.reject_reason',
+  );
 
   protected readonly body = computed<RenderedMarkdown>(() =>
     this.markdown.render(`plan-msg-${this.msg().id}`, this.plan()?.plan ?? ''),

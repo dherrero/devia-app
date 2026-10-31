@@ -21,7 +21,7 @@
       </ul>
     }
 
-    @if (rejecting()) {
+    @if (keepPlanning()) {
       <div class="dsm-plan__reject">
         <textarea class="dsm-plan__comment"
                   rows="3"
@@ -31,27 +31,27 @@
                   [value]="comment()"
                   (input)="onCommentInput($any($event.target).value)"></textarea>
         <div class="dsm-plan__actions">
-          <dv-button variant="secondary" size="sm" (clicked)="cancelReject()">
+          <dv-button variant="secondary" size="sm" (clicked)="cancelKeepPlanning()">
             {{ 'ui_tools.plan.cancel' | translate }}
           </dv-button>
-          <dv-button variant="primary"
-                     size="sm"
-                     [disabled]="!canReject()"
-                     (clicked)="confirmReject()">
-            {{ 'ui_tools.plan.send_reject' | translate }}
+          <dv-button variant="primary" size="sm" (clicked)="confirmKeepPlanning()">
+            {{ 'ui_tools.plan.send_keep_planning' | translate }}
           </dv-button>
         </div>
       </div>
     } @else {
       <div class="dsm-plan__actions">
-        <dv-button variant="secondary" size="sm" (clicked)="startReject()">
-          {{ 'ui_tools.plan.reject' | translate }}
-        </dv-button>
-        <dv-button variant="secondary" size="sm" (clicked)="approve()">
-          {{ 'ui_tools.plan.approve' | translate }}
+        <dv-button variant="secondary" size="sm" (clicked)="startKeepPlanning()">
+          {{ 'ui_tools.plan.keep_planning' | translate }}
         </dv-button>
         <dv-button variant="primary" size="sm" (clicked)="approveAndRun()">
-          {{ 'ui_tools.plan.approve_and_run' | translate }}
+          {{ 'ui_tools.plan.approve_ask' | translate }}
+        </dv-button>
+        <dv-button variant="danger-soft"
+                   size="sm"
+                   [title]="'ui_tools.plan.approve_yolo_hint' | translate"
+                   (clicked)="approveAndRunYolo()">
+          {{ 'ui_tools.plan.approve_yolo' | translate }}
         </dv-button>
       </div>
     }

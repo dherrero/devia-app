@@ -38,32 +38,32 @@ export class UiPlanCardComponent {
     this.markdown.render(`plan:${this.callId()}`, this.plan()?.plan ?? ''),
   );
 
-  protected readonly rejecting = signal(false);
+  protected readonly keepPlanning = signal(false);
   protected readonly comment = signal('');
 
-  /** A rejection without a reason makes the agent re-propose the same thing. */
-  protected readonly canReject = computed(() => this.comment().trim().length > 0);
-
-  protected approve(): void {
-    this.decided.emit({ decision: 'approve' });
-  }
-
+  /** Accept and let the agent ask before each action (apply mode). */
   protected approveAndRun(): void {
     this.decided.emit({ decision: 'approve_and_run' });
   }
 
-  protected startReject(): void {
-    this.rejecting.set(true);
+  /** Accept and run without permission prompts (apply-yolo mode). */
+  protected approveAndRunYolo(): void {
+    this.decided.emit({ decision: 'approve_and_run_yolo' });
   }
 
-  protected cancelReject(): void {
-    this.rejecting.set(false);
+  protected startKeepPlanning(): void {
+    this.keepPlanning.set(true);
+  }
+
+  protected cancelKeepPlanning(): void {
+    this.keepPlanning.set(false);
     this.comment.set('');
   }
 
-  protected confirmReject(): void {
-    if (!this.canReject()) return;
-    this.decided.emit({ decision: 'reject', comment: this.comment().trim() });
+  /** The comment is optional: the user may just want another pass. */
+  protected confirmKeepPlanning(): void {
+    const comment = this.comment().trim();
+    this.decided.emit({ decision: 'keep_planning', ...(comment ? { comment } : {}) });
   }
 
   protected onCommentInput(value: string): void {
