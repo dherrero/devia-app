@@ -162,6 +162,13 @@ export interface RemoteSelectProjectEvent {
   project: string;
 }
 
+/** The run mode of a session changed outside the renderer (Telegram `/mode`,
+ *  a mode keyword in a remote message, or a session reset). */
+export interface RunModeChangedEvent {
+  project: string;
+  mode: 'plan' | 'apply' | 'apply-yolo';
+}
+
 export interface TerminalDataEvent {
   project: string;
   data: string;
@@ -302,6 +309,7 @@ export interface RendererEvents {
   'sdd:notification': SddNotificationPayload;
   'remoteControl:status': RemoteControlStatus;
   'remoteControl:select-project': RemoteSelectProjectEvent;
+  'runMode:changed': RunModeChangedEvent;
   'update:status': UpdateStatus;
 }
 

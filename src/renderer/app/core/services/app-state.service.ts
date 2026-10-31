@@ -114,12 +114,19 @@ export class AppStateService implements OnDestroy {
   // equivalent to the previous global signal.
   private readonly _runModes = signal<Map<SessionKey, RunMode>>(new Map());
 
-  /** Returns the run-mode for the given session key; defaults to 'apply'. */
+  /** Returns the run-mode for the given session key; a new session is in 'plan'. */
   runMode(key: SessionKey): RunMode {
-    return this._runModes().get(key) ?? 'apply';
+    return this._runModes().get(key) ?? 'plan';
   }
 
+  /** Sets the mode locally and tells main, which owns it (Telegram reads it there). */
   setRunMode(key: SessionKey, mode: RunMode): void {
+    if (this.runMode(key) === mode) return;
+    this.storeRunMode(key, mode);
+    void this.api.setRunModeRemote(key, mode);
+  }
+
+  private storeRunMode(key: SessionKey, mode: RunMode): void {
     this._runModes.update((prev) => {
       const next = new Map(prev);
       next.set(key, mode);
@@ -1441,6 +1448,12 @@ export class AppStateService implements OnDestroy {
     this.api.onNotificationClick((e) => void this.navigateToProject(e.project));
     // E-DSK-14: Telegram `/use <proyecto>` switches the desktop to that project.
     this.api.onRemoteSelectProject((e) => void this.navigateToProject(e.project));
+    // Main owns the run mode: mirror changes made from Telegram (`/mode`, a
+    // keyword) or by a session reset, and pick up what is already set on load.
+    this.api.onRunModeChanged((e) => this.storeRunMode(e.project as SessionKey, e.mode));
+    void this.api.getRunModes().then((all) => {
+      for (const e of all) this.storeRunMode(e.project as SessionKey, e.mode);
+    });
 
     // Reactive git updates. Drop events for projects the user has navigated
     // away from — the watcher in main is single-project, but stale events

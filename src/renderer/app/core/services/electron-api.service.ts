@@ -419,6 +419,15 @@ export class ElectronApiService {
     this.api.remoteControl.onSelectProject(cb);
   }
 
+  // Run mode per session — thin pass-through to bridge.runMode.*.
+  setRunModeRemote(project: string, mode: Parameters<typeof this.api.runMode.set>[1]) {
+    return this.api.runMode.set(project, mode);
+  }
+  getRunModes() { return this.api.runMode.getAll(); }
+  onRunModeChanged(cb: Parameters<typeof this.api.runMode.onChanged>[0]) {
+    this.api.runMode.onChanged(cb);
+  }
+
   // Auto-update (electron-updater). Thin pass-through to bridge.update.*.
   checkUpdate() { return this.api.update.check(); }
   installUpdate() { return this.api.update.install(); }

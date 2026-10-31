@@ -151,6 +151,8 @@ export interface ClaudeRunnerDeps {
    * mirror runs.
    */
   runGateway?: import('../../shared/run-gateway').RunGateway;
+  /** Notified after a session reset (the run mode goes back to its default). */
+  onSessionReset?: (project: string) => void;
   /** S-32: whether the chat relay is connected (gates `devia_send_file`). */
   remoteRelayConnected?: () => boolean;
   /** S-32: validates a live session worktree (an extra send root when it is the run cwd). */
@@ -216,6 +218,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
         auditLog,
         ...(deps.gitInspector !== undefined && { gitInspector: deps.gitInspector }),
         ...(deps.runGateway !== undefined && { runGateway: deps.runGateway }),
+        ...(deps.onSessionReset !== undefined && { onSessionReset: deps.onSessionReset }),
         ...(deps.notifyRemote !== undefined && { notifyRemote: deps.notifyRemote }),
       });
     },

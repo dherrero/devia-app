@@ -259,6 +259,11 @@ export const IPC = {
   remoteControlRestart:   'remoteControl:restart',
   remoteControlStatus:    'remoteControl:status',
 
+  // Run mode per session — main owns it; `changed` is the event main→renderer.
+  runModeGet:     'runMode:get',
+  runModeSet:     'runMode:set',
+  runModeChanged: 'runMode:changed',
+
   // Auto-update — electron-updater reading releases from the public
   // GitHub repo `dherrero/devia`. `updateStatus` is the push event
   // main→renderer; `updateCheck` and `updateInstall` are renderer→main.
