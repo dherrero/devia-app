@@ -130,6 +130,17 @@ describe('SwitchSessionUseCase — native conversation restore (S-2 F0.2)', () =
 
     expect(result.stats?.costUsd).toBe(0.5);
   });
+
+  it('returns the stored run mode, and omits it when the session has none', () => {
+    const withMode: PersistedSession = {
+      id: SID, project: BASE, createdAt: 1, updatedAt: 2, messages: [], runMode: 'apply',
+    };
+    const plain: PersistedSession = { id: SID, project: BASE, createdAt: 1, updatedAt: 2, messages: [] };
+    const a = new SwitchSessionUseCase({ registry: makeRegistry().registry, sessions: makeSessionStore([withMode]), state: makeState() });
+    const b = new SwitchSessionUseCase({ registry: makeRegistry().registry, sessions: makeSessionStore([plain]), state: makeState() });
+    expect(a.execute(BASE, SID).runMode).toBe('apply');
+    expect('runMode' in b.execute(BASE, SID)).toBe(false);
+  });
 });
 
 describe('SwitchSessionUseCase — hard guards (S-2 F0.4)', () => {

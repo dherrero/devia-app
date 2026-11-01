@@ -416,7 +416,7 @@ describe('ChatPanesContainerComponent — session adoption (S-2 F5.2)', () => {
     expect(c.layout().focusedPaneId).toBe(ADOPTED);
     // Transcript loaded under the new key; old blank pane FULLY cleaned up
     // (zero activity → worktree + branch, S-3).
-    expect(state.loadSessionIntoKey).toHaveBeenCalledWith(ADOPTED, [{ id: 'm', role: 'user' }], undefined);
+    expect(state.loadSessionIntoKey).toHaveBeenCalledWith(ADOPTED, [{ id: 'm', role: 'user' }], undefined, undefined);
     expect(api.cleanupWorktree).toHaveBeenCalledWith('/ws/proj-a', oldPane.sessionRef.sessionId);
     expect(state.clearChat).toHaveBeenCalledWith(oldPane.sessionRef.sessionId);
     // mountedPaneSessions now advertises the adopted id (active marker moves).
@@ -636,7 +636,7 @@ describe('ChatPanesContainerComponent — split restore from disk (S-3 F2.3)', (
     expect(restored.sessionRef.workdir).toBe(`/wt/${SID2}`);
     expect(c.isolatedFor(restored)).toBe(true);
     expect(c.layout().focusedPaneId).toBe(SID2);
-    expect(state.loadSessionIntoKey).toHaveBeenCalledWith(SID2, [{ id: 'm', role: 'user' }], undefined);
+    expect(state.loadSessionIntoKey).toHaveBeenCalledWith(SID2, [{ id: 'm', role: 'user' }], undefined, undefined);
   });
 
   it('a vanished session is skipped and the leftover single-pane skeleton is cleared', async () => {

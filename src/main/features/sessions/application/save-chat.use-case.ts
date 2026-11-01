@@ -6,6 +6,7 @@ import type {
 import type { SessionStats, StatsSourceMessage } from '../../../../shared/domain/session-stats';
 import { buildSessionStats } from '../../../../shared/domain/session-stats';
 import type { PersistedSession } from '../../../../shared/domain/session';
+import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import { extractSessionIdentity } from '../../../../shared/domain/session';
 
 /**
@@ -20,7 +21,7 @@ export class SaveChatUseCase {
     state: StateStore;
   }) {}
 
-  execute(projectPath: string, messages: unknown[], stats?: SessionStats): true {
+  execute(projectPath: string, messages: unknown[], stats?: SessionStats, runMode?: RunMode): true {
     const record = this.deps.registry.getOrCreate(projectPath);
 
     if (!record.activeSessionId) {
@@ -56,6 +57,7 @@ export class SaveChatUseCase {
       // checkout by definition) but a previously persisted one must survive.
       ...(existing?.workdir !== undefined && { workdir: existing.workdir }),
       ...(existing?.worktreeBranch !== undefined && { worktreeBranch: existing.worktreeBranch }),
+      ...resolveRunMode(runMode, existing),
     });
     return true;
   }
@@ -75,6 +77,7 @@ export class SaveChatUseCase {
     stats?: SessionStats,
     workdir?: string,
     worktreeBranch?: string,
+    runMode?: RunMode,
   ): true {
     if (!this.deps.sessions.isValidSessionId(sessionId)) return true;
 
@@ -102,6 +105,7 @@ export class SaveChatUseCase {
       ...resolveIdentity(messages, existing),
       ...(resolvedWorkdir !== undefined && { workdir: resolvedWorkdir }),
       ...(resolvedBranch !== undefined && { worktreeBranch: resolvedBranch }),
+      ...resolveRunMode(runMode, existing),
     });
     return true;
   }
@@ -123,4 +127,13 @@ function resolveIdentity(
     ...(agentId !== undefined && { agentId }),
     ...(agentSessionId !== undefined && { agentSessionId }),
   };
+}
+
+/** Like identity: a save that omits the mode never erases a persisted one. */
+function resolveRunMode(
+  runMode: RunMode | undefined,
+  existing: PersistedSession | null,
+): Pick<PersistedSession, 'runMode'> {
+  const resolved = runMode ?? existing?.runMode;
+  return resolved !== undefined ? { runMode: resolved } : {};
 }

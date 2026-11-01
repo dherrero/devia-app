@@ -65,4 +65,20 @@ describe('PlanMessageComponent (S-28 T-337)', () => {
     expect(el.textContent).toContain('ui_tools.plan.decided_rejected');
     expect(el.textContent).toContain('falta el test');
   });
+
+  it('shows keep-planning as not-yet-approved, with its own label and comment', () => {
+    const el = mount(message({ decision: 'keep_planning', comment: 'falta Telegram' }));
+
+    expect(el.querySelector('.ds-plan-msg')?.classList).toContain('is-rejected');
+    expect(el.textContent).toContain('ui_tools.plan.decided_keep_planning');
+    expect(el.textContent).toContain('ui_tools.plan.keep_comment');
+    expect(el.textContent).toContain('falta Telegram');
+  });
+
+  it('labels a yolo approval apart from a normal one', () => {
+    const el = mount(message({ decision: 'approve_and_run_yolo' }));
+
+    expect(el.querySelector('.ds-plan-msg')?.classList).not.toContain('is-rejected');
+    expect(el.textContent).toContain('ui_tools.plan.decided_yolo');
+  });
 });

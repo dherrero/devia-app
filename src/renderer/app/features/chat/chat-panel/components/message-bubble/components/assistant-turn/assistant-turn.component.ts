@@ -4,6 +4,7 @@ import {
   ButtonComponent,
   DvAiBubbleComponent,
   IconComponent,
+  type DvChatAvatarSpeakFrames,
   type DvChatAvatarState,
 } from '@devia/ui';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
@@ -63,6 +64,18 @@ const AVATAR_SEARCH_TOOLS = new Set(['Read', 'NotebookRead', 'Grep', 'Glob', 'We
 const AVATAR_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'file_change']);
 const AVATAR_TERMINAL_TOOLS = new Set(['Bash', 'Execute']);
 
+/** 256px-wide copies of the Devia frames, sized for the avatar (not the full-res art). */
+const AVATAR_IMG = 'assets/images/avatar';
+const AVATAR_OPEN = `${AVATAR_IMG}/Devia.PNG`;
+const AVATAR_BLINK = `${AVATAR_IMG}/Devia_blink.png`;
+/** Mouth poses (open + closed-eye twin) cycled while the agent streams text. */
+const AVATAR_SPEAK_FRAMES: DvChatAvatarSpeakFrames = {
+  consonants: { open: `${AVATAR_IMG}/Devia_consonantes.png`, blink: `${AVATAR_IMG}/Devia_consonantes_blink.png` },
+  a: { open: `${AVATAR_IMG}/Devia_vocal_A.png`, blink: `${AVATAR_IMG}/Devia_vocal_A_blink.png` },
+  ei: { open: `${AVATAR_IMG}/Devia_vocal_E-i.png`, blink: `${AVATAR_IMG}/Devia_vocal_E-i_blink.png` },
+  ou: { open: `${AVATAR_IMG}/Devia_vocal_O-U.png`, blink: `${AVATAR_IMG}/Devia_vocal_O-U_blink.png` },
+};
+
 /** Minimum consecutive tool_ref blocks to collapse into a group. */
 const GROUP_THRESHOLD = 3;
 
@@ -107,8 +120,26 @@ function showsQuestionRecord(tc: ToolCallRecord, runStatus: string | undefined):
   ],
   templateUrl: './assistant-turn.component.html',
   styleUrl: './assistant-turn.component.scss',
+  host: { '(click)': 'onHostClick($event)' },
 })
 export class AssistantTurnComponent {
+  /** Delegated handler for the copy buttons the markdown renderer injects into
+   *  fenced code blocks (the HTML comes from innerHTML, so no template bindings). */
+  onHostClick(event: Event): void {
+    const btn = (event.target as Element | null)?.closest?.('button.code-copy-btn');
+    if (!btn) return;
+    const pre = btn.closest('pre');
+    const text = (pre?.querySelector('code') ?? pre)?.textContent ?? '';
+    if (!text) return;
+    void navigator.clipboard.writeText(text.replace(/\n$/, '')).then(
+      () => {
+        btn.classList.add('is-copied');
+        setTimeout(() => btn.classList.remove('is-copied'), 1400);
+      },
+      (err) => console.warn('[assistant-turn] code copy failed:', err),
+    );
+  }
+
   readonly LucideLoader = LucideLoader;
   readonly LucideCheck = LucideCheck;
   readonly LucideCopy = LucideCopy;
@@ -404,6 +435,10 @@ export class AssistantTurnComponent {
    * 15-state mascot contract. Derived from the same signals the bubble already
    * uses, so it tracks real run/tool state instead of a timer:
    */
+  readonly avatarOpenSrc = AVATAR_OPEN;
+  readonly avatarBlinkSrc = AVATAR_BLINK;
+  readonly avatarSpeakFrames = AVATAR_SPEAK_FRAMES;
+
   readonly avatarState = computed<DvChatAvatarState>(() => {
     if (!this.isLatest()) return 'idle';
 

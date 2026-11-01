@@ -29,6 +29,20 @@ export type DvChatAvatarState =
   | 'error'
   | 'warning';
 
+/** One mouth pose: eyes-open frame plus its closed-eye twin. */
+export interface DvChatAvatarFramePair {
+  open: string;
+  blink: string;
+}
+
+/** Mouth poses used to fake speech while the agent is writing. */
+export interface DvChatAvatarSpeakFrames {
+  consonants: DvChatAvatarFramePair;
+  a: DvChatAvatarFramePair;
+  ei: DvChatAvatarFramePair;
+  ou: DvChatAvatarFramePair;
+}
+
 @Component({
   selector: 'dv-chat-avatar',
   templateUrl: './component.html',
@@ -53,6 +67,13 @@ export class DvChatAvatarComponent {
   readonly state = input<DvChatAvatarState>('idle');
   /** Only the latest assistant message should animate; history stays still. */
   readonly active = input(true);
+  /** Mouth frames cycled while the agent streams text (simulated speech). */
+  readonly speakFrames = input<DvChatAvatarSpeakFrames | null>(null);
+
+  /** True only for the live avatar while text is streaming. */
+  readonly speaking = computed(
+    () => this.state() === 'streaming' && this.active() && !!this.speakFrames(),
+  );
 
   readonly hostClass = computed(
     () => `dv-chat-avatar dv-chat-avatar--${this.variant()}`,

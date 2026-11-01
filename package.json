@@ -15,7 +15,7 @@
   },
   "main": "dist/main/main/shell/main.js",
   "engines": {
-    "node": ">=24.14.1",
+    "node": ">=26.13.0",
     "npm": ">=11.11.0"
   },
   "scripts": {
@@ -33,8 +33,8 @@
     "lint": "eslint \"src/main/**/*.ts\" \"src/shared/**/*.ts\" \"src/renderer/**/*.ts\" \"src/renderer/**/*.html\" \"tools/**/*.ts\"",
     "test": "npm run test:main && npm run test:renderer && npm run test:libs",
     "test:main": "vitest run --config vitest.config.ts",
-    "test:renderer": "vitest run --config vitest.angular.config.ts",
-    "test:libs": "vitest run --config src/libs/ui/vitest.config.ts --passWithNoTests",
+    "test:renderer": "cross-env NODE_OPTIONS=--no-experimental-webstorage vitest run --config vitest.angular.config.ts",
+    "test:libs": "cross-env NODE_OPTIONS=--no-experimental-webstorage vitest run --config src/libs/ui/vitest.config.ts --passWithNoTests",
     "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "audit:runtime": "node scripts/audit-runtime.mjs",
     "pack": "electron-builder",
@@ -146,8 +146,7 @@
     "@angular-eslint/eslint-plugin": "^21.4.0",
     "@angular-eslint/eslint-plugin-template": "^21.4.0",
     "@angular-eslint/template-parser": "^21.4.0",
-    "@angular-devkit/build-angular": "^21.2.13",
-    "@angular/animations": "^21.2.15",
+    "@angular/build": "^21.2.13",
     "@angular/cdk": "^21.2.13",
     "@angular/cli": "^21.2.13",
     "@angular/common": "^21.2.15",
@@ -159,7 +158,6 @@
     "@angular/localize": "^21.2.15",
     "@angular/material": "^21.2.13",
     "@angular/platform-browser": "^21.2.15",
-    "@angular/platform-browser-dynamic": "^21.2.15",
     "@angular/router": "^21.2.15",
     "@electron/rebuild": "^4.0.4",
     "@fontsource/inter": "^5.2.8",
@@ -167,10 +165,7 @@
     "@lucide/angular": "^1.16.0",
     "@ngx-translate/core": "^15.0.0",
     "@ngx-translate/http-loader": "^8.0.0",
-    "@nx/eslint-plugin": "^22.7.5",
-    "@nx/js": "^22.7.5",
     "@playwright/test": "^1.61.0",
-    "@types/dompurify": "^3.2.0",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^22.13.0",
     "@typescript-eslint/eslint-plugin": "^8.62.0",
@@ -187,13 +182,12 @@
     "electron": "^41.4.0",
     "electron-builder": "^26.8.1",
     "esbuild": "^0.28.1",
-    "eslint": "^8.57.1",
+    "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.0.0",
     "happy-dom": "^20.10.6",
     "jsdom": "^29.1.1",
     "marked": "^18.0.5",
     "material-icons": "^1.13.14",
-    "nx": "^22.7.2",
     "prettier": "^3.8.4",
     "rxjs": "^7.8.2",
     "tslib": "^2.8.1",
@@ -219,6 +213,17 @@
     "yaml": "^2.9.0",
     "electron-updater": {
       "js-yaml": "^4.3.2"
-    }
+    },
+    "@electron/asar": "^4.3.1"
+  },
+  "allowScripts": {
+    "@parcel/watcher": true,
+    "electron": true,
+    "esbuild": true,
+    "fsevents": true,
+    "lmdb": true,
+    "msgpackr-extract": true,
+    "node-pty": true,
+    "protobufjs": true
   }
 }

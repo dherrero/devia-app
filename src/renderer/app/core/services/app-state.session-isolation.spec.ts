@@ -47,6 +47,9 @@ const mockApi: Partial<ElectronApiService> = {
   onSddNotification: noop as never,
   onRemoteControlStatus: noop as never,
   onRemoteSelectProject: noop as never,
+  onRunModeChanged: noop as never,
+  getRunModes: (() => Promise.resolve([])) as never,
+  setRunModeRemote: (() => Promise.resolve()) as never,
 };
 
 const mockToast: Partial<ToastService> = { show: noop as never };
@@ -115,11 +118,11 @@ describe('AppStateService — live-state isolation by sessionKey (T-146)', () =>
     expect(s.chats().size).toBe(1);
   });
 
-  it('runMode: defaults to apply and is independent per session key (T-148)', () => {
-    expect(s.runMode(K_PRIMARY)).toBe('apply');
-    s.setRunMode(K_PRIMARY, 'plan');
+  it('runMode: defaults to plan and is independent per session key (T-148)', () => {
     expect(s.runMode(K_PRIMARY)).toBe('plan');
-    expect(s.runMode(K_EXTRA)).toBe('apply');
+    s.setRunMode(K_PRIMARY, 'apply');
+    expect(s.runMode(K_PRIMARY)).toBe('apply');
+    expect(s.runMode(K_EXTRA)).toBe('plan');
   });
 
   it('composerInjection: draft targets only its session key, clear is scoped (T-148)', () => {

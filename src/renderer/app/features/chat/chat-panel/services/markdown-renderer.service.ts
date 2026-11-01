@@ -149,7 +149,26 @@ export class MarkdownRendererService implements OnDestroy {
       this.appendJsonTokens(doc, code, raw);
     }
 
+    this.appendCopyButtons(doc, template.content);
+
     return template.innerHTML;
+  }
+
+  /** Adds a copy button to every fenced code block (click handled by delegation
+   *  in AssistantTurnComponent). The button sits outside <code>, so copying reads
+   *  only the code text. */
+  private appendCopyButtons(doc: Document, root: DocumentFragment): void {
+    for (const pre of root.querySelectorAll('pre')) {
+      const btn = doc.createElement('button');
+      btn.type = 'button';
+      btn.className = 'code-copy-btn';
+      btn.setAttribute('aria-label', 'Copy code');
+      btn.title = 'Copy';
+      btn.innerHTML =
+        '<svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+        '<svg class="icon-check" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+      pre.append(btn);
+    }
   }
 
   private appendJsonTokens(doc: Document, parent: Element, source: string): void {

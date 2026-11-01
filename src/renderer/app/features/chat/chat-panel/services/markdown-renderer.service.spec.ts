@@ -81,6 +81,18 @@ describe('MarkdownRendererService', () => {
     expect(globals.DOMPurify?.sanitize).toHaveBeenCalledWith(expect.stringContaining('json-token json-key'));
   });
 
+  it('adds a copy button after the code of every fenced block', () => {
+    globals.marked = {
+      parse: vi.fn(() => '<pre><code>npm install</code></pre><pre><code class="language-sh">ls</code></pre>'),
+    };
+
+    const result = service.render('m1:block:0', 'code');
+    const html = sanitizer.sanitize(SecurityContext.HTML, result.html) ?? '';
+
+    expect(html.match(/<button type="button" class="code-copy-btn"/g)).toHaveLength(2);
+    expect(html).toContain('<code>npm install</code><button');
+  });
+
   it('falls back to plain text when globals are unavailable', () => {
     delete globals.marked;
     delete globals.DOMPurify;

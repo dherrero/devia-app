@@ -98,7 +98,7 @@ describe('UiToolHostComponent (S-25 F2.0/F2.2)', () => {
     const { el, detect } = await mount();
     emit(planRequest());
     detect();
-    buttonByText(el, 'approve').click();
+    buttonByText(el, 'approve_ask').click();
 
     expect(sendUiToolResult).toHaveBeenCalledOnce();
     const [, callId, answer] = sendUiToolResult.mock.calls[0] as [string, string, string];
@@ -106,20 +106,24 @@ describe('UiToolHostComponent (S-25 F2.0/F2.2)', () => {
     expect(answer).toContain('APPROVED');
   });
 
-  it('emits no follow-up on a plain approve', async () => {
+  it('emits no follow-up when the user keeps planning', async () => {
     const { el, followUps, detect } = await mount();
     emit(planRequest());
     detect();
-    buttonByText(el, 'approve').click();
+    buttonByText(el, 'keep_planning').click();
+    detect();
+    buttonByText(el, 'send_keep_planning').click();
 
     expect(followUps).toEqual([]);
+    const answer = (sendUiToolResult.mock.calls[0] as [string, string, string])[2];
+    expect(answer).toContain('KEEP PLANNING');
   });
 
-  it('on approve-and-run it resolves FIRST and then asks for the follow-up run', async () => {
+  it('on accept-and-ask it resolves FIRST and then asks for the follow-up run', async () => {
     const { el, followUps, detect } = await mount();
     emit(planRequest());
     detect();
-    buttonByText(el, 'approve_and_run').click();
+    buttonByText(el, 'approve_ask').click();
 
     // Order matters: the agent is blocked on the tool, and the queued follow-up
     // can only dispatch once its turn ends.
@@ -133,11 +137,25 @@ describe('UiToolHostComponent (S-25 F2.0/F2.2)', () => {
     expect(followUps[0]?.displayText).toContain('Refactor');
   });
 
+  it('on accept-without-asking it queues the follow-up in apply-yolo mode', async () => {
+    const { el, followUps, detect } = await mount();
+    emit(planRequest());
+    detect();
+    buttonByText(el, 'approve_yolo').click();
+
+    expect(followUps).toHaveLength(1);
+    expect(followUps[0]?.mode).toBe('apply-yolo');
+    expect(followUps[0]?.prompt).toContain('without permission prompts');
+    expect(followUps[0]?.prompt).toContain('1. Uno');
+    const answer = (sendUiToolResult.mock.calls[0] as [string, string, string])[2];
+    expect(answer).toContain('(yolo)');
+  });
+
   it('tells the agent to end its turn rather than to keep editing', async () => {
     const { el, detect } = await mount();
     emit(planRequest());
     detect();
-    buttonByText(el, 'approve_and_run').click();
+    buttonByText(el, 'approve_ask').click();
 
     const answer = (sendUiToolResult.mock.calls[0] as [string, string, string])[2];
     expect(answer).toContain('End your turn');
@@ -147,7 +165,7 @@ describe('UiToolHostComponent (S-25 F2.0/F2.2)', () => {
     const { el, detect } = await mount();
     emit(planRequest());
     detect();
-    buttonByText(el, 'approve').click();
+    buttonByText(el, 'approve_ask').click();
     detect();
 
     expect(el.querySelector('ds-ui-plan-card')).toBeNull();
@@ -159,12 +177,12 @@ describe('UiToolHostComponent (S-25 F2.0/F2.2)', () => {
       const { el, detect } = await mount();
       emit(planRequest());
       detect();
-      buttonByText(el, 'approve').click();
+      buttonByText(el, 'approve_ask').click();
 
       expect(appendPlanMessage).toHaveBeenCalledOnce();
       const [key, record] = appendPlanMessage.mock.calls[0] as [string, Record<string, unknown>];
       expect(key).toBe('proj-a');
-      expect(record).toMatchObject({ title: 'Refactor', plan: '1. Uno', decision: 'approve' });
+      expect(record).toMatchObject({ title: 'Refactor', plan: '1. Uno', decision: 'approve_and_run' });
     });
 
     it('records it BEFORE asking for the follow-up, so the thread reads in order', async () => {
@@ -177,25 +195,25 @@ describe('UiToolHostComponent (S-25 F2.0/F2.2)', () => {
       }) as typeof fixture.followUps.push;
       emit(planRequest());
       fixture.detect();
-      buttonByText(fixture.el, 'approve_and_run').click();
+      buttonByText(fixture.el, 'approve_ask').click();
 
       expect(order).toEqual(['plan', 'follow-up']);
     });
 
-    it('records a rejection with its reason', async () => {
+    it('records keep-planning with its comment', async () => {
       const { el, detect } = await mount();
       emit(planRequest());
       detect();
-      buttonByText(el, 'ui_tools.plan.reject').click();
+      buttonByText(el, 'keep_planning').click();
       detect();
       const textarea = el.querySelector('textarea') as HTMLTextAreaElement;
       textarea.value = 'falta el test';
       textarea.dispatchEvent(new Event('input'));
       detect();
-      buttonByText(el, 'send_reject').click();
+      buttonByText(el, 'send_keep_planning').click();
 
       const record = appendPlanMessage.mock.calls[0]?.[1] as Record<string, unknown>;
-      expect(record).toMatchObject({ decision: 'reject', comment: 'falta el test' });
+      expect(record).toMatchObject({ decision: 'keep_planning', comment: 'falta el test' });
     });
   });
 

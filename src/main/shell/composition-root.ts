@@ -67,6 +67,9 @@ import {
   createShellRunner,
 } from '../features/telegram-controller';
 import { RunGateway } from '../shared/run-gateway';
+import { RunModeStore } from '../shared/run-mode-store';
+import { seedRunModes } from '../shared/seed-run-modes';
+import type { RunMode } from '../../shared/domain/run-capabilities';
 import { auditSendFile } from '../shared/outbound-file-gate';
 import { AgentTranscriptLogger, purgeOldTranscripts } from '../shared/agent-transcript-logger';
 import { createSecretVault, createEmbeddedKeyBackend } from '../shared/secret-vault';
@@ -121,6 +124,24 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   const pinnedStore  = new InMemoryPinnedStore();         // pinned owns
   const sessionStore = new FsSessionStore(config);        // sessions owns
   const runGateway   = new RunGateway();                  // E-DSK-14 (runner ↔ remote)
+  const runModes     = new RunModeStore();                // run mode per session, shared app ↔ Telegram
+
+  // Run mode sync. The desktop pushes its changes in; changes that originate in
+  // main (Telegram, a session reset) are pushed to the renderer. A desktop
+  // change is echoed to the chat so Telegram sees it without asking /status.
+  const MODE_NAME: Record<RunMode, string> = { plan: 'Plan', apply: 'Apply', 'apply-yolo': 'YOLO' };
+  ipcMain.handle(IPC.runModeSet, (_e, project: string, mode: RunMode) => {
+    runModes.set(project, mode, 'desktop');
+  });
+  ipcMain.handle(IPC.runModeGet, () => runModes.entries());
+  runModes.subscribe((project, mode, source) => {
+    if (source !== 'desktop') send('runMode:changed', { project, mode });
+    else if (config.get().remoteControl.mirrorDesktop === true) {
+      telegramBuilt.controller
+        .push(`🧭 *[${project.split('/').pop() ?? project}]* Modo → ${MODE_NAME[mode]}`)
+        .catch(() => { /* the echo is best-effort */ });
+    }
+  });
 
   // Dev-only readable transcript: mirror every run's lifecycle to a Markdown
   // log under <deviaDir>/agent-logs so `npm run dev:all:live` produces a clean,
@@ -289,6 +310,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     config,
     onMessage: createCommandRouter({
       gateway: runGateway,
+      runModes,
       activeProject: new ConfigActiveProjectStore(config),
       ports: {
         listProjects: (subpath) =>
@@ -418,6 +440,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // E-DSK-14: bind the queue-aware submit + republish run events so the
       // Telegram controller can drive and mirror runs.
       runGateway,
+      // A reset session starts over in plan mode.
+      onSessionReset: (project) => runModes.reset(project),
       // S-32: `devia_send_file` is only offered while the relay is connected.
       // The controller resolves lazily (after its feature registers).
       remoteRelayConnected: () => {
@@ -449,7 +473,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     // S-20 (generalises S-18): import pre-existing CLI-agent sessions into Devia.
     buildSessionImportFeature({ config, sessions: sessionStore }),
     buildStatusFeature({ registry, git: gitBuilt.exports.inspector }),
-    buildShellFeature(),
+    buildShellFeature({ config }),
     buildAutoUpdateFeature(),
     buildOutboxFeature(),
     buildAttachmentsFeature(),
@@ -489,6 +513,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
 
   // ── Phase 4: hydrate persisted state, then register IPC handlers. ────────
   stateStore.load();
+  // Put each project back in the run mode its active session was left in.
+  seedRunModes(registry, sessionStore, runModes);
   for (const feature of features) feature.register(ctx);
 
   // Housekeeping: evict raw CLI logs (T-76) older than the retention window.

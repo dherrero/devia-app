@@ -3,6 +3,7 @@ import { Injectable, effect, inject, signal } from '@angular/core';
 import type { UiToolRequestEvent } from '../../../../../shared/contracts/events';
 import type { ChatMessage } from '../../../../../shared/domain/chat';
 import {
+  isPlanRunDecision,
   normalizePlanApproveInput,
   renderPlanApproveResult,
   type PlanApproveInput,
@@ -132,7 +133,7 @@ export class UiToolsService {
     this.resolve(sessionKey, callId, renderPlanApproveResult(result));
     const plan = entry ? normalizePlanApproveInput(entry.input) : null;
     if (!plan) return null;
-    if (result.decision === 'approve_and_run' && plan.steps?.length) {
+    if (isPlanRunDecision(result.decision) && plan.steps?.length) {
       this.setSteps(
         sessionKey,
         plan.steps.map((st, i) => ({

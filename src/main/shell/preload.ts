@@ -45,8 +45,8 @@ const bridge: DeviaBridge = {
   loadChats:        ()                            => ipcRenderer.invoke('chats:loadAll'),
   loadActiveStats:  ()                            => ipcRenderer.invoke('sessions:active-stats'),
   aggregateStats:   ()                            => ipcRenderer.invoke('stats:aggregate'),
-  saveChat:         (projectPath, messages, stats) => ipcRenderer.invoke('chats:save', projectPath, messages, stats),
-  saveChatAs:       (baseProject, sessionId, messages, stats, workdir, worktreeBranch) => ipcRenderer.invoke('chats:save-as', baseProject, sessionId, messages, stats, workdir, worktreeBranch),
+  saveChat:         (projectPath, messages, stats, runMode) => ipcRenderer.invoke('chats:save', projectPath, messages, stats, runMode),
+  saveChatAs:       (baseProject, sessionId, messages, stats, workdir, worktreeBranch, runMode) => ipcRenderer.invoke('chats:save-as', baseProject, sessionId, messages, stats, workdir, worktreeBranch, runMode),
   listSessions:     (projectPath)                 => ipcRenderer.invoke('sessions:list', projectPath),
   switchSession:    (projectPath, sId)            => ipcRenderer.invoke('session:switch', projectPath, sId),
   adoptSession:     (baseProject, runKey, sId)    => ipcRenderer.invoke('session:adopt', baseProject, runKey, sId),
@@ -292,6 +292,13 @@ const bridge: DeviaBridge = {
     restart:   ()           => ipcRenderer.invoke('remoteControl:restart'),
     onStatus:  (cb)         => { ipcRenderer.on('remoteControl:status', (_e, d) => cb(d)); },
     onSelectProject: (cb)   => { ipcRenderer.on('remoteControl:select-project', (_e, d) => cb(d)); },
+  },
+
+  // Run mode per session — main is the source of truth.
+  runMode: {
+    set:       (project, mode) => ipcRenderer.invoke('runMode:set', project, mode),
+    getAll:    ()              => ipcRenderer.invoke('runMode:get'),
+    onChanged: (cb)            => { ipcRenderer.on('runMode:changed', (_e, d) => cb(d)); },
   },
 
   update: {

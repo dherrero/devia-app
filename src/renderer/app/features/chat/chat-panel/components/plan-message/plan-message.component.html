@@ -1,10 +1,10 @@
 @if (plan(); as p) {
   <section class="ds-plan-msg"
            [class.is-rejected]="rejected()"
-           [attr.aria-label]="(rejected() ? 'ui_tools.plan.decided_rejected' : 'ui_tools.plan.decided_approved') | translate">
+           [attr.aria-label]="verdictKey() | translate">
     <header class="ds-plan-msg__head">
       <span class="ds-plan-msg__badge">
-        {{ (rejected() ? 'ui_tools.plan.decided_rejected' : 'ui_tools.plan.decided_approved') | translate }}
+        {{ verdictKey() | translate }}
       </span>
       <h3 class="ds-plan-msg__title">{{ p.title }}</h3>
       <button type="button"
@@ -17,7 +17,7 @@
 
     @if (p.comment) {
       <p class="ds-plan-msg__comment">
-        <strong>{{ 'ui_tools.plan.reject_reason' | translate }}:</strong> {{ p.comment }}
+        <strong>{{ commentKey() | translate }}:</strong> {{ p.comment }}
       </p>
     }
 

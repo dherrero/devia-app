@@ -482,6 +482,10 @@ export class SidebarComponent {
     this.state.selectProject(p.path);
   }
 
+  pinProject(p: ProjectEntry): void {
+    void this.state.pin(p);
+  }
+
   selectPath(path: string): void {
     this.state.selectProject(path);
   }

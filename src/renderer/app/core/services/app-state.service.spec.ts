@@ -57,6 +57,9 @@ const mockApi: Partial<ElectronApiService> = {
   onSddNotification: noop as any,
   onRemoteControlStatus: noop as any,
   onRemoteSelectProject: noop as any,
+  onRunModeChanged: noop as any,
+  getRunModes: (() => Promise.resolve([])) as any,
+  setRunModeRemote: (() => Promise.resolve()) as any,
 };
 
 const mockToast: Partial<ToastService> = {
@@ -775,6 +778,62 @@ describe('AppStateService — split-pane persistence redirect (S-13 T-156)', () 
 
     expect(saveChat).toHaveBeenCalledOnce();
     expect(saveChatAs).not.toHaveBeenCalled();
+  });
+
+  describe('run mode persistence', () => {
+    it('saves carry the current run mode (primary and split pane)', async () => {
+      const saveChat = vi.fn().mockResolvedValue(true);
+      const saveChatAs = vi.fn().mockResolvedValue(true);
+      (mockApi as Record<string, unknown>)['saveChat'] = saveChat;
+      (mockApi as Record<string, unknown>)['saveChatAs'] = saveChatAs;
+      service.registerSessionPersistence(RUN_KEY, BASE, RUN_KEY);
+      service['chats'].set(new Map([[BASE, []], [RUN_KEY, []]]));
+      service.setRunMode(BASE, 'apply');
+      service.setRunMode(RUN_KEY, 'apply-yolo');
+
+      await service.flushSave(BASE);
+      await service.flushSave(RUN_KEY);
+
+      expect(saveChat.mock.calls[0]![3]).toBe('apply');
+      expect(saveChatAs.mock.calls[0]![6]).toBe('apply-yolo');
+    });
+
+    it('changing the mode saves only when the chat has messages', () => {
+      vi.useFakeTimers();
+      try {
+        const saveChat = vi.fn().mockResolvedValue(true);
+        (mockApi as Record<string, unknown>)['saveChat'] = saveChat;
+        service['chats'].set(new Map([[BASE, []], ['/other', [makeAssistantMsg({ text: 'hi' })]]]));
+
+        service.setRunMode(BASE, 'apply');
+        service.setRunMode('/other', 'apply');
+        vi.advanceTimersByTime(1000);
+
+        expect(saveChat).toHaveBeenCalledOnce();
+        expect(saveChat.mock.calls[0]![0]).toBe('/other');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('loading a session restores its mode without saving; no mode means plan', () => {
+      vi.useFakeTimers();
+      try {
+        const saveChat = vi.fn().mockResolvedValue(true);
+        (mockApi as Record<string, unknown>)['saveChat'] = saveChat;
+
+        service.loadSessionIntoKey(BASE, [makeAssistantMsg({ text: 'a' })], undefined, 'apply-yolo');
+        expect(service.runMode(BASE)).toBe('apply-yolo');
+
+        service.loadSessionIntoKey(BASE, [makeAssistantMsg({ text: 'b' })]);
+        expect(service.runMode(BASE)).toBe('plan');
+
+        vi.advanceTimersByTime(1000);
+        expect(saveChat).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
 

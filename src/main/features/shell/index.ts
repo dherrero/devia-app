@@ -2,7 +2,10 @@ import { shell } from 'electron';
 import type { Feature, FeatureContext } from '../../shared/feature';
 import { IPC } from '../../../shared/contracts/ipc-channels';
 import type { IdeId } from '../../../shared/domain/ide';
+import * as path from 'node:path';
+import type { ConfigRepository } from '../../shared/ports';
 import { listIdes, openInIde } from './ide';
+import { decideShellPath } from './path-policy';
 
 /**
  * Reads `process.env.DEVIA_SAAS_URL` lazily so a test can stub it before
@@ -28,14 +31,40 @@ export function buildUpgradeUrl(feature: string): string | null {
   return `${origin}/upgrade?feature=${encodeURIComponent(feature)}`;
 }
 
-export function buildShellFeature(): Feature {
+export interface ShellFeatureDeps {
+  config: ConfigRepository;
+}
+
+export function buildShellFeature({ config }: ShellFeatureDeps): Feature {
+  // workspaceRoot + the Devia-owned folders a card can legitimately point at
+  // (outbox archive, attachments, session worktrees). Read lazily: the
+  // workspace root can change at runtime.
+  const allowedRoots = (): string[] => {
+    const { workspaceRoot } = config.get();
+    const dir = config.deviaDir();
+    return [
+      ...(workspaceRoot ? [workspaceRoot] : []),
+      path.join(dir, 'outbox-archive'),
+      path.join(dir, 'attachments'),
+      path.join(dir, 'worktrees'),
+    ];
+  };
+
   return {
     id: 'shell',
     register(ctx: FeatureContext) {
-      ctx.ipc.handle(IPC.shellOpenPath, (_e, p: string) => shell.openPath(p));
+      // Only media / plain folders are opened; any other file (a `.command`,
+      // `.app`, `.bat` the agent produced) is revealed instead of executed.
+      ctx.ipc.handle(IPC.shellOpenPath, async (_e, p: string) => {
+        const d = decideShellPath(p, allowedRoots());
+        if (d.action === 'open') return shell.openPath(d.path);
+        if (d.action === 'reveal') shell.showItemInFolder(d.path);
+        return '';
+      });
 
       ctx.ipc.handle(IPC.shellReveal, (_e, p: string) => {
-        shell.showItemInFolder(p);
+        const d = decideShellPath(p, allowedRoots());
+        if (d.action !== 'deny') shell.showItemInFolder(d.path);
         return true;
       });
 

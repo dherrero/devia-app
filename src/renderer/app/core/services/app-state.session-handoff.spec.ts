@@ -24,6 +24,7 @@ const mockApi = new Proxy({} as Record<string, unknown>, {
     if (prop === 'onSessionHandoff') {
       return (cb: (e: SessionHandoffEvent) => void) => { handoffCb = cb; };
     }
+    if (prop === 'getRunModes') return () => Promise.resolve([]);
     if (prop in target) return target[prop];
     return noop;
   },

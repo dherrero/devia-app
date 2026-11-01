@@ -15,6 +15,7 @@
  */
 import type { ConfigRepository } from '../../../shared/ports';
 import type { RunId } from '../../../../shared/domain/agent';
+import { reconcileMode } from '../../../../shared/domain/auto-mode';
 import type { RunEndEvent, RunGateway, RunGatewayEvent } from '../../../shared/run-gateway';
 import type { AttachmentPayload } from '../../../../shared/domain/attachment';
 import type { GitInfo, GitSyncResult } from '../../../../shared/domain/git';
@@ -90,8 +91,25 @@ export interface RemoteCommandPorts {
   runShell?(project: string, command: string): Promise<{ code: number | null; output: string; timedOut: boolean }>;
 }
 
+/** Run mode per session, shared with the desktop app. */
+export interface RunModeAccess {
+  get(project: string): RemoteRunMode;
+  set(project: string, mode: RemoteRunMode, source: 'remote'): void;
+}
+
+/** Process-local fallback when no shared store is injected (tests). */
+function createLocalRunModes(): RunModeAccess {
+  const modes = new Map<string, RemoteRunMode>();
+  return {
+    get: (project) => modes.get(project) ?? 'plan',
+    set: (project, mode) => void modes.set(project, mode),
+  };
+}
+
 export interface CommandRouterDeps {
   gateway: RunGateway;
+  /** Shared run-mode store (the desktop reads and writes the same one). */
+  runModes?: RunModeAccess;
   activeProject: ActiveProjectStore;
   ports: RemoteCommandPorts;
   /** Injectable clock (ms) for the heartbeat. */
@@ -409,8 +427,19 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
     ...(files !== undefined && { files }),
     ...(deps.onFileOutcome !== undefined && { onFileOutcome: deps.onFileOutcome }),
   });
-  // Permission mode applied to remote runs. Adjustable via /mode.
-  let runMode: RemoteRunMode = 'apply';
+  // Run mode per session, shared with the desktop (same store). Adjustable via
+  // /mode or by a leading plan/execute keyword in the message.
+  const modes: RunModeAccess = deps.runModes ?? createLocalRunModes();
+  const modeOf = (project: string): RemoteRunMode => modes.get(project);
+
+  // Same auto-switch the desktop composer does: a plan verb → plan, an execute
+  // verb → apply (only from plan). Tells the chat when it flips the mode.
+  const applyKeywordMode = async (project: string, text: string, reply: ReplyFn): Promise<void> => {
+    const next = reconcileMode(modes.get(project), text);
+    if (!next) return;
+    modes.set(project, next, 'remote');
+    await reply(`🧭 Modo → ${MODE_LABEL[next]}`);
+  };
 
   // One subscription routes every run event to the matching project forwarder.
   // A run started from the app has no forwarder (Telegram-initiated runs
@@ -459,7 +488,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
 
     let result;
     try {
-      result = deps.gateway.submit(project, text, { origin: 'remote', mode: runMode });
+      result = deps.gateway.submit(project, text, { origin: 'remote', mode: modeOf(project) });
     } catch {
       forwarders.delete(project);
       await reply('No se pudo lanzar la instrucción (el motor de ejecución no está listo).');
@@ -490,6 +519,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
       path: save({ name: a.name, mime: a.mime, buffer: a.buffer }),
     }));
     const instruction = buildAttachmentInstruction(msg.text.trim(), files);
+    await applyKeywordMode(project, msg.text, msg.reply);
     await runInstruction(project, instruction, msg);
   };
 
@@ -557,6 +587,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
         await msg.reply('No hay proyecto activo. Abre un proyecto en Devia o usa /use <proyecto>.');
         return;
       }
+      await applyKeywordMode(project, text, msg.reply);
       await runInstruction(project, text, msg);
       return;
     }
@@ -618,7 +649,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
         if (resolved.runnable) deps.onActiveProjectChange?.(resolved.path);
         await msg.reply(
           resolved.runnable
-            ? `✅ Proyecto activo: *${leaf(resolved.path)}*`
+            ? `✅ Proyecto activo: *${leaf(resolved.path)}*\nModo: ${MODE_LABEL[modeOf(resolved.path)]}`
             : `📂 Seleccionada *${leaf(resolved.path)}* — es una carpeta, no un proyecto ejecutable.\nUsa /projects para ver lo que contiene.`,
         );
         return;
@@ -628,7 +659,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
         const project = deps.activeProject.get();
         const agent = deps.ports.agentLabel();
         if (!project) {
-          await msg.reply(`Sin proyecto activo.\nAgente: ${agent}\nModo: ${MODE_LABEL[runMode]}`);
+          await msg.reply(`Sin proyecto activo.\nAgente: ${agent}`);
           return;
         }
         const running = deps.ports.isRunning(project) ? '🟢 ejecutando' : '⚪ inactivo';
@@ -637,7 +668,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
         // "no git repo", otherwise show branch + dirty state.
         const git = deps.ports.gitInfo?.(project);
         if (git !== undefined) lines.push(formatBranch(git));
-        lines.push(running, `Agente: ${agent}`, `Modo: ${MODE_LABEL[runMode]}`);
+        lines.push(running, `Agente: ${agent}`, `Modo: ${MODE_LABEL[modeOf(project)]}`);
         // S-7: context usage % + accumulated cost of the active session.
         const stats = deps.ports.sessionStats?.(project);
         if (stats) lines.push(...formatSessionStats(stats));
@@ -699,8 +730,13 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
           yolo: 'apply-yolo',
           'apply-yolo': 'apply-yolo',
         };
+        const modeProject = deps.activeProject.get();
+        if (!modeProject) {
+          await msg.reply('No hay proyecto activo. Usa /use <proyecto> y luego /mode.');
+          return;
+        }
         if (!arg) {
-          await msg.reply(`Modo actual: ${MODE_LABEL[runMode]}\nUsa /mode plan|apply|yolo.`);
+          await msg.reply(`Modo actual: ${MODE_LABEL[modeOf(modeProject)]}\nUsa /mode plan|apply|yolo.`);
           return;
         }
         const next = map[arg.toLowerCase()];
@@ -708,8 +744,8 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
           await msg.reply('Modo no válido. Usa /mode plan|apply|yolo.');
           return;
         }
-        runMode = next;
-        await msg.reply(`✅ Modo: ${MODE_LABEL[runMode]}`);
+        modes.set(modeProject, next, 'remote');
+        await msg.reply(`✅ Modo: ${MODE_LABEL[next]}`);
         return;
       }
 

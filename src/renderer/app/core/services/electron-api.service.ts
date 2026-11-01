@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import type { DeviaBridge } from '../../../types/devia';
 import type { SessionStats } from '../../../../shared/domain/session-stats';
+import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import type { BranchCheckoutRef } from '../../../../shared/domain/git';
 
 // Thin Angular wrapper around window.devia. Centralising it lets components
@@ -35,8 +36,8 @@ export class ElectronApiService {
   loadChats() { return this.api.loadChats(); }
   loadActiveStats() { return this.api.loadActiveStats(); }
   aggregateStats() { return this.api.aggregateStats(); }
-  saveChat(projectPath: string, messages: unknown[], stats?: SessionStats) { return this.api.saveChat(projectPath, messages, stats); }
-  saveChatAs(baseProject: string, sessionId: string, messages: unknown[], stats?: SessionStats, workdir?: string, worktreeBranch?: string) { return this.api.saveChatAs(baseProject, sessionId, messages, stats, workdir, worktreeBranch); }
+  saveChat(projectPath: string, messages: unknown[], stats?: SessionStats, runMode?: RunMode) { return this.api.saveChat(projectPath, messages, stats, runMode); }
+  saveChatAs(baseProject: string, sessionId: string, messages: unknown[], stats?: SessionStats, workdir?: string, worktreeBranch?: string, runMode?: RunMode) { return this.api.saveChatAs(baseProject, sessionId, messages, stats, workdir, worktreeBranch, runMode); }
   listSessions(projectPath: string) { return this.api.listSessions(projectPath); }
   switchSession(projectPath: string, sessionId: string) { return this.api.switchSession(projectPath, sessionId); }
   adoptSession(baseProject: string, runKey: string, sessionId: string) { return this.api.adoptSession(baseProject, runKey, sessionId); }
@@ -417,6 +418,15 @@ export class ElectronApiService {
   }
   onRemoteSelectProject(cb: Parameters<typeof this.api.remoteControl.onSelectProject>[0]) {
     this.api.remoteControl.onSelectProject(cb);
+  }
+
+  // Run mode per session — thin pass-through to bridge.runMode.*.
+  setRunModeRemote(project: string, mode: Parameters<typeof this.api.runMode.set>[1]) {
+    return this.api.runMode.set(project, mode);
+  }
+  getRunModes() { return this.api.runMode.getAll(); }
+  onRunModeChanged(cb: Parameters<typeof this.api.runMode.onChanged>[0]) {
+    this.api.runMode.onChanged(cb);
   }
 
   // Auto-update (electron-updater). Thin pass-through to bridge.update.*.

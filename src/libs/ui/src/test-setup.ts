@@ -1,16 +1,17 @@
 import '@analogjs/vitest-angular/setup-zone';
+import '@angular/compiler';
 
 import {
-  BrowserDynamicTestingModule,
-  platformBrowserDynamicTesting,
-} from '@angular/platform-browser-dynamic/testing';
+  BrowserTestingModule,
+  platformBrowserTesting,
+} from '@angular/platform-browser/testing';
 import { getTestBed } from '@angular/core/testing';
 import { beforeEach } from 'vitest';
 
 try {
   getTestBed().initTestEnvironment(
-    BrowserDynamicTestingModule,
-    platformBrowserDynamicTesting(),
+    BrowserTestingModule,
+    platformBrowserTesting(),
     {
       errorOnUnknownElements: true,
       errorOnUnknownProperties: true,

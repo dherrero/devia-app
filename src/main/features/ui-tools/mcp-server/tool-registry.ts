@@ -192,7 +192,7 @@ const DEFS: Record<UiToolName, Omit<UiToolDef, 'publicName' | 'kind'>> = {
     description:
       'Submit your plan for the user to approve, and WAIT for their decision. ' +
       'Use it when you have finished planning, instead of starting to edit files. ' +
-      'The user can approve, approve and have Devia switch to apply mode, or reject with a comment.',
+      'The user can keep planning (with a comment) or accept it: apply mode, with or without permission prompts.',
     inputSchema: planApproveSchema,
   },
   request_review: {
