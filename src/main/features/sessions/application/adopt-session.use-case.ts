@@ -5,6 +5,7 @@ import type {
   StateStore,
 } from '../../../shared/ports';
 import type { SessionStats } from '../../../../shared/domain/session-stats';
+import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import { extractSessionIdentity } from '../../../../shared/domain/session';
 
 /** How the adopted session ended up running (S-3 F2.2). */
@@ -14,6 +15,8 @@ export interface AdoptSessionResult {
   id: string;
   messages: unknown[];
   stats?: SessionStats;
+  /** Run mode the session was left in; absent ⇒ plan. */
+  runMode?: RunMode;
   /** Effective cwd the pane must run in. */
   workdir: string;
   /** Session worktree branch, when isolated. */
@@ -115,6 +118,7 @@ export class AdoptSessionUseCase {
       id: session.id,
       messages: session.messages ?? [],
       ...(session.stats && { stats: session.stats }),
+      ...(session.runMode && { runMode: session.runMode }),
       workdir,
       ...(branch !== undefined && { branch }),
       isolation,

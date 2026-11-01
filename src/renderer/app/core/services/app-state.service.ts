@@ -124,6 +124,18 @@ export class AppStateService implements OnDestroy {
     if (this.runMode(key) === mode) return;
     this.storeRunMode(key, mode);
     void this.api.setRunModeRemote(key, mode);
+    // The mode is persisted with the session. An empty chat has no session file
+    // yet (a save would create one), so there the mode rides the first save.
+    if ((this.chats().get(key)?.length ?? 0) > 0) this.scheduleSave(key);
+  }
+
+  /** Applies a restored session's mode (a session saved before the field
+   *  existed comes back in plan). Unlike setRunMode it never saves. */
+  private restoreRunMode(key: SessionKey, mode: RunMode | undefined): void {
+    const next = mode ?? 'plan';
+    if (this.runMode(key) === next) return;
+    this.storeRunMode(key, next);
+    void this.api.setRunModeRemote(key, next);
   }
 
   private storeRunMode(key: SessionKey, mode: RunMode): void {
@@ -1038,9 +1050,10 @@ export class AppStateService implements OnDestroy {
    *  project (additional pane, T-156) or under its own key (primary/single). */
   private persistChat(sessionKey: SessionKey, messages: unknown[], stats: SessionStats): Promise<true> {
     const target = this.sessionPersistence.get(sessionKey);
+    const runMode = this.runMode(sessionKey);
     return target
-      ? this.api.saveChatAs(target.baseProject, target.sessionId, messages, stats, target.workdir, target.worktreeBranch)
-      : this.api.saveChat(sessionKey, messages, stats);
+      ? this.api.saveChatAs(target.baseProject, target.sessionId, messages, stats, target.workdir, target.worktreeBranch, runMode)
+      : this.api.saveChat(sessionKey, messages, stats, runMode);
   }
 
   private scheduleSave(project: string) {
@@ -1200,7 +1213,7 @@ export class AppStateService implements OnDestroy {
       // just-loaded messages (covers sessions saved before stats existed).
       const restored = result?.stats
         ?? this.deriveStatsFromMessages(projectPath, messages as unknown as StatsSourceMessage[]);
-      this.loadSessionIntoKey(projectPath, messages, restored);
+      this.loadSessionIntoKey(projectPath, messages, restored, result?.runMode);
       // Refresh the list so the active marker moves to the new id.
       await this.refreshSessions(projectPath);
     } catch (err) {
@@ -1321,7 +1334,8 @@ export class AppStateService implements OnDestroy {
   }
 
   /** Load a switched/adopted session's transcript into a live-state key. */
-  loadSessionIntoKey(key: SessionKey, messages: ChatMessage[], stats?: SessionStats): void {
+  loadSessionIntoKey(key: SessionKey, messages: ChatMessage[], stats?: SessionStats, runMode?: RunMode): void {
+    this.restoreRunMode(key, runMode);
     const map = new Map(this.chats());
     map.set(key, messages);
     this.chats.set(map);

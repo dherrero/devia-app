@@ -5,6 +5,7 @@ import type {
   StateStore,
 } from '../../../shared/ports';
 import type { SessionStats } from '../../../../shared/domain/session-stats';
+import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import { extractSessionIdentity } from '../../../../shared/domain/session';
 
 /**
@@ -34,7 +35,7 @@ export class SwitchSessionUseCase {
   execute(
     projectPath: string,
     sessionId: string,
-  ): { id: string; messages: unknown[]; stats?: SessionStats } {
+  ): { id: string; messages: unknown[]; stats?: SessionStats; runMode?: RunMode } {
     // S-2 F0.4: hard guard. The renderer blocks busy switches too (F0.3), but
     // the UI can lose the race (a run starting between the click and the IPC)
     // and Telegram/queue paths never pass through the sidebar. A switch
@@ -83,6 +84,7 @@ export class SwitchSessionUseCase {
       id: session.id,
       messages: session.messages ?? [],
       ...(session.stats && { stats: session.stats }),
+      ...(session.runMode && { runMode: session.runMode }),
     };
   }
 }

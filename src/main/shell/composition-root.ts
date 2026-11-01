@@ -68,6 +68,7 @@ import {
 } from '../features/telegram-controller';
 import { RunGateway } from '../shared/run-gateway';
 import { RunModeStore } from '../shared/run-mode-store';
+import { seedRunModes } from '../shared/seed-run-modes';
 import type { RunMode } from '../../shared/domain/run-capabilities';
 import { auditSendFile } from '../shared/outbound-file-gate';
 import { AgentTranscriptLogger, purgeOldTranscripts } from '../shared/agent-transcript-logger';
@@ -512,6 +513,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
 
   // ── Phase 4: hydrate persisted state, then register IPC handlers. ────────
   stateStore.load();
+  // Put each project back in the run mode its active session was left in.
+  seedRunModes(registry, sessionStore, runModes);
   for (const feature of features) feature.register(ctx);
 
   // Housekeeping: evict raw CLI logs (T-76) older than the retention window.

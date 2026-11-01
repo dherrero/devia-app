@@ -1,5 +1,12 @@
 import type { SessionStats, SessionStatsSummary } from './session-stats';
 import { parseSessionStats } from './session-stats';
+import type { RunMode } from './run-capabilities';
+
+const RUN_MODES: readonly RunMode[] = ['plan', 'apply', 'apply-yolo'];
+
+export function isRunMode(value: unknown): value is RunMode {
+  return typeof value === 'string' && (RUN_MODES as readonly string[]).includes(value);
+}
 
 export interface SessionMeta {
   id: string;
@@ -43,6 +50,8 @@ export interface PersistedSession {
   /** Git branch of the session worktree (S-3 F2.1) — recovery source when the
    *  worktree dir was swept but the branch survived. */
   worktreeBranch?: string;
+  /** Run mode the session was left in; absent ⇒ a fresh session's default (plan). */
+  runMode?: RunMode;
 }
 
 /**
@@ -123,5 +132,6 @@ export function parsePersistedSession(value: unknown): PersistedSession | null {
       delete (result as Partial<Record<typeof key, string>>)[key];
     }
   }
+  if (!isRunMode(o['runMode'])) delete (result as { runMode?: RunMode }).runMode;
   return result;
 }

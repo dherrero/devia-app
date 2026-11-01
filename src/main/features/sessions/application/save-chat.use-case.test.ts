@@ -183,3 +183,37 @@ describe('SaveChatUseCase — session identity (S-2 F0.1)', () => {
     expect(saved[1]!.session.agentSessionId).toBe('native-42');
   });
 });
+
+describe('SaveChatUseCase — run mode', () => {
+  const MSG = [{ id: 'u1', role: 'user', text: 'x' }];
+
+  it('persists the run mode on execute and saveAs', () => {
+    const { sessions, saved } = makeSessionStore();
+    const useCase = new SaveChatUseCase({ registry: makeRegistry(), sessions, state: makeState() });
+    useCase.execute(BASE, MSG, undefined, 'apply');
+    expect(saved[0]!.session.runMode).toBe('apply');
+
+    const split = makeSessionStore();
+    new SaveChatUseCase({ registry: strictRegistry(), sessions: split.sessions, state: makeState() })
+      .saveAs(BASE, SID, MSG, undefined, undefined, undefined, 'apply-yolo');
+    expect(split.saved[0]!.session.runMode).toBe('apply-yolo');
+  });
+
+  it('keeps the stored mode when a save omits it, and lets a new one win', () => {
+    const existing: PersistedSession = {
+      id: SID, project: BASE, createdAt: 1, updatedAt: 2, messages: [], runMode: 'apply',
+    };
+    const { sessions, saved } = makeSessionStore([existing]);
+    const useCase = new SaveChatUseCase({ registry: strictRegistry(), sessions, state: makeState() });
+    useCase.saveAs(BASE, SID, MSG);
+    expect(saved[0]!.session.runMode).toBe('apply');
+    useCase.saveAs(BASE, SID, MSG, undefined, undefined, undefined, 'plan');
+    expect(saved[1]!.session.runMode).toBe('plan');
+  });
+
+  it('leaves runMode absent when nothing was ever set', () => {
+    const { sessions, saved } = makeSessionStore();
+    new SaveChatUseCase({ registry: makeRegistry(), sessions, state: makeState() }).execute(BASE, MSG);
+    expect('runMode' in saved[0]!.session).toBe(false);
+  });
+});
