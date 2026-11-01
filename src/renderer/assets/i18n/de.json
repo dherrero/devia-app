@@ -6,6 +6,7 @@
   "sidebar": {
     "pinned_header": "Angeheftet",
     "pinned_tooltip": "Agent arbeitet",
+    "pin": "Anheften",
     "unpin": "Von Angeheftet entfernen",
     "projects_header": "Projekte",
     "new_tooltip": "Neu…",

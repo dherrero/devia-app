@@ -364,6 +364,17 @@
     width: 0.375rem;
   }
 
+  .trail {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  // Hover-only pin shortcut (same effect as double-click).
+  .pin-hover { display: none; }
+  &:hover .pin-hover,
+  .pin-hover:focus-within { display: inline-flex; }
+
   .running {
     width: 0.4375rem;
     height: 0.4375rem;

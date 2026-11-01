@@ -147,13 +147,27 @@
              (drop)="p.tech === 'folder' ? onDrop($event, p.path) : null">
           <span class="proj-icon" [attr.data-tech]="p.tech" aria-hidden="true">{{ techBadge(p.tech) }}</span>
           <span class="name">{{ p.name }}</span>
-          @if (state.isRunning(p.path)) {
-            <span class="running" [title]="'sidebar.pinned_tooltip' | translate"></span>
-          } @else if (p.tech === 'folder') {
-            <span class="folder-arrow">›</span>
-          } @else {
-            <span class="meta"></span>
-          }
+          <span class="trail">
+            @if (p.tech !== 'folder' && !state.pinnedPaths().includes(p.path)) {
+              <span class="pin-hover" (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
+                <dv-button iconOnly
+                           variant="ghost"
+                           size="sm"
+                           [dvTooltip]="'sidebar.pin' | translate"
+                           [ariaLabel]="'sidebar.pin' | translate"
+                           (clicked)="pinProject(p)">
+                  <dv-icon [icon]="LucidePin" size="sm" />
+                </dv-button>
+              </span>
+            }
+            @if (state.isRunning(p.path)) {
+              <span class="running" [title]="'sidebar.pinned_tooltip' | translate"></span>
+            } @else if (p.tech === 'folder') {
+              <span class="folder-arrow">›</span>
+            } @else {
+              <span class="meta"></span>
+            }
+          </span>
         </div>
       } @empty {
         @if (search.query()) {

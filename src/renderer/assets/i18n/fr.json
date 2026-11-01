@@ -6,6 +6,7 @@
   "sidebar": {
     "pinned_header": "Épinglés",
     "pinned_tooltip": "L'Agent travaille",
+    "pin": "Épingler",
     "unpin": "Retirer des épinglés",
     "projects_header": "Projets",
     "new_tooltip": "Nouveau…",

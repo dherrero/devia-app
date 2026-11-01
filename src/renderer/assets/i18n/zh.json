@@ -6,6 +6,7 @@
   "sidebar": {
     "pinned_header": "已固定",
     "pinned_tooltip": "智能体正在工作",
+    "pin": "固定",
     "unpin": "从已固定中移除",
     "projects_header": "项目",
     "new_tooltip": "新建…",

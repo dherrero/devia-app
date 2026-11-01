@@ -6,6 +6,7 @@
   "sidebar": {
     "pinned_header": "पिन किए गए",
     "pinned_tooltip": "एजेंट काम कर रहा है",
+    "pin": "पिन करें",
     "unpin": "पिन से हटाएँ",
     "projects_header": "प्रोजेक्ट्स",
     "new_tooltip": "नया…",

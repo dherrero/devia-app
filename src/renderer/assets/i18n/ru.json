@@ -6,6 +6,7 @@
   "sidebar": {
     "pinned_header": "Закреплённые",
     "pinned_tooltip": "Агент работает",
+    "pin": "Закрепить",
     "unpin": "Открепить",
     "projects_header": "Проекты",
     "new_tooltip": "Новый…",
