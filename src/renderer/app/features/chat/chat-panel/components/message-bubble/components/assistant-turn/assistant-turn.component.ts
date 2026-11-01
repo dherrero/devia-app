@@ -120,8 +120,26 @@ function showsQuestionRecord(tc: ToolCallRecord, runStatus: string | undefined):
   ],
   templateUrl: './assistant-turn.component.html',
   styleUrl: './assistant-turn.component.scss',
+  host: { '(click)': 'onHostClick($event)' },
 })
 export class AssistantTurnComponent {
+  /** Delegated handler for the copy buttons the markdown renderer injects into
+   *  fenced code blocks (the HTML comes from innerHTML, so no template bindings). */
+  onHostClick(event: Event): void {
+    const btn = (event.target as Element | null)?.closest?.('button.code-copy-btn');
+    if (!btn) return;
+    const pre = btn.closest('pre');
+    const text = (pre?.querySelector('code') ?? pre)?.textContent ?? '';
+    if (!text) return;
+    void navigator.clipboard.writeText(text.replace(/\n$/, '')).then(
+      () => {
+        btn.classList.add('is-copied');
+        setTimeout(() => btn.classList.remove('is-copied'), 1400);
+      },
+      (err) => console.warn('[assistant-turn] code copy failed:', err),
+    );
+  }
+
   readonly LucideLoader = LucideLoader;
   readonly LucideCheck = LucideCheck;
   readonly LucideCopy = LucideCopy;
