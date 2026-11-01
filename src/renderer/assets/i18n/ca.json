@@ -258,6 +258,8 @@
     "comment_save": "Desa",
     "comment_cancel": "Cancel·la",
     "comment_edit": "Edita el comentari",
+    "collapse_file": "Replega el fitxer",
+    "expand_file": "Desplega el fitxer",
     "comment_delete": "Elimina el comentari",
     "review_cancel": "Cancel·la",
     "review_send": "Envia a revisar",

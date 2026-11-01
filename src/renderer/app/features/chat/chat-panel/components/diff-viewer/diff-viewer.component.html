@@ -14,7 +14,9 @@
       </div>
 
       @for (file of diff()!.files; track file.path) {
-        <article class="dsm-diff-file" [attr.data-path]="file.path">
+        <article class="dsm-diff-file"
+                 [class.is-collapsed]="isCollapsed(file.path)"
+                 [attr.data-path]="file.path">
           <header class="dsm-diff-file-head">
             <span class="dsm-status-pill" [attr.data-status]="file.status">
               {{ statusLabel(file.status) }}
@@ -30,7 +32,18 @@
               @if (countAdds(file) > 0) { <span class="add">+{{ countAdds(file) }}</span> }
               @if (countDels(file) > 0) { <span class="del">−{{ countDels(file) }}</span> }
             </span>
+            <dv-button iconOnly
+                       variant="ghost"
+                       size="sm"
+                       class="dsm-diff-toggle"
+                       [attr.aria-expanded]="!isCollapsed(file.path)"
+                       [ariaLabel]="(isCollapsed(file.path) ? 'diff_viewer.expand_file' : 'diff_viewer.collapse_file') | translate"
+                       [title]="(isCollapsed(file.path) ? 'diff_viewer.expand_file' : 'diff_viewer.collapse_file') | translate"
+                       (clicked)="toggleCollapsed(file.path)">
+              <dv-icon [icon]="LucideChevronDown" size="sm" />
+            </dv-button>
           </header>
+          @if (!isCollapsed(file.path)) {
           <div class="dsm-diff-body">
             @for (line of file.lines; track $index) {
               <div class="dsm-diff-row"
@@ -96,6 +109,7 @@
               }
             }
           </div>
+          }
         </article>
       }
     </div>

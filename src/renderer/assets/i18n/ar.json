@@ -258,6 +258,8 @@
     "comment_save": "حفظ",
     "comment_cancel": "إلغاء",
     "comment_edit": "تعديل التعليق",
+    "collapse_file": "طي الملف",
+    "expand_file": "توسيع الملف",
     "comment_delete": "حذف التعليق",
     "review_cancel": "إلغاء",
     "review_send": "إرسال للمراجعة",

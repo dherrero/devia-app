@@ -307,6 +307,8 @@
     "comment_save": "Save",
     "comment_cancel": "Cancel",
     "comment_edit": "Edit comment",
+    "collapse_file": "Collapse file",
+    "expand_file": "Expand file",
     "comment_delete": "Delete comment",
     "review_cancel": "Cancel",
     "review_send": "Send for review",
