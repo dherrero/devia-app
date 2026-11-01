@@ -258,6 +258,8 @@
     "comment_save": "Speichern",
     "comment_cancel": "Abbrechen",
     "comment_edit": "Kommentar bearbeiten",
+    "collapse_file": "Datei einklappen",
+    "expand_file": "Datei ausklappen",
     "comment_delete": "Kommentar löschen",
     "review_cancel": "Abbrechen",
     "review_send": "Zur Überprüfung senden",

@@ -92,6 +92,20 @@
   font-size: var(--dv-fs-sm);
 }
 
+.dsm-diff-toggle {
+  flex-shrink: 0;
+
+  dv-icon {
+    display: inline-flex;
+    transition: transform var(--dv-dur-fast, 0.15s) var(--dv-ease-out);
+  }
+}
+
+.dsm-diff-file.is-collapsed {
+  .dsm-diff-file-head { border-bottom: 0; }
+  .dsm-diff-toggle dv-icon { transform: rotate(-90deg); }
+}
+
 .dsm-status-pill {
   display: inline-flex;
   align-items: center;

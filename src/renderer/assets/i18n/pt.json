@@ -258,6 +258,8 @@
     "comment_save": "Guardar",
     "comment_cancel": "Cancelar",
     "comment_edit": "Editar comentário",
+    "collapse_file": "Recolher arquivo",
+    "expand_file": "Expandir arquivo",
     "comment_delete": "Eliminar comentário",
     "review_cancel": "Cancelar",
     "review_send": "Enviar para revisão",

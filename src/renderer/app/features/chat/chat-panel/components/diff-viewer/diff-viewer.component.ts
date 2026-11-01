@@ -1,10 +1,12 @@
 import {
   ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input,
-  isDevMode, output, signal, viewChild,
+  isDevMode, output, signal, untracked, viewChild,
 } from '@angular/core';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { ButtonComponent, IconComponent } from '@devia/ui';
-import { LucideMessageCircle, LucidePencil, LucideTrash2 } from '@lucide/angular';
+import {
+  LucideChevronDown, LucideMessageCircle, LucidePencil, LucideTrash2,
+} from '@lucide/angular';
 import { AppStateService } from '../../../../../core/services/app-state.service';
 import { ElectronApiService } from '../../../../../core/services/electron-api.service';
 import { ToastService } from '../../../../../core/services/toast.service';
@@ -30,6 +32,7 @@ const STATUS_KEY: Record<string, string> = {
   styleUrl: './diff-viewer.component.scss',
 })
 export class DiffViewerComponent {
+  readonly LucideChevronDown = LucideChevronDown;
   readonly LucideMessageCircle = LucideMessageCircle;
   readonly LucidePencil = LucidePencil;
   readonly LucideTrash2 = LucideTrash2;
@@ -83,6 +86,9 @@ export class DiffViewerComponent {
 
   readonly diff = signal<DiffResult | null>(null);
   readonly loading = signal(true);
+
+  /** Paths of the file blocks the user has collapsed (all start expanded). */
+  readonly collapsed = signal<ReadonlySet<string>>(new Set());
 
   /** `${filePath}::${side}::${line}` of the line whose editor is open, or null. */
   readonly editingKey = signal<string | null>(null);
@@ -141,6 +147,8 @@ export class DiffViewerComponent {
       const target = this.state.focusedDiffFile();
       const d = this.diff();
       if (!target || !d || this.loading()) return;
+      // A collapsed block has no body to land on: open it first.
+      if (untracked(() => this.isCollapsed(target))) this.setCollapsed(target, false);
       queueMicrotask(() => {
         const root = this.hostRef.nativeElement;
         const el = root.querySelector(
@@ -185,6 +193,22 @@ export class DiffViewerComponent {
     const p = this.project();
     return this.commentable() && p ? this.state.reviewCommentCount(p) : 0;
   });
+
+  isCollapsed(path: string): boolean {
+    return this.collapsed().has(path);
+  }
+
+  toggleCollapsed(path: string): void {
+    this.setCollapsed(path, !this.isCollapsed(path));
+  }
+
+  private setCollapsed(path: string, value: boolean): void {
+    this.collapsed.update((set) => {
+      const next = new Set(set);
+      if (value) next.add(path); else next.delete(path);
+      return next;
+    });
+  }
 
   displayPath(absPath: string): string {
     return toRelativePath(absPath, this.state.config()?.workspaceRoot ?? '');

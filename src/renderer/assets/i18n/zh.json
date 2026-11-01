@@ -258,6 +258,8 @@
     "comment_save": "保存",
     "comment_cancel": "取消",
     "comment_edit": "编辑评论",
+    "collapse_file": "折叠文件",
+    "expand_file": "展开文件",
     "comment_delete": "删除评论",
     "review_cancel": "取消",
     "review_send": "发送以审查",

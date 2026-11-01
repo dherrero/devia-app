@@ -258,6 +258,8 @@
     "comment_save": "Сохранить",
     "comment_cancel": "Отмена",
     "comment_edit": "Изменить комментарий",
+    "collapse_file": "Свернуть файл",
+    "expand_file": "Развернуть файл",
     "comment_delete": "Удалить комментарий",
     "review_cancel": "Отмена",
     "review_send": "Отправить на проверку",
