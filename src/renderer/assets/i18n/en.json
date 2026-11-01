@@ -21,6 +21,7 @@
   "sidebar": {
     "pinned_header": "Pinned",
     "pinned_tooltip": "Agent working",
+    "pin": "Pin",
     "unpin": "Remove from Pinned",
     "projects_header": "Projects",
     "new_tooltip": "New…",

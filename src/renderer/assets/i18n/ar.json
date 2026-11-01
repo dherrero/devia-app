@@ -6,6 +6,7 @@
   "sidebar": {
     "pinned_header": "المثبَّتة",
     "pinned_tooltip": "الوكيل يعمل",
+    "pin": "تثبيت",
     "unpin": "إزالة من المثبَّتة",
     "projects_header": "المشاريع",
     "new_tooltip": "جديد…",

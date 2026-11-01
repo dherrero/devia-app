@@ -6,6 +6,7 @@
   "sidebar": {
     "pinned_header": "Fixats",
     "pinned_tooltip": "Agent treballant",
+    "pin": "Fixar",
     "unpin": "Llevar dels Fixats",
     "projects_header": "Projectes",
     "new_tooltip": "Nou…",

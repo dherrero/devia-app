@@ -21,6 +21,7 @@
   "sidebar": {
     "pinned_header": "Fijados",
     "pinned_tooltip": "Agente trabajando",
+    "pin": "Fijar",
     "unpin": "Quitar de Fijados",
     "projects_header": "Proyectos",
     "new_tooltip": "Nuevo…",
