@@ -374,6 +374,43 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+:host ::ng-deep .md-content pre {
+  position: relative;
+}
+:host ::ng-deep .md-content pre .code-copy-btn {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  padding: 0;
+  color: var(--dv-muted);
+  background: var(--dv-surf-2);
+  border: 0.5px solid var(--dv-bor-2);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+:host ::ng-deep .md-content pre:hover .code-copy-btn,
+:host ::ng-deep .md-content pre .code-copy-btn:focus-visible,
+:host ::ng-deep .md-content pre .code-copy-btn.is-copied {
+  opacity: 1;
+}
+:host ::ng-deep .md-content pre .code-copy-btn:hover {
+  color: var(--dv-fg);
+}
+:host ::ng-deep .md-content pre .code-copy-btn .icon-check,
+:host ::ng-deep .md-content pre .code-copy-btn.is-copied .icon-copy {
+  display: none;
+}
+:host ::ng-deep .md-content pre .code-copy-btn.is-copied .icon-check {
+  display: block;
+  color: var(--dv-acc);
+}
 :host ::ng-deep .md-content pre code {
   background: transparent;
   padding: 0;
