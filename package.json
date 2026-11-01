@@ -1,6 +1,6 @@
 {
   "name": "devia-app",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "private": true,
   "description": "Devia — local desktop client for driving CLI coding agents",
   "license": "Apache-2.0",
