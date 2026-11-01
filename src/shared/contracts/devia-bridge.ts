@@ -200,19 +200,19 @@ export interface DeviaBridge {
   loadActiveStats(): Promise<Record<string, SessionStats>>;
   /** Devia-wide cost aggregate across every project's sessions (S-7). */
   aggregateStats(): Promise<SessionStatsAggregate>;
-  saveChat(projectPath: string, messages: unknown[], stats?: SessionStats): Promise<true>;
+  saveChat(projectPath: string, messages: unknown[], stats?: SessionStats, runMode?: RunModeChangedEvent['mode']): Promise<true>;
   /**
    * Split-view save (S-13 T-156): persist an additional pane's history under
    * its base project with its own session id, without touching the project's
    * active session. The renderer keys the live state by the pane's runKey but
    * the disk file must live under the real project so it's listable/restorable.
    */
-  saveChatAs(baseProject: string, sessionId: string, messages: unknown[], stats?: SessionStats, workdir?: string, worktreeBranch?: string): Promise<true>;
+  saveChatAs(baseProject: string, sessionId: string, messages: unknown[], stats?: SessionStats, workdir?: string, worktreeBranch?: string, runMode?: RunModeChangedEvent['mode']): Promise<true>;
   listSessions(projectPath: string): Promise<SessionMeta[]>;
   switchSession(
     projectPath: string,
     sessionId: string,
-  ): Promise<{ id: string; messages: unknown[]; stats?: SessionStats }>;
+  ): Promise<{ id: string; messages: unknown[]; stats?: SessionStats; runMode?: RunModeChangedEvent['mode'] }>;
   /**
    * S-2 F5.1: load an existing session under an ADDITIONAL pane's identity
    * (runKey) without touching the primary pane's record. Rejects with
@@ -228,6 +228,7 @@ export interface DeviaBridge {
     id: string;
     messages: unknown[];
     stats?: SessionStats;
+    runMode?: RunModeChangedEvent['mode'];
     workdir: string;
     branch?: string;
     isolation: 'worktree' | 'recreated' | 'none';

@@ -1,6 +1,8 @@
 import type { FeatureContext } from '../../../shared/feature';
 import { IPC } from '../../../../shared/contracts/ipc-channels';
 import type { SessionStats } from '../../../../shared/domain/session-stats';
+import type { RunMode } from '../../../../shared/domain/run-capabilities';
+import { isRunMode } from '../../../../shared/domain/session';
 import type { LoadChatsUseCase } from '../application/load-chats.use-case';
 import type { LoadActiveStatsUseCase } from '../application/load-active-stats.use-case';
 import type { AggregateStatsUseCase } from '../application/aggregate-stats.use-case';
@@ -28,11 +30,11 @@ export function registerSessionsIpc(ctx: FeatureContext, deps: SessionsIpcDeps):
 
   ctx.ipc.handle(IPC.statsAggregate, () => deps.aggregateStats.execute());
 
-  ctx.ipc.handle(IPC.chatsSave, (_e, projectPath: string, messages: unknown[], stats?: SessionStats) =>
-    deps.saveChat.execute(projectPath, messages, stats));
+  ctx.ipc.handle(IPC.chatsSave, (_e, projectPath: string, messages: unknown[], stats?: SessionStats, runMode?: RunMode) =>
+    deps.saveChat.execute(projectPath, messages, stats, isRunMode(runMode) ? runMode : undefined));
 
-  ctx.ipc.handle(IPC.chatsSaveAs, (_e, baseProject: string, sessionId: string, messages: unknown[], stats?: SessionStats, workdir?: string, worktreeBranch?: string) =>
-    deps.saveChat.saveAs(baseProject, sessionId, messages, stats, workdir, worktreeBranch));
+  ctx.ipc.handle(IPC.chatsSaveAs, (_e, baseProject: string, sessionId: string, messages: unknown[], stats?: SessionStats, workdir?: string, worktreeBranch?: string, runMode?: RunMode) =>
+    deps.saveChat.saveAs(baseProject, sessionId, messages, stats, workdir, worktreeBranch, isRunMode(runMode) ? runMode : undefined));
 
   ctx.ipc.handle(IPC.sessionsList, (_e, projectPath: string) =>
     deps.listSessions.execute(projectPath));

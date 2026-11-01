@@ -114,3 +114,18 @@ describe('extractSessionIdentity (S-2 F0.1)', () => {
     expect(identity).toEqual({});
   });
 });
+
+describe('parsePersistedSession — runMode', () => {
+  it('keeps a valid run mode', () => {
+    expect(parsePersistedSession({ ...BASE, runMode: 'apply-yolo' })?.runMode).toBe('apply-yolo');
+  });
+
+  it('drops an unknown or mistyped run mode', () => {
+    expect('runMode' in (parsePersistedSession({ ...BASE, runMode: 'turbo' }) as object)).toBe(false);
+    expect('runMode' in (parsePersistedSession({ ...BASE, runMode: 3 }) as object)).toBe(false);
+  });
+
+  it('tolerates sessions written before the field existed', () => {
+    expect('runMode' in (parsePersistedSession({ ...BASE }) as object)).toBe(false);
+  });
+});

@@ -11,6 +11,7 @@ import { ButtonComponent, IconComponent, TooltipDirective } from '@devia/ui';
 import { LucideColumns2, LucideRows2, LucideX } from '@lucide/angular';
 import type { ChatMessage } from '../../../../../shared/domain/chat';
 import type { SessionStats } from '../../../../../shared/domain/session-stats';
+import type { RunMode } from '../../../../../shared/domain/run-capabilities';
 import { AppStateService } from '../../../core/services/app-state.service';
 import { ElectronApiService } from '../../../core/services/electron-api.service';
 import { ToastService } from '../../../core/services/toast.service';
@@ -161,7 +162,7 @@ export class ChatPanesContainerComponent {
               durationMs: 8000,
             });
           }
-          this.state.loadSessionIntoKey(slot, result.messages as ChatMessage[], result.stats);
+          this.state.loadSessionIntoKey(slot, result.messages as ChatMessage[], result.stats, result.runMode);
           panes.push({
             id: slot,
             sessionRef: {
@@ -351,6 +352,7 @@ export class ChatPanesContainerComponent {
       id: string;
       messages: unknown[];
       stats?: SessionStats;
+      runMode?: RunMode;
       workdir: string;
       branch?: string;
       isolation: 'worktree' | 'recreated' | 'none';
@@ -407,7 +409,7 @@ export class ChatPanesContainerComponent {
         durationMs: 8000,
       });
     }
-    this.state.loadSessionIntoKey(sessionId, result.messages as ChatMessage[], result.stats);
+    this.state.loadSessionIntoKey(sessionId, result.messages as ChatMessage[], result.stats, result.runMode);
     const next: PanesLayout = {
       ...layout,
       columns: layout.columns.map((c) => ({

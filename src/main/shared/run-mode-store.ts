@@ -1,7 +1,7 @@
 import type { RunMode } from '../../shared/domain/run-capabilities';
 
 /** Where a mode change came from, so a listener can skip echoing it back. */
-export type RunModeSource = 'desktop' | 'remote' | 'reset';
+export type RunModeSource = 'desktop' | 'remote' | 'reset' | 'restore';
 
 export type RunModeListener = (project: string, mode: RunMode, source: RunModeSource) => void;
 
@@ -12,7 +12,8 @@ export const DEFAULT_RUN_MODE: RunMode = 'plan';
  * Single source of truth for the run mode of each session (keyed like the run
  * gateway: the project path / session key). The desktop composer and the
  * Telegram router both read and write it, so they always agree. In-memory only:
- * a restart returns every session to {@link DEFAULT_RUN_MODE}.
+ * it is persisted inside each session file (`PersistedSession.runMode`) and
+ * re-seeded at startup — see `seedRunModes`.
  */
 export class RunModeStore {
   private readonly modes = new Map<string, RunMode>();
