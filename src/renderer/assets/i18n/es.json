@@ -131,6 +131,7 @@
     "changes_tooltip": "{{count}} archivos modificados o sin trackear",
     "model_tooltip": "Modelo activo",
     "agent_tooltip": "Agente activo · clic para cambiar",
+    "effort_tooltip": "Nivel de esfuerzo · clic para cambiar",
     "context_tooltip": "{{used}} / {{total}} tokens",
     "context_compactions": "{{count}} compactaciones",
     "cost_tooltip": "Coste acumulado de la sesión",

@@ -37,6 +37,15 @@ export const claudeAgentDef: RuntimeAgentDef = {
     { id: 'claude-sonnet-4-5', label: 'claude-sonnet-4-5' },
     { id: 'claude-haiku-4-5', label: 'claude-haiku-4-5' },
   ],
+  // `claude --effort <level>` (verified against `claude --help`).
+  reasoningOptions: [
+    { id: 'default', label: 'Default' },
+    { id: 'low', label: 'Low' },
+    { id: 'medium', label: 'Medium' },
+    { id: 'high', label: 'High' },
+    { id: 'xhigh', label: 'XHigh' },
+    { id: 'max', label: 'Max' },
+  ],
   envOverrideKeys: [
     'CLAUDE_CONFIG_DIR',
     'ANTHROPIC_BASE_URL',
@@ -58,6 +67,9 @@ export const claudeAgentDef: RuntimeAgentDef = {
     }
     if (options.model && options.model !== 'default') {
       args.push('--model', options.model);
+    }
+    if (options.reasoning && options.reasoning !== 'default') {
+      args.push('--effort', options.reasoning);
     }
     const dirs = (extraAllowedDirs ?? []).filter(
       (d): d is string => typeof d === 'string' && d.length > 0,

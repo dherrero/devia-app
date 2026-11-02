@@ -79,6 +79,17 @@
             </span>
           }
 
+          @if (reasoningOptions().length > 0) {
+            <dv-select class="effort-select"
+                       size="sm"
+                       [dvTooltip]="'statusbar.effort_tooltip' | translate"
+                       [attr.aria-label]="'statusbar.effort_tooltip' | translate"
+                       [ngModel]="activeReasoning()"
+                       (ngModelChange)="onReasoningChange($event)"
+                       [options]="reasoningOptions()">
+            </dv-select>
+          }
+
           @if (state.activeModel() && state.contextPct(); as pct) {
             <span class="ctx" [dvTooltip]="contextTooltip()">
               <span class="bar" [class.warn]="pct >= 0.8">
