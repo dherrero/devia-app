@@ -76,7 +76,8 @@ export class KeyboardShortcutsService {
     }
   }
 
-  private openSettings(): void {
+  /** Opens Settings (single instance), optionally on a given section id. */
+  openSettings(section?: string): void {
     if (this.settingsRef) return;
     this.settingsRef = this.dialog.open(SettingsModalComponent, {
       width: 'min(54rem, calc(100vw - 2rem))',
@@ -87,6 +88,7 @@ export class KeyboardShortcutsService {
       backdropClass: 'dv-dialog-backdrop',
       autoFocus: 'first-tabbable',
       restoreFocus: true,
+      ...(section ? { data: { section } } : {}),
     });
     this.settingsRef.closed.subscribe(() => {
       this.settingsRef = null;

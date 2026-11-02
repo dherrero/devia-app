@@ -130,6 +130,7 @@
     "changes_label": "{{count}} changes",
     "changes_tooltip": "{{count}} modified or untracked files",
     "model_tooltip": "Active model",
+    "agent_tooltip": "Active agent · click to change",
     "context_tooltip": "{{used}} / {{total}} tokens",
     "context_compactions": "{{count}} compactions",
     "cost_tooltip": "Session cost so far",
