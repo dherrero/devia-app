@@ -59,14 +59,27 @@
 
       <span class="spacer"></span>
 
-      @if (state.activeModel(); as model) {
+      @if (agentName() || state.activeModel()) {
         <div class="center-group">
-          <span class="model" [dvTooltip]="'statusbar.model_tooltip' | translate">
-            <dv-icon class="ic" [icon]="LucideCpu" size="sm" />
-            <span class="model-label">{{ shortModel(model) }}</span>
-          </span>
+          @if (agentName(); as agent) {
+            <button type="button"
+                    class="agent-chip"
+                    [dvTooltip]="'statusbar.agent_tooltip' | translate"
+                    [attr.aria-label]="'statusbar.agent_tooltip' | translate"
+                    (click)="openAgentSettings()">
+              <dv-icon class="ic" [icon]="LucideBot" size="sm" />
+              <span class="agent-label">{{ agent }}</span>
+            </button>
+          }
 
-          @if (state.contextPct(); as pct) {
+          @if (state.activeModel(); as model) {
+            <span class="model" [dvTooltip]="'statusbar.model_tooltip' | translate">
+              <dv-icon class="ic" [icon]="LucideCpu" size="sm" />
+              <span class="model-label">{{ shortModel(model) }}</span>
+            </span>
+          }
+
+          @if (state.activeModel() && state.contextPct(); as pct) {
             <span class="ctx" [dvTooltip]="contextTooltip()">
               <span class="bar" [class.warn]="pct >= 0.8">
                 <span class="fill" [style.width.%]="pct * 100"></span>
@@ -75,7 +88,7 @@
             </span>
           }
 
-          @if (showCost()) {
+          @if (state.activeModel() && showCost()) {
             <span class="cost" [dvTooltip]="costTooltip()">
               &#36;{{ state.sessionCostUsd() | number:'1.2-2' }}
             </span>

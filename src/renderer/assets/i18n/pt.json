@@ -87,6 +87,7 @@
     "agent_working": "agente a trabalhar",
     "mode_suffix": "modo",
     "model_tooltip": "Modelo ativo",
+    "agent_tooltip": "Agente ativo · clique para alterar",
     "context_tooltip": "{{used}} / {{total}} tokens",
     "context_compactions": "{{count}} compactações",
     "cost_tooltip": "Custo acumulado da sessão",
