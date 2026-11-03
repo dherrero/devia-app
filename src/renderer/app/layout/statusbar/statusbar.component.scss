@@ -91,7 +91,7 @@
       white-space: nowrap;
       max-width: 10rem;
     }
-    .effort-select { min-width: 5.5rem; }
+    .effort-select { color: var(--dv-fg); font-weight: 500; }
     .model {
       display: inline-flex;
       align-items: center;
