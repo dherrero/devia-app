@@ -202,6 +202,44 @@
   font-size: 0.9375rem;
 }
 
+// Ghost: blends into the surrounding text (status bar). The trigger takes the
+// host's font/colour; only a subtle hover tint shows it is interactive.
+:host(.dv-select-host--ghost) {
+  display: inline-flex;
+  width: auto;
+
+  .dv-select__wrapper {
+    display: inline-flex;
+  }
+
+  .dv-select__control {
+    width: auto;
+    min-height: 0;
+    gap: 0.25rem;
+    padding: 0.0625rem 1rem 0.0625rem 0.25rem;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: var(--dv-r-sm, 0.25rem);
+
+    &:hover:not(:disabled),
+    &--open {
+      background: var(--dv-hover, rgba(255, 255, 255, 0.08));
+    }
+
+    &:focus-visible {
+      box-shadow: 0 0 0 1px var(--dv-acc);
+    }
+  }
+
+  .dv-select__chevron {
+    right: 0.25rem;
+    width: 0.3125rem;
+    height: 0.3125rem;
+  }
+}
+
 @keyframes dv-select-in {
   from {
     opacity: 0;

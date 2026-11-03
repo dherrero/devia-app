@@ -75,6 +75,7 @@ type SelectOptionView =
   ],
   host: {
     class: 'dv-select-host',
+    '[class.dv-select-host--ghost]': `variant() === 'ghost'`,
     '[class.dv-select-host--sm]': `size() === 'sm'`,
     '[class.dv-select-host--lg]': `size() === 'lg'`,
     '[class.dv-select-host--invalid]': 'error() !== null',
@@ -92,6 +93,9 @@ export class SelectComponent implements ControlValueAccessor {
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly required = input(false, { transform: booleanAttribute });
   readonly size = input<'sm' | 'md' | 'lg'>('md');
+  /** `ghost`: no border/background, inherits font + colour — for inline use
+   *  inside dense chrome such as the status bar. */
+  readonly variant = input<'default' | 'ghost'>('default');
   readonly valueChange = output<string>();
 
   protected readonly value = signal<string>('');

@@ -88,6 +88,7 @@
     "mode_suffix": "modalità",
     "model_tooltip": "Modello attivo",
     "agent_tooltip": "Agente attivo · clic per cambiare",
+    "effort_tooltip": "Livello di impegno · clic per cambiare",
     "context_tooltip": "{{used}} / {{total}} token",
     "context_compactions": "{{count}} compattazioni",
     "cost_tooltip": "Costo cumulato della sessione",

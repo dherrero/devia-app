@@ -88,6 +88,7 @@
     "mode_suffix": "وضع",
     "model_tooltip": "النموذج النشط",
     "agent_tooltip": "الوكيل النشط · انقر للتغيير",
+    "effort_tooltip": "مستوى الجهد · انقر للتغيير",
     "context_tooltip": "{{used}} / {{total}} رمز",
     "context_compactions": "{{count}} عمليات ضغط",
     "cost_tooltip": "تكلفة الجلسة التراكمية",

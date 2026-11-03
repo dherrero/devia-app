@@ -88,6 +88,7 @@
     "mode_suffix": "modus",
     "model_tooltip": "Aktives Modell",
     "agent_tooltip": "Aktiver Agent · Klicken zum Wechseln",
+    "effort_tooltip": "Aufwandsstufe · Klicken zum Ändern",
     "context_tooltip": "{{used}} / {{total}} Tokens",
     "context_compactions": "{{count}} Komprimierungen",
     "cost_tooltip": "Bisherige Sitzungskosten",

@@ -1,7 +1,8 @@
 ﻿import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { ButtonComponent, DialogService, IconComponent, TooltipDirective } from '@devia/ui';
+import { ButtonComponent, DialogService, IconComponent, SelectComponent, TooltipDirective } from '@devia/ui';
 import {
   LucideArrowDownToLine,
   LucideBot,
@@ -19,7 +20,7 @@ import { BranchSwitcherComponent } from '../../features/git/branch-switcher/bran
   selector: 'ds-statusbar',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent, DecimalPipe, IconComponent, TranslateModule, TooltipDirective],
+  imports: [ButtonComponent, DecimalPipe, FormsModule, IconComponent, SelectComponent, TranslateModule, TooltipDirective],
   templateUrl: './statusbar.component.html',
   styleUrl: './statusbar.component.scss',
 })
@@ -104,6 +105,31 @@ export class StatusbarComponent {
     if (!id) return '';
     return this.state.detectedAgents()?.find((a) => a.id === id)?.name ?? id;
   });
+
+  // Effort levels the active agent exposes (empty → no selector in the footer).
+  readonly reasoningOptions = computed(() => {
+    const id = this.state.config()?.agentId;
+    const agent = this.state.detectedAgents()?.find((a) => a.id === id);
+    return (agent?.reasoningOptions ?? []).map((r) => ({ value: r.id, label: r.label }));
+  });
+
+  readonly activeReasoning = computed<string>(() => {
+    const cfg = this.state.config();
+    return (cfg && cfg.agentModels?.[cfg.agentId]?.reasoning) || 'default';
+  });
+
+  async onReasoningChange(reasoning: string): Promise<void> {
+    const cfg = this.state.config();
+    if (!cfg || reasoning === this.activeReasoning()) return;
+    // agent:setModel overwrites BOTH fields, so forward the current model.
+    const model = cfg.agentModels?.[cfg.agentId]?.model ?? null;
+    await this.api.setAgentModel({
+      agentId: cfg.agentId,
+      model,
+      reasoning: reasoning === 'default' ? null : reasoning,
+    });
+    this.state.config.set(await this.api.getConfig());
+  }
 
   openAgentSettings() {
     this.shortcuts.openSettings('execution');
