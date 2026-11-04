@@ -66,6 +66,20 @@ describe('OpencodeMapper', () => {
     expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).mcp)).toEqual(['mine']);
   });
 
+  it('lets OpenCode reach the harness read dirs through external_directory, and nothing else', () => {
+    const kit = path.join(os.tmpdir(), 'devia-kit', 'superpowers');
+    const harness = { mcp: { devia: [], user: [] }, skills: [], subagents: [], isolateExternalMcp: false, readDirs: [kit, 'relative/dir', path.parse(kit).root] };
+    const run = prepare(mapper(), planWith({ harness }));
+    const config = JSON.parse(fs.readFileSync(run.agentEnv?.['OPENCODE_CONFIG'] ?? '', 'utf8'));
+    expect(config.permission).toEqual({ external_directory: { [`${kit.replace(/\\/g, '/')}/**`]: 'allow' } });
+  });
+
+  it('writes no permission block when the harness needs no extra dir', () => {
+    const run = prepare(mapper());
+    const config = JSON.parse(fs.readFileSync(run.agentEnv?.['OPENCODE_CONFIG'] ?? '', 'utf8'));
+    expect(config).not.toHaveProperty('permission');
+  });
+
   it('resumes natively and keeps the system prompt on stdin', () => {
     const run = prepare(mapper(), planWith({ resumeSessionId: 'ses_1' }));
     expect(run.args.slice(run.args.indexOf('--session'), run.args.indexOf('--session') + 2)).toEqual(['--session', 'ses_1']);

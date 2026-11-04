@@ -53,13 +53,16 @@ export class ClaudeMapper implements AgentMapper {
   resolveDelivery(plan: AgentRunPlan): DeliveryResolution {
     if (this.enterprise()) {
       console.warn('[devia:run] enterprise MCP config detected — passing neither --mcp-config nor --strict-mcp-config (T-88)');
-      return { mcpServerIds: [], skills: 'none', subagents: plan.harness.subagents.length > 0 ? 'native' : 'none', notices: [ENTERPRISE_NOTICE] };
+      return { mcpServerIds: [], skills: 'none', subagents: plan.harness.subagents.length > 0 ? 'native' : 'none', kit: plan.harness.kit ? 'native' : 'none', notices: [ENTERPRISE_NOTICE] };
     }
     const ids = [...plan.harness.mcp.user, ...plan.harness.mcp.devia].map((s) => s.id);
     return {
       mcpServerIds: ids,
       skills: ids.includes(UI_SERVER_ID) && plan.harness.skills.length > 0 ? 'devia' : 'none',
       subagents: plan.harness.subagents.length > 0 ? 'native' : 'none',
+      // The kit is a Claude Code plugin: `--plugin-dir` loads it for this session only and its own
+      // SessionStart hook injects the bootstrap, so Devia's prompt must not repeat it.
+      kit: plan.harness.kit ? 'native' : 'none',
       notices: [],
     };
   }
@@ -85,6 +88,7 @@ export class ClaudeMapper implements AgentMapper {
       ...resume,
       ...mcp.args,
       ...(agents ? ['--agents', agents.path] : []),
+      ...(plan.harness.kit ? ['--plugin-dir', plan.harness.kit.dir] : []),
     ]);
     if (!built.ok) {
       cleanup();

@@ -5,7 +5,7 @@ import { SessionImportModalComponent } from '../../session-import/session-import
 import type { MenuActionItemDef } from '@devia/ui';
 import { AlertComponent, ButtonComponent, DIALOG_DATA, DialogRef, IconComponent, MenuItemComponent, SelectComponent } from '@devia/ui';
 import { FormsModule } from '@angular/forms';
-import { LucideCpu, LucideFolder, LucideLayoutPanelLeft, LucidePalette, LucideRadio, LucideRocket, LucideSettings, LucideX } from '@lucide/angular';
+import { LucideCpu, LucideFolder, LucideSparkles, LucideLayoutPanelLeft, LucidePalette, LucideRadio, LucideRocket, LucideSettings, LucideX } from '@lucide/angular';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import type { MemoryConfig, RemoteControlConfig } from '../../../../../shared/domain/config';
 import type { RemoteControlStatus } from '../../../../../shared/domain/remote-control';
@@ -31,6 +31,7 @@ import type { AgentForm, RemoteForm, WorkspaceForm } from './models/settings-for
 import { SettingsAppearanceSectionComponent } from './components/settings-appearance-section/settings-appearance-section.component';
 import { SettingsExecutionSectionComponent } from './components/settings-execution-section/settings-execution-section.component';
 import { SettingsMemorySectionComponent } from './components/settings-memory-section/settings-memory-section.component';
+import { SettingsStarterKitSectionComponent } from './components/settings-starter-kit-section/settings-starter-kit-section.component';
 import { SettingsUiToolsSectionComponent } from './components/settings-ui-tools-section/settings-ui-tools-section.component';
 import type { UiToolName } from '../../../../../shared/domain/ui-tools';
 import { SettingsRemoteSectionComponent } from './components/settings-remote-section/settings-remote-section.component';
@@ -64,6 +65,7 @@ function settingsThemeKey(dark: boolean, sharp: boolean): Theme {
     SettingsAppearanceSectionComponent,
     SettingsExecutionSectionComponent,
     SettingsMemorySectionComponent,
+    SettingsStarterKitSectionComponent,
     SettingsUiToolsSectionComponent,
     SettingsRemoteSectionComponent,
     SettingsWorkspaceSectionComponent,
@@ -115,6 +117,7 @@ export class SettingsModalComponent implements OnInit {
       { id: 'execution', label: this.translate.instant('modals.settings.tab_execution'), icon: LucideRocket },
       { id: 'appearance', label: this.translate.instant('modals.settings.tab_appearance'), icon: LucidePalette },
       { id: 'memory', label: this.translate.instant('modals.settings.tab_memory'), icon: LucideCpu },
+      { id: 'starter-kit', label: this.translate.instant('modals.settings.tab_starter_kit'), icon: LucideSparkles },
       { id: 'ui-tools', label: this.translate.instant('modals.settings.tab_ui_tools'), icon: LucideLayoutPanelLeft },
       { id: 'remote-control', label: this.translate.instant('modals.settings.tab_remote_control'), icon: LucideRadio },
     ];

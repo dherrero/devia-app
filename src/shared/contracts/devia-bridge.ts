@@ -1,3 +1,4 @@
+import type { StarterKitSetRequest, StarterKitView } from '../domain/starter-kit';
 import type { DeviaConfig, DeviaConfigView } from '../domain/config';
 import type {
   EngramDetectionResult,
@@ -695,6 +696,11 @@ export interface DeviaBridge {
     notifyOs(title: string, body: string): Promise<void>;
   };
 
+  /** Bundled methodology kits (S-38): current state for a project, and the switches. */
+  readonly starterKits: {
+    status(projectPath?: string): Promise<StarterKitView>;
+    set(req: StarterKitSetRequest): Promise<StarterKitView>;
+  };
   /**
    * Devia internal memory (S-1). Devia ships its own memory store + the
    * `devia-memory` MCP server; this namespace covers detecting an external

@@ -46,5 +46,14 @@ module.exports = {
         '2) usa devia_skill (op "list" y luego "load") para cargar la skill "e2e-skill" y copia el código que contiene; ' +
         '3) usa devia_skill para cargar el sub-agente "e2e-reviewer" y copia el código que contiene.',
     },
+    {
+      // S-38: Superpowers' own acceptance test, through Devia's real pipeline.
+      // The method must kick in BEFORE any code is written, on any agent.
+      id: 'kit',
+      mode: 'plan',
+      kit: true,
+      prompt: "Let's make a react todo list",
+      answer: 'Una lista mínima: añadir, marcar y borrar, sin guardar datos. No necesito más preguntas: sigue con el diseño.',
+    },
   ],
 };

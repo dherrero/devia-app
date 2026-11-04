@@ -37,6 +37,8 @@
     "test:libs": "cross-env NODE_OPTIONS=--no-experimental-webstorage vitest run --config src/libs/ui/vitest.config.ts --passWithNoTests",
     "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "audit:runtime": "node scripts/audit-runtime.mjs",
+    "vendor:superpowers": "node scripts/vendor-superpowers.mjs",
+    "check:kits": "node scripts/vendor-superpowers.mjs --check",
     "pack": "electron-builder",
     "pack:dir": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
     "pack:win": "electron-builder --win",
@@ -72,6 +74,10 @@
       {
         "from": "src/renderer/assets/images/Devia.PNG",
         "to": "icon.png"
+      },
+      {
+        "from": "resources/kits",
+        "to": "kits"
       }
     ],
     "asar": true,

@@ -55,6 +55,7 @@ import { buildSubAgentsFeature, SubAgentReader } from '../features/sub-agents';
 import { createHarnessCatalog } from '../features/claude-runner/infrastructure/harness-catalog';
 import { buildSddFeature } from '../features/sdd';
 import { buildMemoryFeature } from '../features/memory';
+import { buildStarterKitsFeature } from '../features/starter-kits';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
 import { NativeConfigMcpDelivery, StaticMapperRegistry } from '../features/agents';
@@ -288,6 +289,15 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // (Phase 3b) the same way `sddBuilt.kanbanMcpServer` is.
   const memoryBuilt = buildMemoryFeature({ config });
 
+  // S-38: bundled methodology kits (Superpowers). The packaged app carries them
+  // in `<resources>/kits` (outside the asar: they hold executable scripts); in
+  // development they are read from the repository's `resources/kits`.
+  const starterKitsBuilt = buildStarterKitsFeature({
+    config,
+    bundledKitsDir: () =>
+      app.isPackaged ? path.join(process.resourcesPath, 'kits') : path.resolve(__dirname, '..', '..', '..', '..', 'resources', 'kits'),
+  });
+
   // S-24: interactive questions as a Devia MCP tool. Stateless, so it is built
   // here only to hand its per-run callbacks to the Claude runner.
   const uiToolsBuilt = buildUiToolsFeature({ deviaDir: () => config.deviaDir() });
@@ -413,6 +423,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
         uiToolsBuilt.confirmations.grant(projectAbs, action, agentId),
       uiMcpServer: uiToolsBuilt.uiMcpServer,
       // S-30 T-356: skills + sub-agents travel with every run, to any agent.
+      starterKits: starterKitsBuilt.port,
       harnessCatalog: createHarnessCatalog({
         skills: skillsFeature.reader,
         subagents: (projectAbs) => subAgentReader.list(projectAbs),
@@ -489,6 +500,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     sddBuilt.feature,
     // S-1: Devia internal memory + engram integration.
     memoryBuilt.feature,
+    // S-38: bundled starter kits (Superpowers).
+    starterKitsBuilt.feature,
 
     // Modules: candidates for license gating later.
     gitBuilt.feature,

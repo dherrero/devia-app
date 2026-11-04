@@ -26,6 +26,22 @@ export interface OpencodeRunConfig {
   $schema: string;
   mcp: Record<string, OpencodeLocalMcp>;
   agent?: Record<string, OpencodeAgent>;
+  permission?: { external_directory: Record<string, 'allow'> };
+}
+
+/**
+ * OpenCode is confined to its cwd and has no CLI flag for extra dirs; the only
+ * door is `permission.external_directory` (glob → action), verified against
+ * opencode 1.19.3. Relative paths and filesystem roots are dropped: a glob
+ * over `/**` would lift the confinement entirely.
+ */
+function externalDirectoryRules(readDirs: readonly string[]): Record<string, 'allow'> {
+  const rules: Record<string, 'allow'> = {};
+  for (const dir of readDirs) {
+    if (!path.isAbsolute(dir) || path.parse(dir).root === dir) continue;
+    rules[`${dir.replace(/\\/g, '/').replace(/\/+$/, '')}/**`] = 'allow';
+  }
+  return rules;
 }
 
 /**
@@ -42,6 +58,7 @@ export function buildOpencodeRunConfig(
   servers: readonly McpServerConfig[],
   subagents: readonly SubagentRef[],
   parentEnv: NodeJS.ProcessEnv,
+  readDirs: readonly string[] = [],
 ): OpencodeRunConfig {
   const mcp: Record<string, OpencodeLocalMcp> = {};
   for (const s of servers) {
@@ -65,10 +82,12 @@ export function buildOpencodeRunConfig(
     // sub-agent inherits OpenCode's defaults rather than a wrong mapping.
     agent[ref.name] = { description: frontmatter.description ?? ref.description, mode: 'subagent', prompt: body.trim() };
   }
+  const external = externalDirectoryRules(readDirs);
   return {
     $schema: 'https://opencode.ai/config.json',
     mcp,
     ...(Object.keys(agent).length > 0 && { agent }),
+    ...(Object.keys(external).length > 0 && { permission: { external_directory: external } }),
   };
 }
 

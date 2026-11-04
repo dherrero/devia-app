@@ -1,0 +1,44 @@
+{
+  "agent": "gemini",
+  "scenario": "kit",
+  "wiring": {
+    "command": "gemini",
+    "argv": [
+      "--output-format",
+      "stream-json",
+      "--approval-mode",
+      "plan"
+    ],
+    "stdin": {
+      "format": "text",
+      "systemHeader": true
+    },
+    "mcpServers": [],
+    "systemPrompt": {
+      "channel": "stdin-prepend",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": true,
+      "kitMapping": true,
+      "kitBootstrap": true
+    },
+    "uiServer": null
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "status",
+      "text_delta",
+      "tool_result",
+      "tool_use",
+      "usage"
+    ],
+    "sessionStarted": false,
+    "deviaTools": [],
+    "uiCards": [],
+    "loadedSkill": true,
+    "askedBeforeBuilding": true,
+    "wroteCode": false,
+    "usedKanban": false
+  }
+}

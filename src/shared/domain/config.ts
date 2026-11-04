@@ -1,3 +1,5 @@
+import type { StarterKitsConfig } from './starter-kit';
+
 /**
  * Per-agent CLI preferences (model + reasoning effort). Keyed by the
  * agent id from the cli-adapters registry. Persisted in
@@ -139,6 +141,9 @@ export interface DeviaConfig {
 
   /** Devia internal memory feature settings. */
   memory: MemoryConfig;
+
+  /** Bundled methodology kits (S-38). Absent = no decision yet. */
+  starterKits?: StarterKitsConfig;
 
 
   /** Remote-control settings (E-DSK-14). Telegram is the only integration today. */

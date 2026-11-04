@@ -69,6 +69,9 @@ export interface AgentMapper {
  * - `none`    cannot be delivered; the core must not announce it.
  */
 export type HarnessChannel = 'native' | 'devia' | 'none';
+
+/** How the starter kit reaches the agent: loaded by the CLI itself, or by Devia's prompt, or not at all. */
+export type KitChannel = 'native' | 'prompt' | 'none';
 export type HarnessSupport = Readonly<Record<HarnessKind, HarnessChannel>>;
 
 /** Phase 1 result: what will actually reach the agent. */
@@ -77,6 +80,8 @@ export interface DeliveryResolution {
   readonly mcpServerIds: readonly string[];
   readonly skills: HarnessChannel;
   readonly subagents: HarnessChannel;
+  /** Absent = `prompt`: every agent without a native channel gets the bootstrap in its system prompt. */
+  readonly kit?: KitChannel;
   /** One-line status messages for the user (e.g. "enterprise policy: no Devia MCP"). */
   readonly notices: readonly string[];
 }

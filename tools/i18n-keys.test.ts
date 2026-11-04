@@ -170,7 +170,8 @@ describe('round trip against the real files', () => {
     // Measured 2026-08-01. If this drifts, a batch landed (raise it) or a key
     // was added untranslated (the parity gate should have caught it).
     // 269: +4 for the auto-continue switch and banner (es/en only).
-    expect(Object.keys(missing).length).toBe(269);
+    // 293: +24 for the starter kit settings tab and first-run card (es/en only).
+    expect(Object.keys(missing).length).toBe(293);
   });
 
   it('extracts nothing for the complete language', () => {

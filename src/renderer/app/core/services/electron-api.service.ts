@@ -293,6 +293,10 @@ export class ElectronApiService {
     this.api.subAgents.onChanged(cb);
   }
 
+  // Starter kits (S-38).
+  starterKitStatus(projectPath?: string) { return this.api.starterKits.status(projectPath); }
+  setStarterKit(req: Parameters<typeof this.api.starterKits.set>[0]) { return this.api.starterKits.set(req); }
+
   // Devia internal memory + engram integration (S-1).
   detectEngram() { return this.api.memory.detectEngram(); }
   importEngram() { return this.api.memory.importEngram(); }

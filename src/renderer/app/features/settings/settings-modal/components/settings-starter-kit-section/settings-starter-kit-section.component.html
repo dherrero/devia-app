@@ -1,0 +1,52 @@
+<div class="kit-tab">
+  @if (view(); as v) {
+    <section>
+      <h4>{{ 'modals.settings.starter_kit_heading' | translate }}</h4>
+      <p class="hint inline">{{ 'modals.settings.starter_kit_hint' | translate }}</p>
+
+      @if (!v.materialized) {
+        <dv-alert variant="warn" [title]="'modals.settings.starter_kit_unavailable' | translate" />
+      } @else {
+        <label class="kit-label">{{ 'modals.settings.starter_kit_global_label' | translate }}</label>
+        <dv-button-toggle-group class="kit-toggle"
+                                [items]="globalItems()"
+                                [value]="v.enabled ? 'on' : 'off'"
+                                (valueChange)="setGlobal($event)"
+                                ariaLabel="superpowers global">
+        </dv-button-toggle-group>
+
+        @if (project()) {
+          <label class="kit-label">{{ 'modals.settings.starter_kit_project_label' | translate }}</label>
+          <dv-button-toggle-group class="kit-toggle"
+                                  [items]="projectItems()"
+                                  [value]="projectChoice()"
+                                  (valueChange)="setProject($event)"
+                                  ariaLabel="superpowers project">
+          </dv-button-toggle-group>
+          <p class="hint inline">{{ 'modals.settings.starter_kit_project_hint' | translate }}</p>
+          <p class="hint inline">
+            {{ (v.effective ? 'modals.settings.starter_kit_effective_on' : 'modals.settings.starter_kit_effective_off') | translate }}
+          </p>
+        }
+
+        @if (v.effective && v.nativeDetected) {
+          <dv-alert variant="info"
+                    [title]="'modals.settings.starter_kit_native' | translate:{ agent: selectedAgentId() }" />
+        }
+      }
+    </section>
+
+    @if (v.materialized) {
+      <div class="hr"></div>
+      <section>
+        <h4>{{ 'modals.settings.starter_kit_skills_heading' | translate }}</h4>
+        <p class="hint inline">{{ 'modals.settings.starter_kit_version' | translate:{ tag: v.tag, count: v.skills.length } }}</p>
+        <ul class="kit-skills">
+          @for (skill of v.skills; track skill) {
+            <li>{{ skill }}</li>
+          }
+        </ul>
+      </section>
+    }
+  }
+</div>

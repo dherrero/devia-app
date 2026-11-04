@@ -1,0 +1,64 @@
+{
+  "agent": "pi",
+  "scenario": "kit",
+  "wiring": {
+    "command": "pi",
+    "argv": [
+      "--mode",
+      "rpc",
+      "--tools",
+      "read,grep,find,ls,mcp__*",
+      "-e",
+      "<DEVIA>/tmp/pi-mcp-<ID>.mjs",
+      "--append-system-prompt",
+      "<TMP>/devia-system-prompt-<RUN>.md"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "get_state",
+        "prompt"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "argv-file",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": true,
+      "kitMapping": true,
+      "kitBootstrap": true
+    },
+    "uiServer": {
+      "skillsDirs": 1,
+      "subagentsDir": false
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "thinking_delta",
+      "tool_result",
+      "tool_use",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [
+      "mcp__devia-memory__mem_context",
+      "mcp__devia-ui__devia_skill"
+    ],
+    "uiCards": [],
+    "loadedSkill": true,
+    "askedBeforeBuilding": true,
+    "wroteCode": false,
+    "usedKanban": false
+  }
+}

@@ -78,6 +78,10 @@
           />
         }
 
+        @case ('starter-kit') {
+          <ds-settings-starter-kit-section [selectedAgentId]="selectedAgentId()" />
+        }
+
         @case ('ui-tools') {
           <ds-settings-ui-tools-section
             [(enabled)]="uiToolsEnabled"

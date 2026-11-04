@@ -629,7 +629,22 @@
       "style_label": "Forma",
       "style_rounded": "Redondeado",
       "style_sharp": "Angular",
-      "tab_templates": "Plantillas (bases)"
+      "tab_templates": "Plantillas (bases)",
+      "tab_starter_kit": "Kit inicial",
+      "starter_kit_heading": "Superpowers",
+      "starter_kit_hint": "Un método de desarrollo de software que viene con Devia. El agente aclara qué quieres antes de construir, planifica en pasos pequeños, escribe primero los tests y verifica antes de dar algo por terminado. Funciona igual con todos los agentes que maneja Devia.",
+      "starter_kit_global_label": "Usar Superpowers",
+      "starter_kit_on": "Activado",
+      "starter_kit_off": "Desactivado",
+      "starter_kit_project_label": "Este proyecto",
+      "starter_kit_project_follow": "Seguir el global",
+      "starter_kit_project_hint": "Sustituye el interruptor global solo para este proyecto.",
+      "starter_kit_version": "Versión {{tag}} · {{count}} skills",
+      "starter_kit_native": "{{agent}} ya tiene Superpowers instalado, así que Devia no añadirá su propia copia.",
+      "starter_kit_unavailable": "No se pudo preparar el kit incluido; los agentes funcionarán sin él.",
+      "starter_kit_skills_heading": "Skills incluidas",
+      "starter_kit_effective_on": "Activo en este proyecto.",
+      "starter_kit_effective_off": "No activo en este proyecto."
     },
     "session_import": {
       "title": "Importar sesiones de agentes",
@@ -996,6 +1011,19 @@
       "note_declined": "✕ Rechazado: {{detail}}",
       "note_picked": "✓ Elegido: {{detail}}",
       "note_pick_cancelled": "✕ No se eligió nada"
+    }
+  },
+  "starter_kit": {
+    "intro": {
+      "title_on": "Superpowers está activado",
+      "body_on": "Devia guía ahora a tus agentes con un método de desarrollo: aclarar primero, planificar, testear, verificar. Puedes desactivarlo cuando quieras en Ajustes.",
+      "title_off": "¿Probar el método Superpowers?",
+      "body_off": "Devia puede guiar a cualquier agente con un método de desarrollo: aclarar primero, planificar en pasos pequeños, testear antes, verificar antes de terminar.",
+      "keep": "Entendido",
+      "disable": "Desactivar",
+      "enable": "Activar",
+      "later": "Ahora no",
+      "more": "Detalles"
     }
   }
 }

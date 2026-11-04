@@ -13,6 +13,7 @@ export type {
   AgentUiRequest,
   DeliveryResolution,
   HarnessChannel,
+  KitChannel,
   HarnessSupport,
   PreparedRun,
   PrepareResult,

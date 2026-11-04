@@ -240,6 +240,10 @@ export const IPC = {
   sddNotification:       'sdd:notification',
   sddNotifyOs:           'sdd:notify-os',
 
+  // Starter kits (S-38): bundled methodology (Superpowers) status + switches.
+  starterKitsStatus:     'starter-kits:status',
+  starterKitsSet:        'starter-kits:set',
+
   // Devia internal memory + engram integration (S-1). Detect/import the
   // external engram store; search/list Devia's own memory.
   memoryDetectEngram:    'memory:detect-engram',

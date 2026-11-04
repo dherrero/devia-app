@@ -7,6 +7,11 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party components keep their own licenses; see each package under
 node_modules after installing, or package-lock.json for the exact versions.
 
+Devia bundles the Superpowers skills library (https://github.com/obra/superpowers,
+Copyright (c) 2025 Jesse Vincent, MIT License) unmodified under
+resources/kits/superpowers, pinned to the tag and commit recorded in its
+VERSION.json. Its license text is kept alongside it (resources/kits/superpowers/LICENSE).
+
 The optional image dependency sharp (pulled in by @xenova/transformers) ships
 prebuilt libvips binaries licensed under LGPL-3.0-or-later. They are used as
 separate, dynamically loaded libraries and are not modified.
