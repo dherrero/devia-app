@@ -131,7 +131,12 @@ describe('LegacyMapper is equivalent to the pre-S-30 pipeline (T-354)', () => {
       };
       walk(project);
       const expectedSemantic = Object.fromEntries(
-        Object.entries(expected).map(([f, content]) => [f, semantic(f, content.replace(/\/[^"\s]*devia-golden-[A-Za-z0-9]+/g, '<P>'))]),
+        Object.entries(expected).map(([f, content]) => {
+          // The ONE intended difference from the pre-S-30 golden: Gemini CLI 0.46 rejects the
+          // `__devia_managed` key (it then loads no server at all), so Devia no longer writes it.
+          const body = agentId === 'gemini' ? content.replace(/\n\s*"__devia_managed": "[^"]*",/g, '') : content;
+          return [f, semantic(f, body.replace(/\/[^"\s]*devia-golden-[A-Za-z0-9]+/g, '<P>'))];
+        }),
       );
       expect(actual).toEqual(expectedSemantic);
     } finally {

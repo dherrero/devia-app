@@ -84,6 +84,14 @@ export interface JsonMergeOptions {
    * and must never see it.
    */
   emitExposure?: boolean;
+  /**
+   * The CLI validates its server schema and rejects the `__devia_managed` key
+   * (Gemini CLI 0.46: "Unrecognized key(s) in object" — it then loads NO server,
+   * so every Devia tool vanishes). Without a marker, Devia's own entries are the
+   * reserved bundled ids plus whatever `removedIds` names, and any marker an
+   * earlier version left behind is stripped so the file heals on the next write.
+   */
+  omitMarker?: boolean;
 }
 
 export function mergeJson(
@@ -101,7 +109,11 @@ export function mergeJson(
   const prune = options.prune ?? true;
   for (const [id, entry] of Object.entries(existing)) {
     const managedBy = (entry as JsonServerEntry)[DEVIA_MANAGED_KEY];
-    if (managedBy === id || managedBy === 'devia') {
+    if (options.omitMarker === true && explicitRemove.has(id)) {
+      delete existing[id];
+      continue;
+    }
+    if (managedBy === id || managedBy === 'devia' || (options.omitMarker === true && BUNDLED_SERVER_IDS.has(id))) {
       const unlisted = prune && !stillManaged.has(id) && !BUNDLED_SERVER_IDS.has(id);
       if (unlisted || explicitRemove.has(id)) {
         delete existing[id];
@@ -113,7 +125,15 @@ export function mergeJson(
   //    id get overwritten — Devia owns the namespace once you opt in.
   const shape = options.entryShape ?? 'standard';
   for (const s of options.managed) {
-    existing[s.id] = buildJsonEntry(s, options.composeEnv(s), shape, options.emitExposure === true);
+    existing[s.id] = buildJsonEntry(s, options.composeEnv(s), shape, options.emitExposure === true, options.omitMarker !== true);
+  }
+  if (options.omitMarker === true) {
+    for (const [id, entry] of Object.entries(existing)) {
+      if (entry && typeof entry === 'object' && DEVIA_MANAGED_KEY in entry) {
+        const { [DEVIA_MANAGED_KEY]: _marker, ...rest } = entry as JsonServerEntry;
+        existing[id] = rest;
+      }
+    }
   }
 
   if (Object.keys(existing).length === 0) {
@@ -134,6 +154,7 @@ function buildJsonEntry(
   env: Record<string, string>,
   shape: McpJsonEntryShape,
   emitExposure: boolean,
+  withMarker = true,
 ): JsonServerEntry {
   if (shape === 'opencode-local') {
     // OpenCode's McpLocalConfig: `command` is the whole argv array and the
@@ -141,7 +162,7 @@ function buildJsonEntry(
     const entry: JsonServerEntry = {
       type: 'local',
       command: [s.command, ...s.args],
-      [DEVIA_MANAGED_KEY]: s.id,
+      ...(withMarker && { [DEVIA_MANAGED_KEY]: s.id }),
     };
     if (Object.keys(env).length > 0) entry.environment = env;
     return entry;
@@ -149,7 +170,7 @@ function buildJsonEntry(
   const entry: JsonServerEntry = {
     command: s.command,
     args: s.args,
-    [DEVIA_MANAGED_KEY]: s.id,
+    ...(withMarker && { [DEVIA_MANAGED_KEY]: s.id }),
   };
   if (Object.keys(env).length > 0) entry.env = env;
   if (emitExposure && s.exposure !== undefined) entry.exposure = s.exposure;
