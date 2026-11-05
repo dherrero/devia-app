@@ -94,6 +94,8 @@ export interface ClaudeRunnerDeps {
   ) => import('../../../shared/domain/mcp').McpServerConfig;
   /** S-30 T-356: skills + sub-agents Devia manages; they travel with every run. */
   harnessCatalog?: import('./domain/ports').HarnessCatalog;
+  /** S-39: starter kit (Devia Method) delivered with every run. */
+  starterKits?: import('../../shared/ports').StarterKitsPort;
   /** S-25 F2.6: pushes a `devia_notify` message to the chat relay, when one is up. */
   notifyRemote?: (text: string) => void;
   /** S-25 F2.4: per-project "always allow" grants for `devia_confirm`. */
@@ -181,6 +183,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     ...(deps.memoryMcpServer !== undefined && { memoryMcpServer: deps.memoryMcpServer }),
     ...(deps.uiMcpServer !== undefined && { uiMcpServer: deps.uiMcpServer }),
     ...(deps.harnessCatalog !== undefined && { harnessCatalog: deps.harnessCatalog }),
+    ...(deps.starterKits !== undefined && { starterKits: deps.starterKits }),
     ...(deps.isConfirmationGranted !== undefined && {
       isConfirmationGranted: deps.isConfirmationGranted,
     }),

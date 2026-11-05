@@ -23,6 +23,7 @@ import { StatusbarComponent } from './layout/statusbar/statusbar.component';
 import { ToastsComponent } from './layout/toasts/toasts.component';
 import { ToastService } from './core/services/toast.service';
 import { UpgradeToastComponent } from './layout/upgrade/upgrade-toast.component';
+import { StarterKitIntroComponent } from './layout/starter-kit/starter-kit-intro.component';
 import { UpgradeToastService } from './layout/upgrade/services/upgrade-toast.service';
 import { RightRailComponent } from './layout/right-rail/right-rail.component';
 import { KanbanStateService } from './features/kanban/services/kanban-state.service';
@@ -54,6 +55,7 @@ import type { UpdateStatus } from '../types/devia';
     StatusbarComponent,
     ToastsComponent,
     UpgradeToastComponent,
+    StarterKitIntroComponent,
     RightRailComponent,
     SplashScreenComponent,
   ],

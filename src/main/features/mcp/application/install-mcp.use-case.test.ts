@@ -75,7 +75,9 @@ describe('InstallMcpUseCase end-to-end', () => {
     const gemini = JSON.parse(fs.readFileSync(
       path.join(fx.home, '.gemini', 'settings.json'), 'utf8',
     ));
-    expect(gemini.mcpServers.alpha?.[DEVIA_MANAGED_KEY]).toBe('alpha');
+    // Gemini CLI 0.46 rejects unknown keys in a server entry (it then loads no server).
+    expect(gemini.mcpServers.alpha?.[DEVIA_MANAGED_KEY]).toBeUndefined();
+    expect(gemini.mcpServers.alpha?.command).toBe('npx');
 
     const opencode = JSON.parse(fs.readFileSync(
       path.join(fx.home, '.config', 'opencode', 'opencode.json'), 'utf8',

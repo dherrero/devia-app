@@ -629,7 +629,22 @@
       "style_label": "Style",
       "style_rounded": "Rounded",
       "style_sharp": "Sharp",
-      "tab_templates": "Templates (bases)"
+      "tab_templates": "Templates (bases)",
+      "tab_starter_kit": "Starter kit",
+      "starter_kit_heading": "Devia Method",
+      "starter_kit_hint": "Devia's own way of building software, built into every agent it drives: the agent clarifies what you want before building, designs it with you, plans in small steps on the board, writes tests first and verifies before saying it is done. It works the same with every agent.",
+      "starter_kit_global_label": "Use Devia Method",
+      "starter_kit_on": "On",
+      "starter_kit_off": "Off",
+      "starter_kit_project_label": "This project",
+      "starter_kit_project_follow": "Follow global",
+      "starter_kit_project_hint": "Overrides the global switch for this project only.",
+      "starter_kit_version": "{{name}} {{version}} · {{count}} skills",
+      "starter_kit_native": "{{agent}} already has a development method installed, so Devia will not add its own on top of it.",
+      "starter_kit_unavailable": "The bundled kit could not be prepared; agents will run without it.",
+      "starter_kit_skills_heading": "Included skills",
+      "starter_kit_effective_on": "Active in this project.",
+      "starter_kit_effective_off": "Not active in this project."
     },
     "session_import": {
       "title": "Import agent sessions",
@@ -996,6 +1011,19 @@
       "note_declined": "✕ Declined: {{detail}}",
       "note_picked": "✓ Picked: {{detail}}",
       "note_pick_cancelled": "✕ Nothing picked"
+    }
+  },
+  "starter_kit": {
+    "intro": {
+      "title_on": "Devia Method is on",
+      "body_on": "Devia now guides your agents with a development method: clarify first, plan, test, verify. You can turn it off anytime in Settings.",
+      "title_off": "Try the Devia Method?",
+      "body_off": "Devia can guide any agent with a development method: clarify first, plan in small steps, test first, verify before finishing.",
+      "keep": "Got it",
+      "disable": "Turn off",
+      "enable": "Turn on",
+      "later": "Not now",
+      "more": "Details"
     }
   }
 }

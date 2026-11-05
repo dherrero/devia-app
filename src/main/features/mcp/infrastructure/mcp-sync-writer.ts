@@ -91,6 +91,7 @@ export class McpSyncWriter {
       ...(input.removedIds !== undefined && { removedIds: input.removedIds }),
       ...(input.target.jsonEntryShape !== undefined && { entryShape: input.target.jsonEntryShape }),
       ...(input.prune !== undefined && { prune: input.prune }),
+      ...(input.target.jsonOmitMarker === true && { omitMarker: true }),
       emitExposure: input.agent === 'pi',
       composeEnv: (s) => composeServerEnv(s, input.parentEnv),
     });

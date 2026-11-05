@@ -32,9 +32,30 @@ export const PLAN_PROTOCOL = [
 ].join('\n');
 
 /**
- * Returns the plan protocol body for plan-mode runs, else null so the caller
- * omits it from the composed system prompt.
+ * Plan-mode protocol when the Devia Method (S-39) is active. The method's
+ * skills own the sequence (brainstorming → an approved design recorded as ONE
+ * spec → writing-plans → the plan card), so this block must not order anything
+ * the other way round: two protocols giving different first steps is what made
+ * a small model skip the questions and persist a plan straight away.
  */
-export function buildPlanProtocolHint(isPlanMode: boolean): string | null {
-  return isPlanMode ? PLAN_PROTOCOL : null;
+export const METHOD_PLAN_PROTOCOL = [
+  '## Plan mode — writing files is disabled',
+  '',
+  'You are in **plan mode**: Edit/Write/MultiEdit/Bash are unavailable, so nothing can be written to disk. Everything the method asks you to record goes on the project board (the `devia-kanban` MCP server), and nothing needs a file.',
+  '',
+  'Follow the method\'s sequence: `brainstorming` first (questions, then a design the user approves), then ONE `kanban_create_spec` with the approved design, then `writing-plans` (a plan header task and one task per step, in column `todo`), then ask for approval of the plan. Do not put anything on the board before the design is approved. The board cannot edit a spec: on "keep planning" change the tasks with `kanban_update_task` and never create a second spec or a second set of tasks.',
+  '',
+  'Never start implementing in plan mode. For a short answer or a question that needs no plan, just reply.',
+  '',
+  KANBAN_TOOLBOX,
+].join('\n');
+
+/**
+ * Returns the plan protocol body for plan-mode runs, else null so the caller
+ * omits it from the composed system prompt. With the method active it is the
+ * method-aware variant.
+ */
+export function buildPlanProtocolHint(isPlanMode: boolean, methodActive = false): string | null {
+  if (!isPlanMode) return null;
+  return methodActive ? METHOD_PLAN_PROTOCOL : PLAN_PROTOCOL;
 }

@@ -273,6 +273,12 @@ const bridge: DeviaBridge = {
     notifyOs:             (title, body)    => ipcRenderer.invoke('sdd:notify-os', title, body),
   },
 
+  // Starter kits (S-38).
+  starterKits: {
+    status: (projectPath) => ipcRenderer.invoke('starter-kits:status', projectPath),
+    set:    (req)         => ipcRenderer.invoke('starter-kits:set', req),
+  },
+
   // Devia internal memory + engram integration (S-1).
   memory: {
     detectEngram: ()        => ipcRenderer.invoke('memory:detect-engram'),

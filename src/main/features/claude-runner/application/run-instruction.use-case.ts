@@ -10,6 +10,7 @@ import type {
   StateStore,
 } from '../../../shared/ports';
 import type { TechDetector } from '../../workspace/domain/ports';
+import type { StarterKitsPort } from '../../../shared/ports';
 import type { AttachmentPayload, OutboxFile, SavedAttachment } from '../../../../shared/domain/attachment';
 import type { CliAdapterRegistry } from '../../cli-adapters';
 import type { AgentRunner } from '../infrastructure/cli-runner-adapter';
@@ -230,6 +231,8 @@ export class RunInstructionUseCase {
      * every run to whichever agent is active; absent ⇒ none.
      */
     harnessCatalog?: HarnessCatalog;
+    /** S-39: the starter kit (Devia Method) that travels with the run, when one applies. */
+    starterKits?: StarterKitsPort;
     /**
      * S-25 F2.4: whether the user already chose to always allow this exact
      * action in this project. Keyed by the BASE checkout, like memory/kanban.
@@ -675,7 +678,19 @@ export class RunInstructionUseCase {
     // to any agent; each mapper adds its CLI's native channel on top.
     const skills = this.deps.harnessCatalog?.skills(cwd) ?? [];
     const subagents = this.deps.harnessCatalog?.subagents(projectCheckout) ?? [];
-    const skillsDirs = [...new Set(skills.map((s) => path.dirname(s.dir)))];
+    // S-39: a starter kit (Devia Method) rides along. Its skills are served last,
+    // so a project's or the user's own skill of the same name wins.
+    const kit = this.deps.starterKits?.resolve({ agentId: def.id, projectCheckout, cwd }) ?? null;
+    // A skill installed by Devia is a symlink into its cache: `devia_skill` scans
+    // the directory that holds the REAL folders (it refuses linked ones on purpose).
+    const realSkillsDir = (dir: string): string => {
+      try {
+        return path.dirname(fs.realpathSync(dir));
+      } catch {
+        return path.dirname(dir);
+      }
+    };
+    const skillsDirs = [...new Set([...skills.map((s) => realSkillsDir(s.dir)), ...(kit ? [kit.skillsDir] : [])])];
     const subagentsDir = subagents[0] ? path.dirname(subagents[0].file) : undefined;
 
     // S-32: `devia_send_file` needs a chat to send to (relay connected) that
@@ -705,7 +720,7 @@ export class RunInstructionUseCase {
         isRemote,
         delivered: true,
         // `devia_skill` serves both skills and sub-agents.
-        hasSkills: skills.length > 0 || subagents.length > 0,
+        hasSkills: skills.length > 0 || subagents.length > 0 || kit !== null,
         canSendFiles,
         ...(cfg.uiTools?.enabled && { preferences: cfg.uiTools.enabled }),
       }),
@@ -745,7 +760,9 @@ export class RunInstructionUseCase {
       imagePaths,
       // Whole-workspace visibility so a project can reference its siblings.
       // Confined modes only — `apply-yolo` already runs without confinement.
-      extraAllowedDirs: requestedMode !== 'apply-yolo' && cfg.workspaceRoot ? [cfg.workspaceRoot] : [],
+      extraAllowedDirs: requestedMode !== 'apply-yolo'
+        ? [...(cfg.workspaceRoot ? [cfg.workspaceRoot] : []), ...(kit ? [kit.dir] : [])]
+        : [],
       ...(resumeSessionId !== undefined && { resumeSessionId }),
       model: modelPrefs.model ?? null,
       reasoning: modelPrefs.reasoning ?? null,
@@ -760,6 +777,7 @@ export class RunInstructionUseCase {
         },
         skills,
         subagents,
+        ...(kit && { kit: { id: kit.id, dir: kit.dir }, readDirs: [kit.dir] }),
         isolateExternalMcp: cfg.memory.blockExternalMemory,
       },
       ui: { rendezvousDir: uiDir, toolTimeoutMs: QUESTION_TIMEOUT_MS },
@@ -797,10 +815,15 @@ export class RunInstructionUseCase {
     const worktreeHint = buildWorktreeProtocolHint(cwd !== cwdResult.resolvedPath);
     // Plan mode blocks file-writers but keeps the kanban MCP: tell the agent to
     // persist long plans as kanban specs instead of attempting failing writes.
-    const planHint = buildPlanProtocolHint(requestedMode === 'plan');
+    // S-39: with the method on, plan mode hands its sequence over to the method's
+    // skills instead of ordering "explore, then persist" on its own.
+    const planHint = buildPlanProtocolHint(requestedMode === 'plan', kit !== null);
+    // S-39: the kit's bootstrap and skill index — the same text for every agent.
+    const kitHint = kit?.prompt ?? null;
     const allBodies = [
       ...packBodies,
       ...(skillRegistryHint ? [skillRegistryHint] : []),
+      ...(kitHint ? [kitHint] : []),
       ...(memoryHint ? [memoryHint] : []),
       ...(memoryContextHint ? [memoryContextHint] : []),
       ...(handoffHint ? [handoffHint] : []),

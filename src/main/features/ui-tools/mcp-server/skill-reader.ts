@@ -105,10 +105,48 @@ export function listSkills(skillsDirs: readonly string[]): SkillSummary[] {
 }
 
 export function loadSkill(skillsDirs: readonly string[], name: string): string | null {
+  return loadSkillWithDir(skillsDirs, name)?.body ?? null;
+}
+
+/** The body plus the skill's directory: bundled scripts are run relative to it. */
+export function loadSkillWithDir(skillsDirs: readonly string[], name: string): { body: string; dir: string } | null {
   if (!SAFE_NAME.test(name)) return null;
   for (const root of skillsDirs) {
     const match = scanSkillDirs(root).find((s) => s.name === name);
-    if (match) return readSkillDir(root, match.dir);
+    if (!match) continue;
+    const body = readSkillDir(root, match.dir);
+    return body === null ? null : { body, dir: match.dir };
+  }
+  return null;
+}
+
+/**
+ * A file bundled inside a skill (`<skill>/references/x.md`, a prompt template…).
+ * Skills point at such files by relative path, and `load` only returns SKILL.md,
+ * so without this an agent that is not allowed to read the skill directory has no
+ * way to follow them. Same guards as the body, plus the resolved path must stay
+ * under the skill's own folder (a link inside it cannot lead out), text only.
+ */
+export function loadSkillResource(skillsDirs: readonly string[], name: string): string | null {
+  const [skillName, ...segments] = name.split('/');
+  if (!skillName || segments.length === 0) return null;
+  if (!SAFE_NAME.test(skillName) || segments.some((s) => !SAFE_NAME.test(s) || s === '.' || s === '..')) return null;
+  for (const root of skillsDirs) {
+    const match = scanSkillDirs(root).find((s) => s.name === skillName);
+    if (!match) continue;
+    try {
+      const file = path.join(match.dir, ...segments);
+      const real = fs.realpathSync(file);
+      const base = fs.realpathSync(match.dir);
+      if (!real.startsWith(base + path.sep)) return null;
+      const stat = fs.lstatSync(file);
+      if (stat.isSymbolicLink() || !stat.isFile()) return null;
+      const raw = fs.readFileSync(file, 'utf8');
+      if (raw.includes('\0')) return null;
+      return raw.length <= MAX_SKILL_BYTES ? raw : `${raw.slice(0, MAX_SKILL_BYTES)}\n\n[truncated by Devia: the file exceeds ${MAX_SKILL_BYTES} bytes]`;
+    } catch {
+      return null;
+    }
   }
   return null;
 }
@@ -149,7 +187,15 @@ export function makeSkillResolver(
       return { text: sections.join('\n\n') };
     }
 
-    const body = loadSkill(skillsDirs, input.name) ?? (subagentsDir ? loadSubagent(subagentsDir, input.name) : null);
+    if (input.name.includes('/')) {
+      const resource = loadSkillResource(skillsDirs, input.name);
+      return resource === null
+        ? { text: `No readable file "${input.name}" in a skill (expected <skill>/<relative path>).`, isError: true }
+        : { text: resource };
+    }
+    const skill = loadSkillWithDir(skillsDirs, input.name);
+    if (skill) return { text: `Skill directory: ${skill.dir}\n\n${skill.body}` };
+    const body = subagentsDir ? loadSubagent(subagentsDir, input.name) : null;
     if (body === null) {
       return { text: `No skill named "${input.name}" in this project.`, isError: true };
     }

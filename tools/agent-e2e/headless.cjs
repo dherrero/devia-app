@@ -33,6 +33,7 @@ function loadModules() {
     createHarnessCatalog: req('src-main/features/claude-runner/infrastructure/harness-catalog.js').createHarnessCatalog,
     SkillReader: req('src-main/features/skills/infrastructure/skill-reader.js').SkillReader,
     SubAgentReader: req('src-main/features/sub-agents/infrastructure/sub-agent-reader.js').SubAgentReader,
+    buildStarterKitsFeature: req('src-main/features/starter-kits/index.js').buildStarterKitsFeature,
   };
 }
 
@@ -83,7 +84,7 @@ function createUserServers() {
 
 /**
  * @param {{ agentId: string, workspaceRoot: string, deviaDir: string, model?: string }} opts
- * @returns {{ useCase: any, registry: any, sessions: ReturnType<typeof createSessionStore>, userServers: ReturnType<typeof createUserServers> }}
+ * @returns {{ useCase: any, registry: any, sessions: ReturnType<typeof createSessionStore>, userServers: ReturnType<typeof createUserServers>, setKit: (enabled: boolean) => void }}
  */
 function buildHeadlessRun(opts) {
   const m = loadModules();
@@ -108,6 +109,15 @@ function buildHeadlessRun(opts) {
   // An empty $HOME: the developer's own global skills must not leak into the
   // snapshots (they would make them machine-specific).
   const emptyHome = path.join(opts.workspaceRoot, '.home');
+  // S-38: the real starter-kits feature over the repository's bundled kit. Off
+  // until a scenario asks (`setKit`), so every other scenario keeps its baseline.
+  const starterKits = m.buildStarterKitsFeature({
+    config,
+    bundledKitsDir: () => path.resolve(__dirname, '../../resources/kits'),
+    home: () => emptyHome,
+  });
+  starterKits.feature.register({ ipc: { handle() {} } });
+  const setKit = (enabled) => starterKits.set({ id: 'devia-method', enabled });
   const useCase = new m.RunInstructionUseCase({
     config,
     sessions,
@@ -132,12 +142,13 @@ function buildHeadlessRun(opts) {
     memoryMcpServer: (p, a) => memory.serverConfig(p, a),
     uiMcpServer: (dir, tools, harness) => ui.serverConfig(dir, tools, harness),
     mcpServers: userServers,
+    starterKits: starterKits.port,
     harnessCatalog: m.createHarnessCatalog({
       skills: new m.SkillReader(emptyHome),
       subagents: (projectAbs) => new m.SubAgentReader().list(projectAbs),
     }),
   });
-  return { useCase, registry, sessions, userServers };
+  return { useCase, registry, sessions, userServers, setKit };
 }
 
 module.exports = { buildHeadlessRun };

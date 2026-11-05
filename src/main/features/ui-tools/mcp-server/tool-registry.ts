@@ -153,7 +153,7 @@ const skillSchema: Record<string, unknown> = {
   type: 'object',
   properties: {
     op: { type: 'string', enum: ['list', 'load'] },
-    name: { type: 'string', description: 'Skill name. Required for `load`.' },
+    name: { type: 'string', description: 'Skill name, or `<skill>/<file>` for a file bundled with it. Required for `load`.' },
   },
   required: ['op'],
 };
