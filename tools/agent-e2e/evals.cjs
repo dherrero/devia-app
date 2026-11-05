@@ -112,11 +112,20 @@ const CASES = {
       const turns = [];
       let prompt = 'I want a small CLI that lists the TODO comments in my code.';
       let specAfterFirst = null;
+      let boardBeforeAnswer = null;
       for (let i = 0; i < 4; i++) {
         const t = await runTurn(ctx, { prompt, mode: 'plan', timeoutMs: TURN_TIMEOUT_MS.default });
         persist(ctx, t, prompt);
         turns.push(t);
-        if (i === 0) specAfterFirst = board(ctx).specs.length;
+        if (i === 0) {
+          specAfterFirst = board(ctx).specs.length;
+          // Writes to the board that happened BEFORE the user answered anything. An agent that asks through a
+          // card is answered at once by the simulated user, so only writes ahead of its first card count.
+          const calls = t.events.filter((e) => e.type === 'tool_use');
+          const firstAsk = calls.findIndex((c) => /ask_user/.test(c.name ?? ''));
+          const writes = calls.map((c, idx) => ({ c, idx })).filter(({ c }) => /kanban_create_(spec|task)/.test(c.name ?? ''));
+          boardBeforeAnswer = writes.filter(({ idx }) => firstAsk < 0 || idx < firstAsk).length;
+        }
         if (board(ctx).specs.length > 0) break;
         prompt = GENERIC_ANSWER;
       }
@@ -125,7 +134,7 @@ const CASES = {
       const b = board(ctx);
       return [
         A('loads brainstorming before anything else', loadedSkill(uses(turns.slice(0, 1)), 'brainstorming')),
-        A('creates no spec before the user has answered', specAfterFirst === 0, `specs after turn 1: ${specAfterFirst}`),
+        A('puts nothing on the board before the user has answered', boardBeforeAnswer === 0, `board writes before the first answer: ${boardBeforeAnswer}; specs after turn 1: ${specAfterFirst}`),
         A('records exactly ONE spec once the design is approved', b.specs.length === 1, `specs: ${b.specs.length}`),
         A('writes no file (plan mode)', projectFiles(ctx).length === 0, projectFiles(ctx).join(', ')),
         A('recalls memory before asking', named(calls, /mem_(search|context)/).length > 0, '', true),

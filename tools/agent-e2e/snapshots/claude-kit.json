@@ -60,8 +60,7 @@
     ],
     "sessionStarted": true,
     "deviaTools": [
-      "mcp__devia-memory__mem_search",
-      "mcp__devia-ui__devia_skill"
+      "mcp__devia-memory__mem_search"
     ],
     "uiCards": [],
     "loadedSkill": true,

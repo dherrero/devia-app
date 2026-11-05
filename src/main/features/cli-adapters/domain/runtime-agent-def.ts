@@ -281,6 +281,16 @@ export interface RuntimeAgentDef {
    * `def.buildExtraArgs?.(options) ?? []` generically without knowing the agent.
    */
   buildExtraArgs?: (options: AgentExtraArgsOptions) => string[];
+  /**
+   * Files the CLI needs for THIS run, written by Devia and removed after it (a policy file, say). `args` are
+   * appended to the argv. Returns `null` when nothing is needed or the file could not be written, in which
+   * case the run goes on without it.
+   */
+  buildRunFiles?: (ctx: {
+    mode: import('../../../../shared/domain/run-capabilities').RunMode;
+    deviaDir: string;
+    runId: string;
+  }) => { args: string[]; cleanup(): void } | null;
 }
 
 /**

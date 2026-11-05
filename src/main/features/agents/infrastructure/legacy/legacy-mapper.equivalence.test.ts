@@ -75,7 +75,14 @@ function spawnNew(c: GoldenCase): Captured | { error: string } | null {
     { onOutput: () => undefined, onDone: () => undefined, onError: (m) => { error = m; }, onUiRequest: () => false },
   );
   prepared.run.cleanup();
-  return error !== null && captured === null ? { error } : captured;
+  let result = captured as Captured | null;
+  if (result && def.id === 'gemini' && c.mode === 'plan') {
+    // The ONE intended difference from the pre-S-30 golden: a per-run policy that lets Gemini's plan mode use
+    // Devia's own tools (see the Gemini def). Everything else in the argv must still match.
+    const at = result.args.indexOf('--policy');
+    if (at >= 0) result = { ...result, args: result.args.filter((_, i) => i !== at && i !== at + 1) };
+  }
+  return error !== null && result === null ? { error } : result;
 }
 
 /** The compiled server's location differs between the old dist and these sources. */
