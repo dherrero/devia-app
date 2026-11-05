@@ -3187,6 +3187,7 @@ describe('RunInstructionUseCase — per-turn context for mappers that freeze the
     for (const stable of [systemPromptOf(h, 0), systemPromptOf(h, 1)]) {
       expect(stable).not.toContain('Remote session — Telegram chat relay');
       expect(stable).not.toContain('Plan mode — writing files is disabled');
+      expect(stable).not.toContain('## Plan mode — plan in detail and persist it to the kanban');
       expect(stable).not.toContain('Reaching the user — no interactive UI');
     }
   });
@@ -3267,5 +3268,92 @@ describe('RunInstructionUseCase — per-turn context for mappers that freeze the
     second.handlers.onError('No conversation found with session ID sess-1');
     expect(invalidate).toHaveBeenCalledWith('sess-1');
     expect(blockOf(turn(h, 'apply', 'renderer'))).toBeDefined();
+  });
+});
+
+// ── S-40 — guard: nothing volatile in the system prompt of a frozen session ──
+
+describe('RunInstructionUseCase — no volatile content in a frozen system prompt (S-40 guard)', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-stable-guard-'));
+    fs.mkdirSync(path.join(tmpDir, 'proj-a'), { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** Every phrase that can differ from one turn to the next, by its stable header or opening words. */
+  const VOLATILE = {
+    remote: 'Remote session — Telegram chat relay',
+    plan: '## Plan mode — plan in detail and persist it to the kanban',
+    uiFallback: 'Reaching the user — no interactive UI',
+    worktree: '## MANDATORY — isolated session worktree',
+  };
+  const ASK_USER_LINE = 'You MAY use `devia_ask_user`';
+  const MEMORY = 'Memory from previous sessions';
+
+  function harness(extras: BuildExtras = {}): Harness {
+    const cfg = new FakeConfig(path.join(tmpDir, '.devia-app'));
+    cfg.set({ workspaceRoot: tmpDir });
+    return build(claudeStreamDef, { config: cfg, ...extras });
+  }
+  const stableOf = (h: Harness, n: number): string =>
+    (h.def.buildExtraArgs as ReturnType<typeof vi.fn>).mock.calls[n]?.[0]?.systemPrompt as string;
+  const blockOf = (capture: CapturedLaunch): string =>
+    (JSON.parse(stdinOf(capture)) as { message: { content: Array<{ text: string }> } }).message.content
+      .map((b) => b.text)
+      .find((t) => t.startsWith('<devia-turn-context')) ?? '';
+
+  it('remote + plan + isolated worktree + no UI tools: all of it rides in the block, none in the stable prompt', () => {
+    const h = harness({
+      ensureSessionWorktree: () => ({ ok: true as const, created: true }),
+      isLiveSessionWorktree: () => true,
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'plan', [], 'remote', true);
+    const stable = stableOf(h, 0);
+    const block = blockOf(h.runner.last());
+    for (const phrase of Object.values(VOLATILE)) {
+      expect(stable).not.toContain(phrase);
+      expect(block).toContain(phrase);
+    }
+    expect(stable).toContain('You are running inside Devia');
+  });
+
+  it('a delivered devia-ui announces its tools in the block, not in the stable prompt', () => {
+    const h = harness({ uiMcpServer: uiServer });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply', [], 'renderer');
+    expect(stableOf(h, 0)).not.toContain(ASK_USER_LINE);
+    expect(blockOf(h.runner.last())).toContain(ASK_USER_LINE);
+  });
+
+  it('a memory context is stable on the first turn and a block re-injection afterwards', () => {
+    let owed = false;
+    const h = harness({
+      memoryContext: () => ({ observations: [], summaries: ['Prior decision: chose X'] }),
+      consumeMemoryReinjection: () => owed,
+    });
+    const first = (() => { h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply', [], 'renderer'); return h.runner.last(); })();
+    expect(stableOf(h, 0)).toContain(MEMORY);
+    expect(blockOf(first)).not.toContain(MEMORY);
+    emitEvent(first, { type: 'session_started', agentSessionId: 'sess-1' });
+    emitEvent(first, { type: 'text_delta', delta: 'x' });
+    first.handlers.onDone(0);
+
+    owed = true;
+    h.uc.execute('proj-a', 'again', [], makeHandlers(), 'apply', [], 'renderer');
+    expect(stableOf(h, 1)).not.toContain(MEMORY);
+    expect(blockOf(h.runner.last())).toContain(MEMORY);
+  });
+
+  it('a mapper that does not freeze keeps ALL of it in its full prompt', () => {
+    const h = build({}, {
+      config: (() => { const c = new FakeConfig(path.join(tmpDir, '.devia-app')); c.set({ workspaceRoot: tmpDir }); return c; })(),
+      ensureSessionWorktree: () => ({ ok: true as const, created: true }),
+      isLiveSessionWorktree: () => true,
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'plan', [], 'remote', true);
+    const full = (h.def.buildExtraArgs as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]?.systemPrompt as string;
+    for (const phrase of Object.values(VOLATILE)) expect(full).toContain(phrase);
   });
 });
