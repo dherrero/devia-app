@@ -8,6 +8,11 @@
 const ANSWER = 'Verde';
 /** Tokens the `harness` scenario expects the agent to quote back (T-356). */
 const HARNESS_TOKENS = { mcp: 'ECHO-7Q4Z', skill: 'SKILL-3K9P', subagent: 'ROLE-8M2X' };
+/** The `origin-*` scenarios (S-40): the model reports what the per-turn block told it. */
+const ORIGIN_QUESTION =
+  'Responde SOLO con JSON, sin nada más: {"channel":"desktop"|"telegram","cards":true|false}. ' +
+  '"channel" es el medio por el que hablas con el usuario ahora mismo; ' +
+  '"cards" indica si en este turno puedes llamar a la herramienta devia_ask_user.';
 
 module.exports = {
   ANSWER,
@@ -54,6 +59,25 @@ module.exports = {
       kit: true,
       prompt: "Let's make a react todo list",
       answer: 'Una lista mínima: añadir, marcar y borrar, sin guardar datos. No necesito más preguntas: sigue con el diseño.',
+    },
+    // S-40: Claude keeps the system prompt of the session's FIRST turn on resume,
+    // so who the user is talking through has to ride in the per-turn block. These
+    // two turns resume the session the scenarios above created (renderer origin)
+    // and flip the origin back and forth. Claude only: every other agent re-sends
+    // the full prompt each run, so there is nothing to prove.
+    {
+      id: 'origin-remote',
+      mode: 'apply',
+      origin: 'remote',
+      claudeOnly: true,
+      prompt: ORIGIN_QUESTION,
+    },
+    {
+      id: 'origin-desktop',
+      mode: 'apply',
+      origin: 'renderer',
+      claudeOnly: true,
+      prompt: ORIGIN_QUESTION,
     },
   ],
 };

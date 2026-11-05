@@ -157,11 +157,34 @@ function systemPromptChannel(spawn) {
   return 'none';
 }
 
-function systemPromptText(spawn) {
+/**
+ * S-40: Devia's per-turn context block, when the CLI got one as the first content
+ * block of its stream-json user message. Empty otherwise.
+ */
+function turnContextBlock(spawn) {
+  for (const line of spawn.stdin.join('').split('\n')) {
+    try {
+      const content = JSON.parse(line)?.message?.content;
+      if (!Array.isArray(content)) continue;
+      const block = content.map((b) => b?.text).find((t) => typeof t === 'string' && t.startsWith('<devia-turn-context'));
+      if (block) return block;
+    } catch { /* not a JSON line */ }
+  }
+  return '';
+}
+
+/**
+ * What the model is told as its system prompt. For a CLI that keeps its first
+ * turn's prompt (Claude, S-40) the per-turn block is part of it, so the facts the
+ * snapshots pin do not depend on which channel carries each sentence.
+ */
+function systemPromptText(spawn, withBlock = true) {
   const i = spawn.args.indexOf('--append-system-prompt');
   if (i >= 0) {
     const v = spawn.args[i + 1] || '';
-    return spawn.files[v] ?? v;
+    const text = spawn.files[v] ?? v;
+    const block = withBlock ? turnContextBlock(spawn) : '';
+    return block ? `${text}\n\n${block}` : text;
   }
   const stdin = spawn.stdin.join('');
   const m = /\[System\]\n([\s\S]*?)\n\n\[User\]/.exec(stdin);
@@ -204,7 +227,7 @@ function stdinShape(spawn) {
 }
 
 /** Facts about the system prompt that must survive any refactor. */
-function systemPromptFacts(text, kit = false) {
+function systemPromptFacts(text, kit = false, turn = null) {
   return {
     announcesUiTools: /devia_ask_user/.test(text),
     announcesMemory: /mem_save|mem_search/.test(text),
@@ -213,6 +236,15 @@ function systemPromptFacts(text, kit = false) {
     ...(kit && {
       kitPrompt: /## Devia Method/.test(text),
       kitIndex: /## Skills/.test(text) && /`brainstorming`/.test(text),
+    }),
+    // Only in the origin scenarios (S-40): which channel the block declared, and
+    // whether the argv prompt still carries a stale Telegram claim.
+    ...(turn && {
+      turnContext: {
+        delivered: turn.block !== '',
+        channel: /- Channel: Telegram/.test(turn.block) ? 'telegram' : /- Channel: Devia desktop app/.test(turn.block) ? 'desktop' : null,
+        staleRemoteInArgvPrompt: /Remote session — Telegram/.test(turn.argvText),
+      },
     }),
   };
 }
@@ -251,8 +283,19 @@ function runScenario(ctx, scenario) {
         ui.push(tool);
         if (expectsAnswer) answer(callId, tool === 'confirm' ? 'yes' : (scenario.answer ?? ANSWER));
       },
-    }, scenario.mode);
+    }, scenario.mode, [], scenario.origin ?? 'renderer');
   });
+}
+
+/** The JSON the `origin-*` scenarios ask for: what the model says its channel is (S-40). */
+function originAnswer(text) {
+  const m = /\{[^{}]*\}/.exec(text);
+  try {
+    const parsed = m ? JSON.parse(m[0]) : {};
+    return { saidChannel: parsed.channel ?? null, saidCards: parsed.cards ?? null };
+  } catch {
+    return { saidChannel: null, saidCards: null };
+  }
 }
 
 function buildSnapshot(ctx, agent, scenario, result) {
@@ -268,7 +311,14 @@ function buildSnapshot(ctx, agent, scenario, result) {
         argv: normalizeArgv(spawn.args, norm),
         stdin: stdinShape(spawn),
         mcpServers: deliveredServers(spawn),
-        systemPrompt: { channel: systemPromptChannel(spawn), ...systemPromptFacts(systemPromptText(spawn), scenario.kit === true) },
+        systemPrompt: {
+          channel: systemPromptChannel(spawn),
+          ...systemPromptFacts(
+            systemPromptText(spawn),
+            scenario.kit === true,
+            scenario.origin !== undefined ? { block: turnContextBlock(spawn), argvText: systemPromptText(spawn, false) } : null,
+          ),
+        },
         uiServer: uiServerFacts(spawn),
         ...(Object.keys(spawn.configEnv).length > 0 && { configEnv: spawn.configEnv }),
       }
@@ -280,6 +330,7 @@ function buildSnapshot(ctx, agent, scenario, result) {
     deviaTools,
     uiCards: [...new Set(result.ui)].sort(),
     ...(scenario.id === 'resume' && { recalled: finalText.includes(ANSWER) }),
+    ...(scenario.origin !== undefined && originAnswer(finalText)),
     ...(scenario.id === 'plan' && { wroteFile: fs.existsSync(path.join(ctx.projectDir, 'notas.txt')) }),
     ...(scenario.kit && kitBehaviour(ctx, result, finalText)),
     ...(scenario.harness && {
@@ -390,7 +441,8 @@ async function runAgent(agent, flags) {
   const { useCase, registry, sessions, userServers, setKit } = buildHeadlessRun({ agentId: agent, workspaceRoot, deviaDir, ...AGENTS[agent] });
   const ctx = { useCase, registry, userServers, setKit, project: 'proj', projectDir, workspaceRoot, deviaDir };
   let failures = 0;
-  const scenarios = flags.scenario ? SCENARIOS.filter((s) => s.id === flags.scenario) : SCENARIOS;
+  const scenarios = (flags.scenario ? SCENARIOS.filter((s) => s.id === flags.scenario) : SCENARIOS)
+    .filter((s) => !s.claudeOnly || agent === 'claude');
   for (const scenario of scenarios) {
     process.stdout.write(`▶ ${agent}/${scenario.id} … `);
     if (scenario.harness) setUpHarness(ctx);
