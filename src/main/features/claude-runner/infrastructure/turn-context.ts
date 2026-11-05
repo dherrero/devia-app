@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 
 import type { RunMode } from '../../../../shared/domain/run-capabilities';
+import { TURN_CONTEXT_TAG, sanitizeTurnContextTags } from '../../../../shared/domain/turn-context-tags';
 import { uiToolPublicName, type UiToolName } from '../../../../shared/domain/ui-tools';
+
+export { TURN_CONTEXT_TAG, sanitizeTurnContextTags };
 
 /**
  * Per-turn context block (S-40).
@@ -12,8 +15,6 @@ import { uiToolPublicName, type UiToolName } from '../../../../shared/domain/ui-
  * on offer, the worktree — travels instead as the first text block of the user
  * turn, framed so the model reads it as Devia's binding word, not the user's.
  */
-export const TURN_CONTEXT_TAG = 'devia-turn-context';
-
 export type TurnChannel = 'desktop' | 'telegram';
 
 /** What is true of THIS turn. Always rendered, so it can replace an older, stale claim. */
@@ -52,14 +53,6 @@ export function renderTurnContext(facts: TurnFacts, segments: readonly string[])
   }
   lines.push(`</${TURN_CONTEXT_TAG}>`);
   return lines.join('\n');
-}
-
-/**
- * The user's text sits right after the block, so a literal copy of the tag in it
- * must not be able to open or close one. Escaping the `<` is enough.
- */
-export function sanitizeTurnContextTags(text: string): string {
-  return text.replace(new RegExp(`<(/?)${TURN_CONTEXT_TAG}`, 'gi'), `&lt;$1${TURN_CONTEXT_TAG}`);
 }
 
 export function hashTurnContext(block: string): string {

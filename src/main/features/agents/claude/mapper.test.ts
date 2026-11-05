@@ -99,3 +99,15 @@ describe('ClaudeMapper', () => {
     expect(prepared.run.agentEnv).toMatchObject({ DEVIA_UI_DIR: plan.ui.rendezvousDir, DEVIA_UI_TOOL_TIMEOUT_MS: '300000' });
   });
 });
+
+describe('ClaudeMapper turn context', () => {
+  it('delivers plan.turnContext as the first content block of the stdin message', () => {
+    const plan = planWith({ turnContext: 'CTX', prompt: 'hola' });
+    const prepared = mapper().prepareRun(plan, 'SYS', mapper().resolveDelivery(plan));
+    if (!prepared.ok) throw new Error(prepared.error);
+    const stdin = prepared.run.stdin;
+    if (stdin.kind !== 'stream') throw new Error('expected stream stdin');
+    const content = (JSON.parse(stdin.payload) as { message: { content: Array<{ text: string }> } }).message.content;
+    expect(content.map((b) => b.text)).toEqual(['CTX', 'hola']);
+  });
+});

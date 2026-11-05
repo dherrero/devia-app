@@ -4,6 +4,7 @@ import * as path from 'node:path';
 
 import type { RuntimeAgentDef, RuntimeContext } from '../../cli-adapters/domain/runtime-agent-def';
 import { checkPromptArgvBudget } from '../../cli-adapters/infrastructure/prompt-budget';
+import { sanitizeTurnContextTags } from '../../../../shared/domain/turn-context-tags';
 import type { AgentRunPlan, StdinPlan } from '../domain';
 
 /**
@@ -29,12 +30,23 @@ export function buildSystemPromptHeader(systemPrompt: string | undefined): strin
   return `[System]\n${systemPrompt.trim()}\n\n[User]\n`;
 }
 
-/** Claude's stream-json first user message. */
-export function buildStreamJsonUserMessage(prompt: string): string {
+/**
+ * Claude's stream-json first user message. With a per-turn context block (S-40)
+ * it is the FIRST content block, apart from the user's text — and then the user's
+ * text can no longer carry a copy of its tag.
+ */
+export function buildStreamJsonUserMessage(prompt: string, turnContext?: string): string {
+  const content =
+    turnContext === undefined
+      ? [{ type: 'text', text: prompt }]
+      : [
+          { type: 'text', text: turnContext },
+          { type: 'text', text: sanitizeTurnContextTags(prompt) },
+        ];
   return (
     JSON.stringify({
       type: 'user',
-      message: { role: 'user', content: [{ type: 'text', text: prompt }] },
+      message: { role: 'user', content },
       parent_tool_use_id: null,
     }) + '\n'
   );
@@ -70,12 +82,12 @@ export function writeSystemPromptFile(
   };
 }
 
-function stdinPlanFor(def: RuntimeAgentDef, prompt: string, systemPrompt: string): StdinPlan {
+function stdinPlanFor(def: RuntimeAgentDef, prompt: string, systemPrompt: string, turnContext?: string): StdinPlan {
   // Stdio JSON-RPC agents: the session driver sends the prompt itself.
   if (def.streamFormat === 'acp-json-rpc' || def.streamFormat === 'pi-rpc') return { kind: 'session' };
   if (def.promptViaStdin !== true) return { kind: 'none' };
   if (def.promptInputFormat === 'stream-json') {
-    return { kind: 'stream', payload: buildStreamJsonUserMessage(prompt) };
+    return { kind: 'stream', payload: buildStreamJsonUserMessage(prompt, turnContext) };
   }
   const header = def.systemPromptStrategy === 'stdin-prepend' ? buildSystemPromptHeader(systemPrompt) : '';
   return { kind: 'text', payload: header + prompt };
@@ -121,7 +133,7 @@ export function buildDefInvocation(
     ok: true,
     invocation: {
       args,
-      stdin: stdinPlanFor(def, plan.prompt, systemPrompt),
+      stdin: stdinPlanFor(def, plan.prompt, systemPrompt, plan.turnContext),
       cleanup: () => systemPromptFile?.cleanup(),
     },
   };
