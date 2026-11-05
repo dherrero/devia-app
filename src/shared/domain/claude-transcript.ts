@@ -1,6 +1,7 @@
 import type { ChatMessage } from './chat';
 import type { PersistedAgentEvent } from './persisted-agent-event';
 import { rebuildFromEvents } from './persisted-agent-event';
+import { isTurnContextBlock } from './turn-context-tags';
 
 /**
  * Parses a Claude Code transcript (`~/.claude/projects/<encoded-cwd>/<uuid>.jsonl`)
@@ -106,6 +107,8 @@ function userText(content: unknown): string {
     return content
       .filter((b): b is ClaudeContentBlock => !!b && typeof b === 'object' && (b as ClaudeContentBlock).type === 'text')
       .map((b) => (typeof b.text === 'string' ? b.text : ''))
+      // Devia's per-turn context block (S-40) is the app's word, not the user's.
+      .filter((text) => !isTurnContextBlock(text))
       .join('');
   }
   return '';

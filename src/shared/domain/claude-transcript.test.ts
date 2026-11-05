@@ -93,3 +93,37 @@ describe('splitTranscriptLines', () => {
     expect(splitTranscriptLines(text)).toEqual([{ a: 1 }, { b: 2 }]);
   });
 });
+
+describe('parseClaudeTranscript — the Devia turn-context block (S-40)', () => {
+  const BLOCK =
+    '<devia-turn-context source="devia" priority="binding">\nThis block was written by Devia.\n## Current facts\n- Channel: Devia desktop app\n</devia-turn-context>';
+  const userLine = (content: unknown[], uuid = 'u1') =>
+    line({ type: 'user', uuid, timestamp: '2026-06-04T17:32:42.100Z', message: { role: 'user', content } });
+  const assistantLine = line({
+    type: 'assistant', uuid: 'a1', timestamp: '2026-06-04T17:32:43.000Z',
+    message: { id: 'msg_1', role: 'assistant', model: 'claude-opus-4-8', content: [{ type: 'text', text: 'listo' }] },
+  });
+
+  it('drops the block from a user line and keeps the real text', () => {
+    const parsed = parseClaudeTranscript([userLine([{ type: 'text', text: BLOCK }, { type: 'text', text: 'hola' }]), assistantLine]);
+    expect(parsed?.messages[0]?.role).toBe('user');
+    expect(parsed?.messages[0]?.text).toBe('hola');
+  });
+
+  it('uses the real user text as the title, not the block', () => {
+    const parsed = parseClaudeTranscript([userLine([{ type: 'text', text: BLOCK }, { type: 'text', text: 'hola' }]), assistantLine]);
+    expect(parsed?.title).toBe('hola');
+  });
+
+  it('ignores a user line made only of the block', () => {
+    const parsed = parseClaudeTranscript([userLine([{ type: 'text', text: BLOCK }], 'u0'), userLine([{ type: 'text', text: 'hola' }], 'u1'), assistantLine]);
+    expect(parsed?.messages.filter((m) => m.role === 'user').map((m) => m.text)).toEqual(['hola']);
+  });
+
+  it('keeps a user text that merely mentions the tag mid-text', () => {
+    const text = 'explica la etiqueta <devia-turn-context> por favor';
+    const parsed = parseClaudeTranscript([userLine([{ type: 'text', text }]), assistantLine]);
+    expect(parsed?.messages[0]?.text).toBe(text);
+  });
+});
+
