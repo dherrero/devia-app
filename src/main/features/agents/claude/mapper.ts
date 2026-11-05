@@ -36,6 +36,7 @@ export class ClaudeMapper implements AgentMapper {
   readonly id = 'claude';
   readonly harnessSupport: HarnessSupport = { mcp: 'native', skills: 'devia', subagents: 'native' };
   readonly isolatesExternalMcp = true;
+  readonly freezesSystemPrompt = true;
 
   constructor(readonly def: RuntimeAgentDef, private readonly deps: MapperDeps) {}
 

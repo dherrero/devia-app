@@ -30,6 +30,7 @@ export class LegacyMapper implements AgentMapper {
   readonly id: string;
   readonly harnessSupport: HarnessSupport;
   readonly isolatesExternalMcp: boolean;
+  readonly freezesSystemPrompt = false;
 
   constructor(readonly def: RuntimeAgentDef, private readonly deps: MapperDeps) {
     this.id = def.id;

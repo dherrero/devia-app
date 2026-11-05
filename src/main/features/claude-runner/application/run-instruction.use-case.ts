@@ -18,10 +18,13 @@ import { resolveCurrentAgent } from '../infrastructure/cli-runner-adapter';
 import { buildSystemPrompt } from '../infrastructure/system-prompt';
 import { buildMemoryProtocolHint } from '../infrastructure/memory-protocol';
 import { buildRemoteProtocolHint } from '../infrastructure/remote-protocol';
-import { buildUiFallbackHint } from '../infrastructure/ui-tools-protocol';
+import { buildUiFallbackHint, buildUiToolsHint } from '../infrastructure/ui-tools-protocol';
 import { buildWorktreeProtocolHint } from '../infrastructure/worktree-protocol';
 import { buildPlanProtocolHint } from '../infrastructure/plan-protocol';
 import { buildMemoryContextHint } from '../infrastructure/memory-context-hint';
+import { orderedBodies, splitBodies, type PromptBodies } from '../infrastructure/prompt-bodies';
+import { hashTurnContext, renderTurnContext, type TurnFacts } from '../infrastructure/turn-context';
+import { TurnContextTracker } from '../infrastructure/turn-context-tracker';
 import { sanitizeForMemory, buildRunSummary } from '../infrastructure/memory-capture';
 import { resolveAndValidateCwd, findEscapingImagePath } from '../../cli-adapters/infrastructure/resolve-cwd';
 import { isPathContained } from '../../../shared/workspace-paths';
@@ -75,6 +78,14 @@ const MEMORY_SERVER_ID = 'devia-memory';
 /** S-2 F3.4: how fresh a previous-agent `mem_session_summary` must be to ride
  *  the handoff brief instead of the compressed/deterministic body. */
 const HANDOFF_RICH_SUMMARY_MAX_AGE_MS = 15 * 60 * 1_000;
+
+/**
+ * The first events that prove the model consumed the user turn it was given
+ * (S-40): a `status` or `session_started` only proves the CLI booted.
+ */
+const MODEL_ANSWERED_EVENTS: ReadonlySet<string> = new Set([
+  'text_delta', 'thinking_start', 'thinking_delta', 'tool_use', 'usage', 'turn_end',
+]);
 
 /** Tools that modify files on disk and therefore warrant a diff snapshot. */
 const FILE_EDITING_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
@@ -175,6 +186,8 @@ export interface RunInstructionHandlers {
  * argv and translating its event stream back to the renderer.
  */
 export class RunInstructionUseCase {
+  private readonly turnContextTracker: TurnContextTracker;
+
   constructor(private readonly deps: {
     config: ConfigRepository;
     sessions: SessionStore;
@@ -329,7 +342,14 @@ export class RunInstructionUseCase {
      * file may be sent from — and only when it is THIS run's cwd.
      */
     isLiveSessionWorktree?: (workdir: string) => boolean;
-  }) {}
+    /**
+     * S-40: which per-turn context block each native session already has, so an
+     * unchanged one is not repeated. Defaults to a fresh in-memory tracker.
+     */
+    turnContextTracker?: TurnContextTracker;
+  }) {
+    this.turnContextTracker = deps.turnContextTracker ?? new TurnContextTracker();
+  }
 
   execute(
     projectName: string,
@@ -820,18 +840,19 @@ export class RunInstructionUseCase {
     const planHint = buildPlanProtocolHint(requestedMode === 'plan', kit !== null);
     // S-39: the kit's bootstrap and skill index — the same text for every agent.
     const kitHint = kit?.prompt ?? null;
-    const allBodies = [
-      ...packBodies,
-      ...(skillRegistryHint ? [skillRegistryHint] : []),
-      ...(kitHint ? [kitHint] : []),
-      ...(memoryHint ? [memoryHint] : []),
-      ...(memoryContextHint ? [memoryContextHint] : []),
-      ...(handoffHint ? [handoffHint] : []),
-      ...(worktreeHint ? [worktreeHint] : []),
-      ...(remoteHint ? [remoteHint] : []),
-      ...(uiFallbackHint ? [uiFallbackHint] : []),
-      ...(planHint ? [planHint] : []),
-    ];
+    const promptBodies: PromptBodies = {
+      packs: packBodies,
+      skillRegistry: skillRegistryHint || null,
+      kit: kitHint || null,
+      memoryProtocol: memoryHint || null,
+      memoryContext: memoryContextHint || null,
+      handoff: handoffHint || null,
+      worktree: worktreeHint || null,
+      remote: remoteHint || null,
+      uiFallback: uiFallbackHint || null,
+      plan: planHint || null,
+    };
+    const allBodies = orderedBodies(promptBodies);
     // Built here (not earlier) because the baseline only offers the tools this
     // run actually got.
     const baseline = buildSystemPrompt(tech, { advertised: uiAdvertised });
@@ -842,9 +863,36 @@ export class RunInstructionUseCase {
       );
     }
 
+    // S-40: a CLI that keeps its FIRST turn's system prompt on resume (Claude
+    // Code) gets only what holds for the whole session there; what can differ
+    // from one turn to the next (channel, mode, tools, worktree, a memory
+    // re-injection) travels as a binding block in the user turn, resent only
+    // when it changed. Every other agent keeps receiving the full prompt.
+    let promptForMapper = systemPrompt;
+    let planForPrepare = plan;
+    let turnContextDelivery: { hash: string } | null = null;
+    if (mapper.freezesSystemPrompt) {
+      const { stable, turn } = splitBodies(promptBodies, { firstTurn: isFirstTurnOfSession });
+      promptForMapper = composeSystemPrompt(buildSystemPrompt(tech, { advertised: [] }), stable);
+      const uiToolsLine = buildUiToolsHint(uiAdvertised);
+      const facts: TurnFacts = {
+        channel: isRemote ? 'telegram' : 'desktop',
+        mode: requestedMode,
+        cwd,
+        isolatedWorktree: cwd !== cwdResult.resolvedPath,
+        uiTools: uiAdvertised,
+      };
+      const block = renderTurnContext(facts, [...(uiToolsLine ? [uiToolsLine] : []), ...turn]);
+      const hash = hashTurnContext(block);
+      if (this.turnContextTracker.shouldSend({ resumeSessionId, hash, force: reinjectAfterCompaction })) {
+        planForPrepare = { ...plan, turnContext: block };
+        turnContextDelivery = { hash };
+      }
+    }
+
     // The agent's mapper turns the plan into argv / stdin / env / temp files —
     // MCP delivery, the system-prompt channel, resume flags, permission flags.
-    const prepareResult = mapper.prepareRun(plan, systemPrompt, delivery);
+    const prepareResult = mapper.prepareRun(planForPrepare, promptForMapper, delivery);
     const prepared = prepareResult.ok ? prepareResult.run : null;
     // A temp-file write can fail after the prompt was composed: stop serving
     // the cards of a server that never reached the agent.
@@ -1012,12 +1060,29 @@ export class RunInstructionUseCase {
               }
             }
 
+            // S-40: the model started answering, so it consumed this turn's context
+            // block; remember it for that native session so an unchanged block is
+            // not repeated. A run that dies earlier records nothing and resends.
+            if (turnContextDelivery !== null && MODEL_ANSWERED_EVENTS.has(parsed.type)) {
+              const deliveredTo = this.deps.registry.find(identity)?.agentSessionId;
+              if (deliveredTo) {
+                this.turnContextTracker.markDelivered(deliveredTo, turnContextDelivery.hash);
+                turnContextDelivery = null;
+              }
+            }
+
             // E-DSK-13 Fase D: the agent compacted its context mid-run. Flag the
             // identity so the next run re-injects Devia's memory (Fase A only
             // injects on the first turn of a session, so a resumed-but-compacted
             // session would otherwise never recover it).
-            if (parsed.type === 'context_compacted' && cfg.memory.enabled) {
-              this.deps.markContextCompacted?.(identity);
+            if (parsed.type === 'context_compacted') {
+              // S-40: the per-turn block was summarised away too, memory on or off.
+              const compacted = this.deps.registry.find(identity)?.agentSessionId;
+              if (compacted) this.turnContextTracker.invalidate(compacted);
+              // A compaction ahead of the first model event may have summarised
+              // this very turn away, block included: never mark it delivered.
+              turnContextDelivery = null;
+              if (cfg.memory.enabled) this.deps.markContextCompacted?.(identity);
             }
 
             if (parsed.type === 'rate_limit' && parsed.status === 'rejected') {
@@ -1103,6 +1168,7 @@ export class RunInstructionUseCase {
           // the same way forever. Conservative match — never clears on
           // unrelated errors (auth, network, sandbox).
           if (resumeSessionId !== undefined && isSessionNotFoundError(msg)) {
+            this.turnContextTracker.invalidate(resumeSessionId);
             const rec = this.deps.registry.find(identity);
             if (rec) {
               rec.agentSessionId = null;

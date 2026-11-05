@@ -1,0 +1,71 @@
+{
+  "agent": "claude",
+  "scenario": "origin-remote",
+  "wiring": {
+    "command": "claude",
+    "argv": [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
+      "--verbose",
+      "--model",
+      "haiku",
+      "--permission-mode",
+      "acceptEdits",
+      "--disallowedTools",
+      "WebSearch,WebFetch,Workflow",
+      "--append-system-prompt",
+      "<TEXT>",
+      "--resume",
+      "<UUID>",
+      "--mcp-config",
+      "<DEVIA>/tmp/mcp-<ID>.json",
+      "--strict-mcp-config",
+      "--agents",
+      "<DEVIA>/tmp/claude-agents-<UUID>.json"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "user"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "argv",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false,
+      "turnContext": {
+        "delivered": true,
+        "channel": "telegram",
+        "staleRemoteInArgvPrompt": false
+      }
+    },
+    "uiServer": {
+      "skillsDirs": 1,
+      "subagentsDir": true
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [],
+    "uiCards": [],
+    "saidChannel": "telegram",
+    "saidCards": false
+  }
+}

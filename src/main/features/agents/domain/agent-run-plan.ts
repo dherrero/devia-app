@@ -36,6 +36,12 @@ export interface AgentRunPlan {
   /** Telegram / remote origin: no interactive UI beyond the remote-safe tools. */
   readonly isRemote: boolean;
   readonly harness: HarnessPlan;
+  /**
+   * Per-turn context block the mapper must deliver inside the user turn (S-40).
+   * Present only for mappers with `freezesSystemPrompt`, and only when it must
+   * travel this turn (first turn, changed, or after a compaction).
+   */
+  readonly turnContext?: string;
   /** Devia's interface-card rendezvous for this run (S-25), agent-agnostic. */
   readonly ui: {
     /** Per-run directory the `devia-ui` server and the core meet in. */

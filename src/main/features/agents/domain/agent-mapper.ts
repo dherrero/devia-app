@@ -53,6 +53,14 @@ export interface AgentMapper {
    */
   readonly isolatesExternalMcp: boolean;
   /**
+   * True when the CLI keeps the system prompt of a session's first turn and
+   * ignores a new one on resume (Claude Code >= 2.1.310, verified in S-40). The
+   * core then hands `prepareRun` only the STABLE part of the prompt and puts what
+   * changes between turns in `plan.turnContext`, for the mapper to deliver inside
+   * the user turn. False: `prepareRun` gets the full prompt every run, as ever.
+   */
+  readonly freezesSystemPrompt: boolean;
+  /**
    * Built-in tools this agent must not be offered in `mode`, on top of the
    * user's policy (e.g. Claude's `Workflow` outside plan — S-16 T-189). Feeds
    * the run's capabilities BEFORE the plan is built.

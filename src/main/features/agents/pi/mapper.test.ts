@@ -39,6 +39,10 @@ const prepare = (plan = planWith()) => {
 };
 
 describe('PiMapper', () => {
+  it('does not declare a frozen system prompt', () => {
+    expect(mapper.freezesSystemPrompt).toBe(false);
+  });
+
   it('registers the user AND Devia servers in one per-run extension', () => {
     const run = prepare();
     const ext = run.args[run.args.indexOf('-e') + 1] ?? '';

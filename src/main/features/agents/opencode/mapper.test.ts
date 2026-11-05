@@ -34,6 +34,10 @@ const prepare = (m: OpencodeMapper, plan = planWith()) => {
 };
 
 describe('OpencodeMapper', () => {
+  it('does not declare a frozen system prompt', () => {
+    expect(mapper().freezesSystemPrompt).toBe(false);
+  });
+
   it('passes user + Devia servers in a per-run OPENCODE_CONFIG — the repo is not touched', () => {
     const run = prepare(mapper());
     const file = run.agentEnv?.['OPENCODE_CONFIG'] ?? '';
