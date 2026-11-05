@@ -35,6 +35,8 @@ import {
 } from '../../../shared/ui-rendezvous';
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
 import { UiMcpInjector, type UiServerHarness } from '../../ui-tools';
+import type { StarterKitsPort } from '../../../shared/ports';
+import type { HarnessCatalog } from '../domain/ports';
 import type {
   AgentRunner,
   AgentRunRequest,
@@ -290,6 +292,8 @@ interface BuildExtras {
   remoteRelayConnected?: () => boolean;
   isLiveSessionWorktree?: (workdir: string) => boolean;
   outbox?: OutboxFlusher;
+  starterKits?: StarterKitsPort;
+  harnessCatalog?: HarnessCatalog;
 }
 
 /** The production mapper registry, with test doubles for its side effects. */
@@ -318,6 +322,8 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     outbox: extras.outbox ?? new FakeOutbox(),
     tech: new FakeTech(),
     auditLog: audit,
+    ...(extras.starterKits ? { starterKits: extras.starterKits } : {}),
+    ...(extras.harnessCatalog ? { harnessCatalog: extras.harnessCatalog } : {}),
     ...(extras.kanbanMcpServer ? { kanbanMcpServer: extras.kanbanMcpServer } : {}),
     ...(extras.memoryMcpServer ? { memoryMcpServer: extras.memoryMcpServer } : {}),
     ...(extras.saveMemoryPrompt ? { saveMemoryPrompt: extras.saveMemoryPrompt } : {}),
@@ -2949,5 +2955,117 @@ describe('RunInstructionUseCase — outbox flush (S-32 T-367)', () => {
     expect(names).toEqual(['shot.png']);
     expect(handlers.onRunFile).toHaveBeenCalledWith(expect.objectContaining({ name: 'shot.png', kind: 'photo' }), capture.req.runId);
     expect(fs.existsSync(path.join(tmpDir, 'proj-a', 'outbox', 'base.txt'))).toBe(true);
+  });
+});
+
+// ── S-38: the starter kit travels with every run ───────────────────────────
+
+describe('RunInstructionUseCase — starter kit (Devia Method)', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-kit-wiring-'));
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+  function projectConfig(): FakeConfig {
+    const cfg = new FakeConfig(path.join(tmpDir, '.devia-app'));
+    cfg.set({ workspaceRoot: tmpDir });
+    return cfg;
+  }
+
+  const kitRun = {
+    id: 'devia-method',
+    dir: '/devia/kits/devia-method/v1',
+    skillsDir: '/devia/kits/devia-method/v1/skills',
+    prompt: 'KIT-PROMPT-BODY',
+  };
+  const withKit = { resolve: vi.fn(() => kitRun) };
+  const promptOf = (h: Harness): string =>
+    (h.def.buildExtraArgs as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]?.systemPrompt as string;
+
+  it('gives a prompt-channel agent the bootstrap AND the Devia mapping', () => {
+    const h = build({ id: 'gemini', name: 'Gemini' }, { config: projectConfig(), starterKits: withKit });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+    expect(promptOf(h)).toContain('KIT-PROMPT-BODY');
+  });
+
+  it('hands plan mode over to the method instead of ordering "explore, then persist" on its own', () => {
+    const withMethod = build({ id: 'gemini', name: 'Gemini' }, { config: projectConfig(), starterKits: withKit });
+    withMethod.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'plan');
+    const prompt = promptOf(withMethod);
+    expect(prompt).toContain('KIT-PROMPT-BODY');
+    expect(prompt).toContain("Follow the method's sequence");
+    expect(prompt).not.toContain('Explore first, read-only');
+
+    const without = build({ id: 'gemini', name: 'Gemini' }, { config: projectConfig() });
+    without.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'plan');
+    expect(promptOf(without)).toContain('Explore first, read-only');
+    expect(promptOf(without)).not.toContain("Follow the method's sequence");
+  });
+
+  it('gives Claude the same prompt as everyone else, plus the plugin dir for native skill discovery', () => {
+    const h = build({ id: 'claude', name: 'Claude Code' }, { config: projectConfig(), starterKits: withKit });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+    expect(promptOf(h)).toContain('KIT-PROMPT-BODY');
+    const args = h.runner.last().req.prepared.args ?? [];
+    expect(args[args.indexOf('--plugin-dir') + 1]).toBe(kitRun.dir);
+  });
+
+  it('lets a confined agent reach the kit directory, and adds nothing in the sandbox-free mode', () => {
+    const dirsFor = (mode: 'apply' | 'apply-yolo'): readonly string[] => {
+      let dirs: readonly string[] = [];
+      const h = build(
+        { id: 'gemini', name: 'Gemini', buildArgs: (_p, _i, extra) => { dirs = extra ?? []; return []; } },
+        { config: projectConfig(), starterKits: withKit },
+      );
+      h.uc.execute('proj-a', 'do thing', [], makeHandlers(), mode);
+      return dirs;
+    };
+    expect(dirsFor('apply')).toEqual([tmpDir, kitRun.dir]);
+    expect(dirsFor('apply-yolo')).toEqual([]);
+  });
+
+  it('serves the kit skills last through devia_skill, and advertises it even in a project with no skills', () => {
+    const seen: Array<{ tools: readonly string[]; harness: UiServerHarness | undefined }> = [];
+    const h = build({ id: 'codex', name: 'Codex' }, {
+      config: projectConfig(), starterKits: withKit, nativeMcp: nativeDelivery(true),
+      uiMcpServer: (_dir, tools, harness) => { seen.push({ tools, harness }); return enabledServer('devia-ui'); },
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+    expect(seen[0]?.tools).toContain('skill');
+    expect(seen[0]?.harness?.skillsDirs).toEqual([kitRun.skillsDir]);
+  });
+
+  it('changes nothing for a run without a kit: same prompt, no plugin dir', () => {
+    const without = build({ id: 'claude', name: 'Claude Code' }, { config: projectConfig() });
+    without.uc.execute('proj-a', 'do thing', [], makeHandlers());
+    expect(promptOf(without)).not.toContain('Devia Method');
+    expect(without.runner.last().req.prepared.args ?? []).not.toContain('--plugin-dir');
+    const nothing = build({ id: 'claude', name: 'Claude Code' }, { config: projectConfig(), starterKits: { resolve: () => null } });
+    nothing.uc.execute('proj-a', 'do thing', [], makeHandlers());
+    expect(promptOf(nothing)).toBe(promptOf(without));
+  });
+
+  it('points devia_skill at the REAL folder of a skill Devia installed as a symlink', () => {
+    const cache = path.join(tmpDir, 'cache', 'src');
+    fs.mkdirSync(path.join(cache, 'linked'), { recursive: true });
+    fs.writeFileSync(path.join(cache, 'linked', 'SKILL.md'), 'L');
+    const agentDir = path.join(tmpDir, 'proj-a', '.agents', 'skills');
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.symlinkSync(path.join(cache, 'linked'), path.join(agentDir, 'linked'), 'dir');
+    const seen: Array<UiServerHarness | undefined> = [];
+    const h = build({ id: 'codex', name: 'Codex' }, {
+      config: projectConfig(), nativeMcp: nativeDelivery(true),
+      harnessCatalog: {
+        skills: () => [{ name: 'linked', description: 'd', dir: path.join(agentDir, 'linked') }],
+        subagents: () => [],
+      },
+      uiMcpServer: (_dir, _tools, harness) => { seen.push(harness); return enabledServer('devia-ui'); },
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+    expect(seen[0]?.skillsDirs).toEqual([fs.realpathSync(cache)]);
   });
 });

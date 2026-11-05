@@ -69,6 +69,7 @@ export interface AgentMapper {
  * - `none`    cannot be delivered; the core must not announce it.
  */
 export type HarnessChannel = 'native' | 'devia' | 'none';
+
 export type HarnessSupport = Readonly<Record<HarnessKind, HarnessChannel>>;
 
 /** Phase 1 result: what will actually reach the agent. */

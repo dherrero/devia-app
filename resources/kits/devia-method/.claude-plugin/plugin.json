@@ -1,0 +1,15 @@
+{
+  "name": "devia-method",
+  "description": "Devia Method: a software-development method for AI agents (clarify, design, plan, test first, review, finish) built on Devia's kanban, memory and panes.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "homepage": "https://github.com/dherrero/devia-app",
+  "keywords": [
+    "skills",
+    "tdd",
+    "debugging",
+    "planning",
+    "code-review",
+    "devia"
+  ]
+}

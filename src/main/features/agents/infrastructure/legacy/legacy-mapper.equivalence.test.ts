@@ -75,7 +75,14 @@ function spawnNew(c: GoldenCase): Captured | { error: string } | null {
     { onOutput: () => undefined, onDone: () => undefined, onError: (m) => { error = m; }, onUiRequest: () => false },
   );
   prepared.run.cleanup();
-  return error !== null && captured === null ? { error } : captured;
+  let result = captured as Captured | null;
+  if (result && def.id === 'gemini' && c.mode === 'plan') {
+    // The ONE intended difference from the pre-S-30 golden: a per-run policy that lets Gemini's plan mode use
+    // Devia's own tools (see the Gemini def). Everything else in the argv must still match.
+    const at = result.args.indexOf('--policy');
+    if (at >= 0) result = { ...result, args: result.args.filter((_, i) => i !== at && i !== at + 1) };
+  }
+  return error !== null && result === null ? { error } : result;
 }
 
 /** The compiled server's location differs between the old dist and these sources. */
@@ -131,7 +138,12 @@ describe('LegacyMapper is equivalent to the pre-S-30 pipeline (T-354)', () => {
       };
       walk(project);
       const expectedSemantic = Object.fromEntries(
-        Object.entries(expected).map(([f, content]) => [f, semantic(f, content.replace(/\/[^"\s]*devia-golden-[A-Za-z0-9]+/g, '<P>'))]),
+        Object.entries(expected).map(([f, content]) => {
+          // The ONE intended difference from the pre-S-30 golden: Gemini CLI 0.46 rejects the
+          // `__devia_managed` key (it then loads no server at all), so Devia no longer writes it.
+          const body = agentId === 'gemini' ? content.replace(/\n\s*"__devia_managed": "[^"]*",/g, '') : content;
+          return [f, semantic(f, body.replace(/\/[^"\s]*devia-golden-[A-Za-z0-9]+/g, '<P>'))];
+        }),
       );
       expect(actual).toEqual(expectedSemantic);
     } finally {

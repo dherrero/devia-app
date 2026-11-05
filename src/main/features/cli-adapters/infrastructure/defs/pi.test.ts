@@ -40,6 +40,11 @@ describe('pi def', () => {
   it('limits plan mode to the read-only built-ins (no bash, no writers)', () => {
     const plan = piAgentDef.buildExtraArgs?.({ systemPrompt: '', capabilities: buildDefaultCapabilities('r1' as RunId, 'plan') });
     expect(plan).toEqual(['--tools', 'read,grep,find,ls,mcp__*']);
-    expect(piAgentDef.buildExtraArgs?.({ systemPrompt: '', capabilities: buildDefaultCapabilities('r1' as RunId, 'apply') })).toEqual([]);
+  });
+
+  it('gives the writing tools back outside plan mode, because pi keeps the plan-mode selection in a resumed session', () => {
+    for (const mode of ['apply', 'apply-yolo'] as const) {
+      expect(piAgentDef.buildExtraArgs?.({ systemPrompt: '', capabilities: buildDefaultCapabilities('r1' as RunId, mode) })).toEqual(['--tools', '+bash,+edit,+write']);
+    }
   });
 });

@@ -37,6 +37,10 @@
     "test:libs": "cross-env NODE_OPTIONS=--no-experimental-webstorage vitest run --config src/libs/ui/vitest.config.ts --passWithNoTests",
     "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "audit:runtime": "node scripts/audit-runtime.mjs",
+    "vendor:upstream": "node scripts/vendor-upstream.mjs",
+    "kit:build": "node scripts/build-devia-kit.mjs",
+    "kit:upstream-diff": "node scripts/kit-upstream-diff.mjs",
+    "check:kits": "node scripts/vendor-upstream.mjs --check && node scripts/build-devia-kit.mjs --check",
     "pack": "electron-builder",
     "pack:dir": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
     "pack:win": "electron-builder --win",
@@ -72,6 +76,10 @@
       {
         "from": "src/renderer/assets/images/Devia.PNG",
         "to": "icon.png"
+      },
+      {
+        "from": "resources/kits",
+        "to": "kits"
       }
     ],
     "asar": true,

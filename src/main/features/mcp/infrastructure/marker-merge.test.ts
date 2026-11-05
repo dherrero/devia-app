@@ -275,3 +275,39 @@ args = ["--foo"]
     expect(out).not.toContain('exposure');
   });
 });
+
+describe('mergeJson without a marker (Gemini CLI rejects unknown keys)', () => {
+  const entries = (out: Record<string, unknown>) => out['mcpServers'] as Record<string, Record<string, unknown>>;
+
+  it('writes entries with no __devia_managed key', () => {
+    const out = mergeJson(null, { parentKey: 'mcpServers', managed: [makeServer('alpha')], composeEnv: noEnv, omitMarker: true });
+    expect(entries(out)['alpha']).toEqual({ command: 'npx', args: ['-y', '@example/alpha'] });
+  });
+
+  it('heals a file an earlier Devia version wrote: every leftover marker is stripped, hand-added entries stay', () => {
+    const root = {
+      mcpServers: {
+        playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'], [DEVIA_MANAGED_KEY]: 'playwright' },
+        mine: { command: 'mine' },
+      },
+    };
+    const out = mergeJson(root, { parentKey: 'mcpServers', managed: [makeServer('devia-ui')], composeEnv: noEnv, omitMarker: true, prune: false });
+    expect(entries(out)['playwright']).toEqual({ command: 'npx', args: ['-y', '@playwright/mcp@latest'] });
+    expect(entries(out)['mine']).toEqual({ command: 'mine' });
+    expect(Object.values(entries(out)).some((e) => DEVIA_MANAGED_KEY in e)).toBe(false);
+  });
+
+  it('still removes a server by id and replaces Devia\'s own bundled ids without needing a marker', () => {
+    const root = { mcpServers: { 'devia-ui': { command: 'old' }, alpha: { command: 'old-alpha' }, keep: { command: 'keep' } } };
+    const out = mergeJson(root, {
+      parentKey: 'mcpServers', managed: [makeServer('devia-ui')], removedIds: ['alpha'], composeEnv: noEnv, omitMarker: true, prune: false,
+    });
+    expect(Object.keys(entries(out)).sort()).toEqual(['devia-ui', 'keep']);
+    expect(entries(out)['devia-ui']?.['command']).toBe('npx');
+  });
+
+  it('is unchanged for every CLI that tolerates the marker', () => {
+    const out = mergeJson(null, { parentKey: 'mcpServers', managed: [makeServer('alpha')], composeEnv: noEnv });
+    expect(entries(out)['alpha']?.[DEVIA_MANAGED_KEY]).toBe('alpha');
+  });
+});

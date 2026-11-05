@@ -1,0 +1,71 @@
+{
+  "agent": "claude",
+  "scenario": "kit",
+  "wiring": {
+    "command": "claude",
+    "argv": [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
+      "--verbose",
+      "--model",
+      "haiku",
+      "--permission-mode",
+      "default",
+      "--disallowedTools",
+      "WebSearch,WebFetch,Edit,Write,MultiEdit,Bash",
+      "--append-system-prompt",
+      "<TEXT>",
+      "--mcp-config",
+      "<DEVIA>/tmp/mcp-<ID>.json",
+      "--strict-mcp-config",
+      "--plugin-dir",
+      "<DEVIA>/kits/devia-method/<VERSION>"
+    ],
+    "stdin": {
+      "format": "jsonl",
+      "types": [
+        "user"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "argv",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": true,
+      "kitPrompt": true,
+      "kitIndex": true
+    },
+    "uiServer": {
+      "skillsDirs": 1,
+      "subagentsDir": false
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "tool_use",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [
+      "mcp__devia-memory__mem_search"
+    ],
+    "uiCards": [],
+    "loadedSkill": true,
+    "askedBeforeBuilding": true,
+    "wroteCode": false,
+    "usedKanban": false
+  }
+}

@@ -50,6 +50,8 @@ export interface McpAgentTarget {
   readonly jsonParentKey?: string;
   /** For json-merge agents: the per-entry shape (defaults to `standard`). */
   readonly jsonEntryShape?: McpJsonEntryShape;
+  /** The CLI rejects unknown keys in a server entry: write none (no `__devia_managed`). */
+  readonly jsonOmitMarker?: boolean;
   /** For separate-file agents: the dir holding one file per server. */
   readonly perServerDir?: string;
 }
@@ -105,11 +107,13 @@ export function resolveAgentTarget(
             file: path.join(ctx.home, '.gemini', 'settings.json'),
             strategy: 'json-merge',
             jsonParentKey: 'mcpServers',
+            jsonOmitMarker: true,
           }
         : {
             file: path.join(project, '.gemini', 'settings.json'),
             strategy: 'json-merge',
             jsonParentKey: 'mcpServers',
+            jsonOmitMarker: true,
           };
 
     case 'opencode':

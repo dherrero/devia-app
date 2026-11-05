@@ -1,0 +1,31 @@
+@if (view(); as v) {
+  <div class="ds-kit-intro" role="dialog" aria-live="polite">
+    <span class="ic" aria-hidden="true">
+      <dv-icon [icon]="LucideSparkles" size="sm" />
+    </span>
+    <div class="content">
+      <div class="title">{{ (v.enabled ? 'starter_kit.intro.title_on' : 'starter_kit.intro.title_off') | translate }}</div>
+      <div class="body">{{ (v.enabled ? 'starter_kit.intro.body_on' : 'starter_kit.intro.body_off') | translate }}</div>
+    </div>
+    <div class="actions">
+      <dv-button variant="ghost" size="sm" type="button" (clicked)="more()">
+        {{ 'starter_kit.intro.more' | translate }}
+      </dv-button>
+      @if (v.enabled) {
+        <dv-button variant="secondary" size="sm" type="button" (clicked)="answer(false)">
+          {{ 'starter_kit.intro.disable' | translate }}
+        </dv-button>
+        <dv-button variant="primary" size="sm" type="button" (clicked)="answer(null)">
+          {{ 'starter_kit.intro.keep' | translate }}
+        </dv-button>
+      } @else {
+        <dv-button variant="secondary" size="sm" type="button" (clicked)="answer(false)">
+          {{ 'starter_kit.intro.later' | translate }}
+        </dv-button>
+        <dv-button variant="primary" size="sm" type="button" (clicked)="answer(true)">
+          {{ 'starter_kit.intro.enable' | translate }}
+        </dv-button>
+      }
+    </div>
+  </div>
+}

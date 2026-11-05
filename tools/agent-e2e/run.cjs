@@ -111,6 +111,7 @@ function normalizer(ctx) {
     // Only a tmp root at the START of a path: `<DEVIA>/tmp/...` keeps its `/tmp`.
     for (const t of tmpRoots) out = out.replace(new RegExp(`(^|[\\s"'=:])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), '$1<TMP>');
     out = out.split(os.homedir()).join('~');
+    out = out.replace(/<DEVIA>\/kits\/devia-method\/v[^/\s"']+/g, '<DEVIA>/kits/devia-method/<VERSION>');
     out = out.replace(UUID, '<UUID>');
     out = out.replace(/\bses_[A-Za-z0-9]+/g, '<SESSION>');
     out = out.replace(/<TMP>\/devia-system-prompt-[^\s"]+/g, '<TMP>/devia-system-prompt-<RUN>.md');
@@ -203,11 +204,16 @@ function stdinShape(spawn) {
 }
 
 /** Facts about the system prompt that must survive any refactor. */
-function systemPromptFacts(text) {
+function systemPromptFacts(text, kit = false) {
   return {
     announcesUiTools: /devia_ask_user/.test(text),
     announcesMemory: /mem_save|mem_search/.test(text),
     mentionsKanban: /kanban/i.test(text),
+    // Only in the kit scenario, so the baselines of the others stay untouched.
+    ...(kit && {
+      kitPrompt: /## Devia Method/.test(text),
+      kitIndex: /## Skills/.test(text) && /`brainstorming`/.test(text),
+    }),
   };
 }
 
@@ -240,10 +246,10 @@ function runScenario(ctx, scenario) {
       onClaudeOutput: (line) => { try { events.push(JSON.parse(line)); } catch { /* raw */ } },
       onProcessEnd: (p) => done({ code: p.code, error: p.error }),
       onOutboxFile: () => {},
-      onQuestionAsk: (toolUseId) => { ui.push('ask_user'); answer(toolUseId, ANSWER); },
+      onQuestionAsk: (toolUseId) => { ui.push('ask_user'); answer(toolUseId, scenario.answer ?? ANSWER); },
       onUiToolRequest: (callId, tool, _input, _runId, expectsAnswer) => {
         ui.push(tool);
-        if (expectsAnswer) answer(callId, tool === 'confirm' ? 'yes' : ANSWER);
+        if (expectsAnswer) answer(callId, tool === 'confirm' ? 'yes' : (scenario.answer ?? ANSWER));
       },
     }, scenario.mode);
   });
@@ -262,7 +268,7 @@ function buildSnapshot(ctx, agent, scenario, result) {
         argv: normalizeArgv(spawn.args, norm),
         stdin: stdinShape(spawn),
         mcpServers: deliveredServers(spawn),
-        systemPrompt: { channel: systemPromptChannel(spawn), ...systemPromptFacts(systemPromptText(spawn)) },
+        systemPrompt: { channel: systemPromptChannel(spawn), ...systemPromptFacts(systemPromptText(spawn), scenario.kit === true) },
         uiServer: uiServerFacts(spawn),
         ...(Object.keys(spawn.configEnv).length > 0 && { configEnv: spawn.configEnv }),
       }
@@ -275,11 +281,31 @@ function buildSnapshot(ctx, agent, scenario, result) {
     uiCards: [...new Set(result.ui)].sort(),
     ...(scenario.id === 'resume' && { recalled: finalText.includes(ANSWER) }),
     ...(scenario.id === 'plan' && { wroteFile: fs.existsSync(path.join(ctx.projectDir, 'notas.txt')) }),
+    ...(scenario.kit && kitBehaviour(ctx, result, finalText)),
     ...(scenario.harness && {
       quoted: Object.fromEntries(Object.entries(HARNESS_TOKENS).map(([k, token]) => [k, finalText.includes(token)])),
     }),
   };
   return { agent, scenario: scenario.id, wiring, behaviour };
+}
+
+/**
+ * S-38: did the method kick in before anything was built? `loadedSkill` looks
+ * for the brainstorming skill being loaded by any route (Claude's Skill tool,
+ * `devia_skill`, or a plain read of its SKILL.md); `wroteCode` is whether the
+ * project holds anything but the git repo.
+ */
+function kitBehaviour(ctx, result, finalText) {
+  const uses = result.events.filter((e) => e.type === 'tool_use');
+  const loadedSkill = uses.some((e) => /brainstorming/.test(JSON.stringify(e.input ?? e.arguments ?? e.args ?? e)));
+  const entries = fs.readdirSync(ctx.projectDir).filter((n) => !['.git', '.gitignore', '.claude', '.devia', '.mcp.json', '.pi', '.codex', '.gemini', 'opencode.json'].includes(n));
+  return {
+    loadedSkill,
+    askedBeforeBuilding: result.ui.includes('ask_user') || /\?/.test(finalText),
+    wroteCode: entries.length > 0,
+    ...(process.env.E2E_DEBUG && { debug: { entries, tools: uses.map((e) => e.name), text: finalText.slice(0, 700) } }),
+    usedKanban: uses.some((e) => /kanban_create_(spec|task)/.test(e.name)),
+  };
 }
 
 /**
@@ -361,15 +387,17 @@ async function runAgent(agent, flags) {
   fs.mkdirSync(projectDir);
   childProcess.execSync('git init -q', { cwd: projectDir });
   const deviaDir = path.join(workspaceRoot, '.devia-app');
-  const { useCase, registry, sessions, userServers } = buildHeadlessRun({ agentId: agent, workspaceRoot, deviaDir, ...AGENTS[agent] });
-  const ctx = { useCase, registry, userServers, project: 'proj', projectDir, workspaceRoot, deviaDir };
+  const { useCase, registry, sessions, userServers, setKit } = buildHeadlessRun({ agentId: agent, workspaceRoot, deviaDir, ...AGENTS[agent] });
+  const ctx = { useCase, registry, userServers, setKit, project: 'proj', projectDir, workspaceRoot, deviaDir };
   let failures = 0;
   const scenarios = flags.scenario ? SCENARIOS.filter((s) => s.id === flags.scenario) : SCENARIOS;
   for (const scenario of scenarios) {
     process.stdout.write(`▶ ${agent}/${scenario.id} … `);
     if (scenario.harness) setUpHarness(ctx);
+    if (scenario.kit) ctx.setKit(true);
     const result = await runScenario(ctx, scenario);
     if (scenario.harness) ctx.userServers.set([]);
+    if (scenario.kit) ctx.setKit(false);
     persistTranscript(ctx, sessions, scenario, result);
     const snap = buildSnapshot(ctx, agent, scenario, result);
     const file = path.join(SNAP_DIR, `${agent}-${scenario.id}.json`);

@@ -61,9 +61,11 @@ export class LegacyMapper implements AgentMapper {
     }) ?? [];
     const resumeArgs =
       plan.resumeSessionId !== undefined && this.def.buildResumeArgs ? this.def.buildResumeArgs(plan.resumeSessionId) : [];
-    const built = buildDefInvocation(this.def, plan, systemPrompt, [...extraArgs, ...resumeArgs, ...mcp.args]);
+    const runFiles = this.def.buildRunFiles?.({ mode: plan.mode, deviaDir: plan.deviaDir, runId: plan.runId }) ?? null;
+    const built = buildDefInvocation(this.def, plan, systemPrompt, [...extraArgs, ...(runFiles?.args ?? []), ...resumeArgs, ...mcp.args]);
     if (!built.ok) {
       mcp.cleanup();
+      runFiles?.cleanup();
       return built;
     }
     const { invocation } = built;
@@ -78,6 +80,7 @@ export class LegacyMapper implements AgentMapper {
         cleanup: () => {
           invocation.cleanup();
           mcp.cleanup();
+          runFiles?.cleanup();
         },
       },
     };

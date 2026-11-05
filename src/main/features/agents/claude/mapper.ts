@@ -85,6 +85,9 @@ export class ClaudeMapper implements AgentMapper {
       ...resume,
       ...mcp.args,
       ...(agents ? ['--agents', agents.path] : []),
+      // The kit is a Claude Code plugin loaded for this session only, for the native Skill tool and its
+      // descriptions. It ships no hook: the bootstrap reaches every agent, Claude included, through Devia's prompt.
+      ...(plan.harness.kit ? ['--plugin-dir', plan.harness.kit.dir] : []),
     ]);
     if (!built.ok) {
       cleanup();
