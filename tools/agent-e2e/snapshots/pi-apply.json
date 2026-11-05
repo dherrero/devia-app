@@ -6,6 +6,8 @@
     "argv": [
       "--mode",
       "rpc",
+      "--tools",
+      "+bash,+edit,+write",
       "-e",
       "<DEVIA>/tmp/pi-mcp-<ID>.mjs",
       "--append-system-prompt",

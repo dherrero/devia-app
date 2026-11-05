@@ -13,6 +13,14 @@ import { DEFAULT_MODEL_OPTION } from './shared';
 const PLAN_TOOLS = ['read', 'grep', 'find', 'ls', 'mcp__*'];
 
 /**
+ * pi STORES the tool selection in the session: a session that ran in plan mode keeps `read, grep, find, ls`
+ * when it is resumed without `--tools` (verified with pi 1.3.0). Devia's normal flow is plan → approve → apply
+ * in the same session, so the apply run would find an agent that cannot write or run anything. These `+name`
+ * entries add the writers back to whatever the session holds, and leave the user's own `defaultTools` alone.
+ */
+const WRITE_TOOLS = ['+bash', '+edit', '+write'];
+
+/**
  * Pi adapter (pi 1.3.0 `--mode rpc` dialect over stdio — see `pi-rpc-session.ts`).
  *
  * Spawned as `pi --mode rpc [--model ...] [--thinking ...]`; the launcher hands
@@ -64,7 +72,7 @@ export const piAgentDef: RuntimeAgentDef = {
     return args;
   },
   buildExtraArgs: (opts) =>
-    opts.capabilities?.mode === 'plan' ? ['--tools', PLAN_TOOLS.join(',')] : [],
+    ['--tools', (opts.capabilities?.mode === 'plan' ? PLAN_TOOLS : WRITE_TOOLS).join(',')],
   buildResumeArgs: (agentSessionId) => ['--session-id', agentSessionId],
   streamFormat: 'pi-rpc',
   installUrl: 'https://pi.dev/',

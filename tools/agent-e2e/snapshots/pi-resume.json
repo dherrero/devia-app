@@ -6,6 +6,8 @@
     "argv": [
       "--mode",
       "rpc",
+      "--tools",
+      "+bash,+edit,+write",
       "--session-id",
       "<UUID>",
       "-e",

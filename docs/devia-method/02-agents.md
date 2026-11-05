@@ -14,11 +14,15 @@ Pruebas reales (no mocks) con los CLIs instalados: Claude Code, Codex 0.141, Gem
 
 | Agente | Aceptación (`kit`) | Evals multi-turno |
 | --- | --- | --- |
-| Claude (haiku) | PASS 2/2 | cadena completa: brainstorm, plan, execute (apply-yolo), trivial, bugfix; todas las aserciones duras |
-| Codex | PASS | `--cheap` (brainstorm + trivial): todas las aserciones duras |
-| Gemini | PASS (tras la política de modo plan) | `brainstorm` y `trivial`: todas las aserciones duras |
-| pi | PASS | `--cheap`: todas las aserciones duras |
-| OpenCode | PASS | `--cheap`: todas las aserciones duras |
+| Claude (haiku) | PASS 2/2 | cadena completa (brainstorm → plan → execute en `apply-yolo`, trivial, bugfix): todas las aserciones duras |
+| Codex | PASS | cadena completa: todas las aserciones duras |
+| Gemini | PASS (tras la política de modo plan) | cadena completa: todas las aserciones duras |
+| pi | PASS (tras restablecer sus herramientas fuera del modo plan) | cadena completa: todas las aserciones duras |
+| OpenCode | PASS | cadena completa: todas las aserciones duras |
+
+Ninguna ejecución completa tocó un límite de presupuesto: todas terminaron con código 0 y no hubo cortes. Las aserciones blandas que quedan por
+debajo del ideal son opcionales: el orden test-antes-que-código no se detecta en agentes que escriben por la shell (Codex, OpenCode, pi),
+y algunos no dejan comentario en el hilo de la tarea o no recuperan memoria antes de preguntar.
 
 Observaciones que no bloquean: OpenCode (modelo gratuito) llegó a crear una tarea en el tablero antes de que el usuario respondiera en
 una ejecución anterior; Codex usa las tarjetas de Devia (un usuario simulado las aprueba al instante), así que la aserción "nada en el tablero
@@ -36,11 +40,15 @@ Qué cambió por culpa de las pruebas (y por qué hay evals):
   podía guardar el diseño en el kanban, y además podía llamar a `exit_plan_mode` por su cuenta y acabar escribiendo ficheros. Ahora recibe
   por ejecución un fichero `--policy` (en el directorio temporal de Devia, borrado al terminar) que permite los tres servidores de Devia en
   modo plan y prohíbe salir de él. Con eso pasa `brainstorm` (spec y plan en el kanban, sin ficheros).
+- **pi no podía escribir tras el modo plan.** pi guarda en la sesión el conjunto de herramientas con el que se lanzó; una sesión que pasó por
+  modo plan (`--tools read,grep,find,ls,mcp__*`) y se reanuda sin `--tools` sigue sin `bash`, `edit` ni `write` (comprobado con pi 1.3.0).
+  El flujo normal de Devia es plan → aprobar → apply en la misma sesión, así que el apply de pi no podía hacer nada. Ahora, fuera del modo
+  plan, Devia pasa `--tools +bash,+edit,+write`, que añade los escritores a lo que tenga la sesión sin pisar el `defaultTools` del usuario.
 - **En `apply` el agente no puede ejecutar Bash arbitrario** (Claude usa `acceptEdits`, que un `-p` no puede ampliar): no pudo correr tests
   ni hacer commit. La ejecución de un plan aprobado es "aceptar y no preguntar" (`apply-yolo`) y así lo prueba el caso `execute`.
 
 ## Cobertura que falta
 
-- Evals completos (`plan`, `execute`, `bugfix`) con Codex, Gemini, pi y OpenCode: solo se han pasado los baratos (`--cheap`), el completo cuesta tokens reales.
-- Aserciones blandas que hoy fallan en `execute`: el agente no deja comentarios en el hilo de la tarea ni usa `devia_todo`.
+- Una sola pasada por agente y caso: los resultados son por mayoría de 1; `--repeat N` da k/N para medir la dispersión de los modelos.
+- Modelos: Claude se probó con haiku y OpenCode con su modelo gratuito; un modelo más capaz debería comportarse mejor, no peor.
 - Windows y Linux (el kit se materializa con bits de ejecución restaurados, sin probar fuera de macOS).

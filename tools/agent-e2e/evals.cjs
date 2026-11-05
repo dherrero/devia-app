@@ -100,6 +100,12 @@ const uses = (turns) => turns.flatMap((t) => t.events.filter((e) => e.type === '
 const named = (calls, re) => calls.filter((c) => re.test(c.name ?? ''));
 const loadedSkill = (calls, skill) => calls.some((c) => JSON.stringify(c.input ?? c.arguments ?? c.args ?? c).includes(skill));
 const projectFiles = (ctx) => fs.readdirSync(ctx.projectDir).filter((n) => !IGNORED.has(n));
+/** Every file under the project, however deep, for agents that write through the shell and not through a tool. */
+const allFiles = (ctx, rel = '') => fs.readdirSync(path.join(ctx.projectDir, rel), { withFileTypes: true }).flatMap((e) => {
+  if (IGNORED.has(e.name) || e.name === 'node_modules' || e.name === '__pycache__') return [];
+  const next = rel ? `${rel}/${e.name}` : e.name;
+  return e.isDirectory() ? allFiles(ctx, next) : [next];
+});
 const git = (ctx, ...args) => childProcess.execFileSync('git', args, { cwd: ctx.projectDir, encoding: 'utf8' }).trim();
 
 // ── cases ───────────────────────────────────────────────────────────────────
@@ -157,7 +163,8 @@ const CASES = {
         A('creates the plan header task', header.length === 1, `headers: ${header.length}`),
         A('orders tasks with dependsOn', work.some((x) => (x.dependsOn ?? []).length > 0), '', true),
         A('keeps one spec (no duplicate)', b.specs.length === 1, `specs: ${b.specs.length}`),
-        A('asks for approval with the plan card', t.ui.includes('plan_approve') || named(calls, /plan_approve/).length > 0),
+        // The card may already have been drawn while brainstorming, when an agent goes straight from the approved design to the plan.
+        A('asks for approval with the plan card', [...state.turns].some((x) => x.ui.includes('plan_approve') || named(uses([x]), /plan_approve/).length > 0)),
         A('writes no file (plan mode)', projectFiles(ctx).length === 0, projectFiles(ctx).join(', ')),
       ];
     },
@@ -182,7 +189,7 @@ const CASES = {
         A('closes at least one task with its commit', closed.some((x) => x.closingCommit), `done: ${closed.length}, with commit: ${closed.filter((x) => x.closingCommit).length}`),
         A('leaves a record in the task thread', closed.some((x) => (x.thread ?? []).some((m) => m.author !== 'system')), '', true),
         A('commits the work', commits > 1, `commits: ${commits}`),
-        A('writes a test file', projectFiles(ctx).some((n) => /test|spec/i.test(n)) || writes.some((c) => /test|spec/i.test(pathOf(c)))),
+        A('writes a test file', allFiles(ctx).some((n) => /test|spec/i.test(n)) || writes.some((c) => /test|spec/i.test(pathOf(c)))),
         A('writes the test before the code (TDD)', firstTest >= 0 && (firstSrc < 0 || firstTest < firstSrc), `first test write #${firstTest}, first source write #${firstSrc}`, true),
         A('publishes progress with devia_todo', named(calls, /devia_todo/).length > 0, '', true),
       ];
