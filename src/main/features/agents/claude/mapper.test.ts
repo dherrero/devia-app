@@ -33,6 +33,10 @@ const args = (m: ClaudeMapper, plan = planWith()): string[] => {
 };
 
 describe('ClaudeMapper', () => {
+  it('declares that it freezes the system prompt on resume', () => {
+    expect(mapper().freezesSystemPrompt).toBe(true);
+  });
+
   it('drops Workflow outside plan mode only', () => {
     expect(mapper().disallowedTools('apply')).toContain('Workflow');
     expect(mapper().disallowedTools('plan')).not.toContain('Workflow');

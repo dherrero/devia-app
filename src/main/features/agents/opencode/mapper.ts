@@ -49,6 +49,7 @@ export class OpencodeMapper implements AgentMapper {
   readonly id = 'opencode';
   readonly harnessSupport: HarnessSupport = { mcp: 'native', skills: 'devia', subagents: 'native' };
   readonly isolatesExternalMcp = false;
+  readonly freezesSystemPrompt = false;
 
   constructor(readonly def: RuntimeAgentDef, _deps: MapperDeps, private readonly home: () => string = os.homedir) {}
 
