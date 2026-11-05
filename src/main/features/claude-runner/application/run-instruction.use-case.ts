@@ -79,6 +79,14 @@ const MEMORY_SERVER_ID = 'devia-memory';
  *  the handoff brief instead of the compressed/deterministic body. */
 const HANDOFF_RICH_SUMMARY_MAX_AGE_MS = 15 * 60 * 1_000;
 
+/**
+ * The first events that prove the model consumed the user turn it was given
+ * (S-40): a `status` or `session_started` only proves the CLI booted.
+ */
+const MODEL_ANSWERED_EVENTS: ReadonlySet<string> = new Set([
+  'text_delta', 'thinking_start', 'thinking_delta', 'tool_use', 'usage', 'turn_end',
+]);
+
 /** Tools that modify files on disk and therefore warrant a diff snapshot. */
 const FILE_EDITING_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
 
@@ -1052,12 +1060,26 @@ export class RunInstructionUseCase {
               }
             }
 
+            // S-40: the model started answering, so it consumed this turn's context
+            // block; remember it for that native session so an unchanged block is
+            // not repeated. A run that dies earlier records nothing and resends.
+            if (turnContextDelivery !== null && MODEL_ANSWERED_EVENTS.has(parsed.type)) {
+              const deliveredTo = this.deps.registry.find(identity)?.agentSessionId;
+              if (deliveredTo) {
+                this.turnContextTracker.markDelivered(deliveredTo, turnContextDelivery.hash);
+                turnContextDelivery = null;
+              }
+            }
+
             // E-DSK-13 Fase D: the agent compacted its context mid-run. Flag the
             // identity so the next run re-injects Devia's memory (Fase A only
             // injects on the first turn of a session, so a resumed-but-compacted
             // session would otherwise never recover it).
-            if (parsed.type === 'context_compacted' && cfg.memory.enabled) {
-              this.deps.markContextCompacted?.(identity);
+            if (parsed.type === 'context_compacted') {
+              // S-40: the per-turn block was summarised away too, memory on or off.
+              const compacted = this.deps.registry.find(identity)?.agentSessionId;
+              if (compacted) this.turnContextTracker.invalidate(compacted);
+              if (cfg.memory.enabled) this.deps.markContextCompacted?.(identity);
             }
 
             if (parsed.type === 'rate_limit' && parsed.status === 'rejected') {
@@ -1143,6 +1165,7 @@ export class RunInstructionUseCase {
           // the same way forever. Conservative match — never clears on
           // unrelated errors (auth, network, sandbox).
           if (resumeSessionId !== undefined && isSessionNotFoundError(msg)) {
+            this.turnContextTracker.invalidate(resumeSessionId);
             const rec = this.deps.registry.find(identity);
             if (rec) {
               rec.agentSessionId = null;

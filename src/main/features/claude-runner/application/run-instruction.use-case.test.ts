@@ -26,6 +26,7 @@ import { buildUiFallbackHint } from '../infrastructure/ui-tools-protocol';
 /** What a run with NO interface tools is told instead. */
 const UI_FALLBACK = buildUiFallbackHint([]) as string;
 import { InMemoryProjectRegistry } from '../infrastructure/in-memory-project-registry';
+import { TurnContextTracker } from '../infrastructure/turn-context-tracker';
 import { createOutboxFlusher } from '../../outbox';
 import {
   answerFilePath,
@@ -321,6 +322,8 @@ interface BuildExtras {
   outbox?: OutboxFlusher;
   starterKits?: StarterKitsPort;
   harnessCatalog?: HarnessCatalog;
+  turnContextTracker?: TurnContextTracker;
+  consumeMemoryReinjection?: (projectAbs: string) => boolean;
 }
 
 /** The production mapper registry, with test doubles for its side effects. */
@@ -366,6 +369,8 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.isConfirmationGranted ? { isConfirmationGranted: extras.isConfirmationGranted } : {}),
     ...(extras.remoteRelayConnected ? { remoteRelayConnected: extras.remoteRelayConnected } : {}),
     ...(extras.isLiveSessionWorktree ? { isLiveSessionWorktree: extras.isLiveSessionWorktree } : {}),
+    ...(extras.turnContextTracker ? { turnContextTracker: extras.turnContextTracker } : {}),
+    ...(extras.consumeMemoryReinjection ? { consumeMemoryReinjection: extras.consumeMemoryReinjection } : {}),
   });
   return { uc, runner, registry, audit, def };
 }
@@ -3198,5 +3203,69 @@ describe('RunInstructionUseCase — per-turn context for mappers that freeze the
     });
     const block = blockOf(turn(h, 'apply', 'renderer', true));
     expect(block).toContain('(isolated session worktree)');
+  });
+
+  // ── delivery tracking (Task 7) ───────────────────────────────────────────
+
+  it('an unchanged block is not resent on the next turn', () => {
+    const h = harness();
+    finish(turn(h, 'apply', 'renderer'));
+    expect(contentTexts(turn(h, 'apply', 'renderer'))).toEqual(['do thing']);
+  });
+
+  it('plan to apply resends the block with the new mode', () => {
+    const h = harness();
+    finish(turn(h, 'plan', 'renderer'));
+    const block = blockOf(turn(h, 'apply', 'renderer'));
+    expect(block).toContain('- Mode: apply');
+    expect(block).not.toContain('- Mode: plan');
+  });
+
+  it('compaction with the memory switched off still forces a resend', () => {
+    const cfg = new FakeConfig(path.join(tmpDir, '.devia-app'));
+    cfg.set({ workspaceRoot: tmpDir, memory: { enabled: false, blockExternalMemory: true, engramImported: false } });
+    const h = harness({ config: cfg });
+    const first = turn(h, 'apply', 'renderer');
+    emitEvent(first, { type: 'session_started', agentSessionId: 'sess-1' });
+    emitEvent(first, { type: 'text_delta', delta: 'x' });
+    emitEvent(first, { type: 'context_compacted' });
+    first.handlers.onDone(0);
+    expect(blockOf(turn(h, 'apply', 'renderer'))).toBeDefined();
+  });
+
+  it('a memory re-injection owed to the next run forces a resend even if the block is unchanged', () => {
+    let owed = false;
+    const h = harness({ consumeMemoryReinjection: () => owed });
+    finish(turn(h, 'apply', 'renderer'));
+    owed = true;
+    expect(blockOf(turn(h, 'apply', 'renderer'))).toBeDefined();
+  });
+
+  it('a run that dies before any model event does not mark the block delivered', () => {
+    const h = harness();
+    const first = turn(h, 'apply', 'renderer');
+    emitEvent(first, { type: 'session_started', agentSessionId: 'sess-1' });
+    first.handlers.onError('boom');
+    expect(blockOf(turn(h, 'apply', 'renderer'))).toBeDefined();
+  });
+
+  it('status and session_started alone do not mark delivery', () => {
+    const h = harness();
+    const first = turn(h, 'apply', 'renderer');
+    emitEvent(first, { type: 'status', label: 'streaming' });
+    emitEvent(first, { type: 'session_started', agentSessionId: 'sess-1' });
+    first.handlers.onDone(0);
+    expect(blockOf(turn(h, 'apply', 'renderer'))).toBeDefined();
+  });
+
+  it('a failed resume ("session not found") invalidates the session in the tracker', () => {
+    const tracker = new TurnContextTracker();
+    const invalidate = vi.spyOn(tracker, 'invalidate');
+    const h = harness({ turnContextTracker: tracker });
+    finish(turn(h, 'apply', 'renderer'), 'sess-1');
+    const second = turn(h, 'apply', 'renderer');
+    second.handlers.onError('No conversation found with session ID sess-1');
+    expect(invalidate).toHaveBeenCalledWith('sess-1');
+    expect(blockOf(turn(h, 'apply', 'renderer'))).toBeDefined();
   });
 });
