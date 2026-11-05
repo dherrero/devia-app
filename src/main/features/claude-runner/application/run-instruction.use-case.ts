@@ -1079,6 +1079,9 @@ export class RunInstructionUseCase {
               // S-40: the per-turn block was summarised away too, memory on or off.
               const compacted = this.deps.registry.find(identity)?.agentSessionId;
               if (compacted) this.turnContextTracker.invalidate(compacted);
+              // A compaction ahead of the first model event may have summarised
+              // this very turn away, block included: never mark it delivered.
+              turnContextDelivery = null;
               if (cfg.memory.enabled) this.deps.markContextCompacted?.(identity);
             }
 

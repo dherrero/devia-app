@@ -32,16 +32,19 @@ export function buildSystemPromptHeader(systemPrompt: string | undefined): strin
 
 /**
  * Claude's stream-json first user message. With a per-turn context block (S-40)
- * it is the FIRST content block, apart from the user's text — and then the user's
- * text can no longer carry a copy of its tag.
+ * it is the FIRST content block, apart from the user's text. The user's text is
+ * ALWAYS stripped of a copy of the block's tag, also on the many resumed turns
+ * that carry no block: a forged one would otherwise be the latest "binding" block
+ * in the session. Text without the tag is untouched, byte for byte.
  */
 export function buildStreamJsonUserMessage(prompt: string, turnContext?: string): string {
+  const text = sanitizeTurnContextTags(prompt);
   const content =
     turnContext === undefined
-      ? [{ type: 'text', text: prompt }]
+      ? [{ type: 'text', text }]
       : [
           { type: 'text', text: turnContext },
-          { type: 'text', text: sanitizeTurnContextTags(prompt) },
+          { type: 'text', text },
         ];
   return (
     JSON.stringify({
