@@ -18,10 +18,13 @@ import { resolveCurrentAgent } from '../infrastructure/cli-runner-adapter';
 import { buildSystemPrompt } from '../infrastructure/system-prompt';
 import { buildMemoryProtocolHint } from '../infrastructure/memory-protocol';
 import { buildRemoteProtocolHint } from '../infrastructure/remote-protocol';
-import { buildUiFallbackHint } from '../infrastructure/ui-tools-protocol';
+import { buildUiFallbackHint, buildUiToolsHint } from '../infrastructure/ui-tools-protocol';
 import { buildWorktreeProtocolHint } from '../infrastructure/worktree-protocol';
 import { buildPlanProtocolHint } from '../infrastructure/plan-protocol';
 import { buildMemoryContextHint } from '../infrastructure/memory-context-hint';
+import { orderedBodies, splitBodies, type PromptBodies } from '../infrastructure/prompt-bodies';
+import { hashTurnContext, renderTurnContext, type TurnFacts } from '../infrastructure/turn-context';
+import { TurnContextTracker } from '../infrastructure/turn-context-tracker';
 import { sanitizeForMemory, buildRunSummary } from '../infrastructure/memory-capture';
 import { resolveAndValidateCwd, findEscapingImagePath } from '../../cli-adapters/infrastructure/resolve-cwd';
 import { isPathContained } from '../../../shared/workspace-paths';
@@ -175,6 +178,8 @@ export interface RunInstructionHandlers {
  * argv and translating its event stream back to the renderer.
  */
 export class RunInstructionUseCase {
+  private readonly turnContextTracker: TurnContextTracker;
+
   constructor(private readonly deps: {
     config: ConfigRepository;
     sessions: SessionStore;
@@ -329,7 +334,14 @@ export class RunInstructionUseCase {
      * file may be sent from — and only when it is THIS run's cwd.
      */
     isLiveSessionWorktree?: (workdir: string) => boolean;
-  }) {}
+    /**
+     * S-40: which per-turn context block each native session already has, so an
+     * unchanged one is not repeated. Defaults to a fresh in-memory tracker.
+     */
+    turnContextTracker?: TurnContextTracker;
+  }) {
+    this.turnContextTracker = deps.turnContextTracker ?? new TurnContextTracker();
+  }
 
   execute(
     projectName: string,
@@ -820,18 +832,19 @@ export class RunInstructionUseCase {
     const planHint = buildPlanProtocolHint(requestedMode === 'plan', kit !== null);
     // S-39: the kit's bootstrap and skill index — the same text for every agent.
     const kitHint = kit?.prompt ?? null;
-    const allBodies = [
-      ...packBodies,
-      ...(skillRegistryHint ? [skillRegistryHint] : []),
-      ...(kitHint ? [kitHint] : []),
-      ...(memoryHint ? [memoryHint] : []),
-      ...(memoryContextHint ? [memoryContextHint] : []),
-      ...(handoffHint ? [handoffHint] : []),
-      ...(worktreeHint ? [worktreeHint] : []),
-      ...(remoteHint ? [remoteHint] : []),
-      ...(uiFallbackHint ? [uiFallbackHint] : []),
-      ...(planHint ? [planHint] : []),
-    ];
+    const promptBodies: PromptBodies = {
+      packs: packBodies,
+      skillRegistry: skillRegistryHint || null,
+      kit: kitHint || null,
+      memoryProtocol: memoryHint || null,
+      memoryContext: memoryContextHint || null,
+      handoff: handoffHint || null,
+      worktree: worktreeHint || null,
+      remote: remoteHint || null,
+      uiFallback: uiFallbackHint || null,
+      plan: planHint || null,
+    };
+    const allBodies = orderedBodies(promptBodies);
     // Built here (not earlier) because the baseline only offers the tools this
     // run actually got.
     const baseline = buildSystemPrompt(tech, { advertised: uiAdvertised });
@@ -842,9 +855,36 @@ export class RunInstructionUseCase {
       );
     }
 
+    // S-40: a CLI that keeps its FIRST turn's system prompt on resume (Claude
+    // Code) gets only what holds for the whole session there; what can differ
+    // from one turn to the next (channel, mode, tools, worktree, a memory
+    // re-injection) travels as a binding block in the user turn, resent only
+    // when it changed. Every other agent keeps receiving the full prompt.
+    let promptForMapper = systemPrompt;
+    let planForPrepare = plan;
+    let turnContextDelivery: { hash: string } | null = null;
+    if (mapper.freezesSystemPrompt) {
+      const { stable, turn } = splitBodies(promptBodies, { firstTurn: isFirstTurnOfSession });
+      promptForMapper = composeSystemPrompt(buildSystemPrompt(tech, { advertised: [] }), stable);
+      const uiToolsLine = buildUiToolsHint(uiAdvertised);
+      const facts: TurnFacts = {
+        channel: isRemote ? 'telegram' : 'desktop',
+        mode: requestedMode,
+        cwd,
+        isolatedWorktree: cwd !== cwdResult.resolvedPath,
+        uiTools: uiAdvertised,
+      };
+      const block = renderTurnContext(facts, [...(uiToolsLine ? [uiToolsLine] : []), ...turn]);
+      const hash = hashTurnContext(block);
+      if (this.turnContextTracker.shouldSend({ resumeSessionId, hash, force: reinjectAfterCompaction })) {
+        planForPrepare = { ...plan, turnContext: block };
+        turnContextDelivery = { hash };
+      }
+    }
+
     // The agent's mapper turns the plan into argv / stdin / env / temp files —
     // MCP delivery, the system-prompt channel, resume flags, permission flags.
-    const prepareResult = mapper.prepareRun(plan, systemPrompt, delivery);
+    const prepareResult = mapper.prepareRun(planForPrepare, promptForMapper, delivery);
     const prepared = prepareResult.ok ? prepareResult.run : null;
     // A temp-file write can fail after the prompt was composed: stop serving
     // the cards of a server that never reached the agent.
