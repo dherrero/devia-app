@@ -1,13 +1,23 @@
 import type { AgentEvent } from '../../../../shared/domain/agent-event';
+import type { AcpAgentProfile, AcpToolCallLike } from './profile';
+
+const MAX_TOOL_RESULT_CHARS = 10_000;
+
+export interface EventMapContext {
+  readonly profile: AcpAgentProfile;
+  readonly serverIds: readonly string[];
+}
 
 export interface EventMapState {
   textBuffer: string;
   firstTokenSent: boolean;
   readonly startedAt: number;
+  tools: Map<string, { name: string; finished: boolean }>;
+  lastPlan: string | null;
 }
 
 export function createEventMapState(now: number = Date.now()): EventMapState {
-  return { textBuffer: '', firstTokenSent: false, startedAt: now };
+  return { textBuffer: '', firstTokenSent: false, startedAt: now, tools: new Map(), lastPlan: null };
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -27,7 +37,57 @@ function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-export function mapSessionUpdate(update: unknown, state: EventMapState, now: number = Date.now()): AgentEvent[] {
+function toolCallOf(obj: Record<string, unknown>): AcpToolCallLike | null {
+  const toolCallId = obj['toolCallId'];
+  if (typeof toolCallId !== 'string' || toolCallId.length === 0) return null;
+  const title = typeof obj['title'] === 'string' ? obj['title'] : null;
+  const kind = typeof obj['kind'] === 'string' ? obj['kind'] : null;
+  return { toolCallId, title, kind, rawInput: obj['rawInput'], _meta: obj['_meta'] };
+}
+
+function toolOutput(obj: Record<string, unknown>): string {
+  const blocks = Array.isArray(obj['content']) ? obj['content'] : [];
+  const texts: string[] = [];
+  for (const block of blocks) {
+    const inner = asObject(asObject(block)?.['content']);
+    if (inner?.['type'] === 'text' && typeof inner['text'] === 'string') texts.push(inner['text']);
+  }
+  let out = texts.join('\n');
+  if (out.length === 0 && obj['rawOutput'] !== undefined && obj['rawOutput'] !== null) {
+    const raw = obj['rawOutput'];
+    out = typeof raw === 'string' ? raw : (JSON.stringify(raw) ?? '');
+  }
+  return out.slice(0, MAX_TOOL_RESULT_CHARS);
+}
+
+function startTool(call: AcpToolCallLike, obj: Record<string, unknown>, state: EventMapState, ctx: EventMapContext): AgentEvent[] {
+  if (state.tools.has(call.toolCallId)) return [];
+  const name = ctx.profile.toolName(call, ctx.serverIds);
+  state.tools.set(call.toolCallId, { name, finished: false });
+  const input = obj['rawInput'] ?? { title: call.title ?? name };
+  return [{ type: 'tool_use', id: call.toolCallId, name, input }];
+}
+
+function mapTool(obj: Record<string, unknown>, state: EventMapState, ctx: EventMapContext | undefined): AgentEvent[] {
+  const call = ctx ? toolCallOf(obj) : null;
+  if (!ctx || !call) return [];
+  if (obj['sessionUpdate'] === 'tool_call') return startTool(call, obj, state, ctx);
+  const status = obj['status'];
+  if (status !== 'completed' && status !== 'failed') return [];
+  const events = startTool(call, obj, state, ctx);
+  const entry = state.tools.get(call.toolCallId);
+  if (!entry || entry.finished) return events;
+  entry.finished = true;
+  events.push({ type: 'tool_result', toolUseId: call.toolCallId, content: toolOutput(obj), isError: status === 'failed' });
+  return events;
+}
+
+export function mapSessionUpdate(
+  update: unknown,
+  state: EventMapState,
+  ctx?: EventMapContext,
+  now: number = Date.now(),
+): AgentEvent[] {
   const obj = asObject(update);
   if (!obj) return [];
   switch (obj['sessionUpdate']) {
@@ -50,6 +110,16 @@ export function mapSessionUpdate(update: unknown, state: EventMapState, now: num
     case 'agent_thought_chunk': {
       const text = textOf(obj);
       return text === null ? [] : [{ type: 'thinking_delta', delta: text }];
+    }
+    case 'tool_call':
+    case 'tool_call_update':
+      return mapTool(obj, state, ctx);
+    case 'plan': {
+      const entries = Array.isArray(obj['entries']) ? obj['entries'] : [];
+      const signature = JSON.stringify(entries);
+      if (signature === state.lastPlan) return [];
+      state.lastPlan = signature;
+      return [{ type: 'status', label: `plan: ${entries.length} steps` }];
     }
     default:
       return [];
