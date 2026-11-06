@@ -62,7 +62,7 @@ import type { AgentAuditLog, AuditEntry } from '../../security/audit-log';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { ChatMessage } from '../../../../shared/domain/chat';
 import type { PersistedSession } from '../../../../shared/domain/session';
-import type { SavedAttachment } from '../../../../shared/domain/attachment';
+import type { AttachmentPayload, SavedAttachment } from '../../../../shared/domain/attachment';
 
 // ── Fakes ──────────────────────────────────────────────────────────────────
 
@@ -127,7 +127,9 @@ class SessionsWithHistory implements SessionStore {
 
 class FakeAttachments implements AttachmentEnricher {
   save(): SavedAttachment { throw new Error('not used'); }
-  saveAll(): SavedAttachment[] { throw new Error('not used'); }
+  saveAll(payloads: readonly AttachmentPayload[] = []): SavedAttachment[] {
+    return payloads.map((p) => ({ path: `/tmp/.devia-app/attachments/${p.name}`, name: p.name, mime: p.mime, size: p.buffer.byteLength }));
+  }
   augmentInstruction(instruction: string, saved: readonly SavedAttachment[]): string {
     void saved;
     return instruction;
@@ -476,6 +478,31 @@ describe('RunInstructionUseCase — happy path (FR1, AC6)', () => {
     const h = build(addDirDef);
     h.uc.execute('proj-a', 'do it', [], makeHandlers(), 'apply-yolo');
     expect(h.runner.last().req.prepared.args).not.toContain('--add-dir');
+  });
+
+  describe('attachments dir (S-43)', () => {
+    const attachment: AttachmentPayload = { name: 'shot.png', mime: 'image/png', buffer: new ArrayBuffer(4) };
+    const attachmentsDir = path.join('/tmp/.devia-app', 'attachments');
+
+    it('plan/apply with an attachment add the attachments dir to --add-dir', () => {
+      for (const mode of ['plan', 'apply'] as const) {
+        const h = build(addDirDef);
+        h.uc.execute('proj-a', 'look', [attachment], makeHandlers(), mode);
+        expect(h.runner.last().req.prepared.args).toContain(attachmentsDir);
+      }
+    });
+
+    it('no attachments leave --add-dir as before', () => {
+      const h = build(addDirDef);
+      h.uc.execute('proj-a', 'look', [], makeHandlers(), 'plan');
+      expect(h.runner.last().req.prepared.args).not.toContain(attachmentsDir);
+    });
+
+    it('apply-yolo with an attachment still omits --add-dir', () => {
+      const h = build(addDirDef);
+      h.uc.execute('proj-a', 'look', [attachment], makeHandlers(), 'apply-yolo');
+      expect(h.runner.last().req.prepared.args).not.toContain('--add-dir');
+    });
   });
 
   it('does not write prompt contents to process logs', () => {

@@ -769,6 +769,16 @@ export class RunInstructionUseCase {
       ...(memoryServer ? [memoryServer] : []),
       ...(withUi && uiServer ? [uiServer] : []),
     ];
+    // S-43: the files attached to THIS message live in `<deviaDir>/attachments`,
+    // outside the cwd. Confined modes (plan/apply) need that dir to `Read` them —
+    // headless Claude cannot answer the permission prompt. Only when something
+    // was attached, so every other run's argv stays byte-identical; apply-yolo
+    // is unconfined already. Never a `send_file` root (see `sendRoots`).
+    const attachmentDirs =
+      saved.length > 0 && requestedMode !== 'apply-yolo'
+        ? [path.join(this.deps.config.deviaDir(), 'attachments')]
+        : [];
+    const readDirs = [...(kit ? [kit.dir] : []), ...attachmentDirs];
     const basePlan: AgentRunPlan = {
       runId,
       agentId: def.id,
@@ -781,7 +791,7 @@ export class RunInstructionUseCase {
       // Whole-workspace visibility so a project can reference its siblings.
       // Confined modes only — `apply-yolo` already runs without confinement.
       extraAllowedDirs: requestedMode !== 'apply-yolo'
-        ? [...(cfg.workspaceRoot ? [cfg.workspaceRoot] : []), ...(kit ? [kit.dir] : [])]
+        ? [...(cfg.workspaceRoot ? [cfg.workspaceRoot] : []), ...(kit ? [kit.dir] : []), ...attachmentDirs]
         : [],
       ...(resumeSessionId !== undefined && { resumeSessionId }),
       model: modelPrefs.model ?? null,
@@ -797,7 +807,8 @@ export class RunInstructionUseCase {
         },
         skills,
         subagents,
-        ...(kit && { kit: { id: kit.id, dir: kit.dir }, readDirs: [kit.dir] }),
+        ...(kit && { kit: { id: kit.id, dir: kit.dir } }),
+        ...(readDirs.length > 0 && { readDirs }),
         isolateExternalMcp: cfg.memory.blockExternalMemory,
       },
       ui: { rendezvousDir: uiDir, toolTimeoutMs: QUESTION_TIMEOUT_MS },

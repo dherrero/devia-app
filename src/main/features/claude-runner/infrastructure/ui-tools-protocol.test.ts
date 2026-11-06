@@ -74,6 +74,29 @@ describe('buildUiFallbackHint', () => {
   });
 });
 
+describe('ask_user availability (S-43)', () => {
+  const PLAN_RUN: UiToolName[] = ['ask_user', 'todo', 'plan_approve', 'skill', 'send_file'];
+
+  it('does not claim there is no interactive UI when ask_user is available', () => {
+    const hint = buildUiFallbackHint(PLAN_RUN) as string;
+    expect(hint).toContain('No confirmation card');
+    expect(hint).toContain('No diff-review card');
+    expect(hint).not.toContain('no interactive UI');
+    expect(hint).not.toContain('persistent');
+  });
+
+  it('keeps the header and the multiple-choice line when ask_user is missing', () => {
+    const hint = buildUiFallbackHint(['todo', 'plan_approve']) as string;
+    expect(hint).toContain('no interactive UI');
+    expect(hint).toContain('No multiple-choice tool');
+    expect(hint).toContain('persistent');
+  });
+
+  it('tells the agent to use ask_user for any choice or approval', () => {
+    expect(buildUiToolsHint(['ask_user']) as string).toContain('instead of asking by text');
+  });
+});
+
 describe('send_file (S-32 T-368)', () => {
   const REMOTE_APPLY: UiToolName[] = ['todo', 'notify', 'skill'];
 
