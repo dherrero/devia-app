@@ -292,3 +292,102 @@ describe('openAcpSession — tools and permissions', () => {
     expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(false);
   });
 });
+
+describe('openAcpSession — cancellation, errors and shutdown', () => {
+  const HANG: FakeAcpScript = { turns: [{ steps: [{ type: 'text', text: 'partial' }, { type: 'hang' }] }] };
+  const errors = (child: FakeChild): AgentEvent[] => child.events.filter((e) => e.type === 'error');
+  const settleMs = (ms = 40): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+  it('abort cancels the session and a hanging turn ends with a cancelled turn_end', async () => {
+    const { child, session } = start(HANG);
+    await waitFor(() => child.events.some((e) => e.type === 'text_delta'));
+    session.abort();
+    await waitFor(() => finished(child));
+    expect(child.record.cancels).toBe(1);
+    expect(child.events.at(-1)).toEqual({ type: 'turn_end', stopReason: 'cancelled' });
+    expect(errors(child)).toEqual([]);
+  });
+
+  it('abort is idempotent and silent (no error event)', async () => {
+    const { child, session } = start(HANG);
+    await waitFor(() => child.events.some((e) => e.type === 'text_delta'));
+    session.abort();
+    session.abort();
+    await waitFor(() => finished(child));
+    await settleMs();
+    expect(child.record.cancels).toBe(1);
+    expect(errors(child)).toEqual([]);
+    expect(child.events.filter((e) => e.type === 'turn_end')).toHaveLength(1);
+  });
+
+  it('abort before the session exists does not throw and emits nothing', async () => {
+    const { child, session } = start(HANG);
+    expect(() => session.abort()).not.toThrow();
+    await settleMs(60);
+    expect(errors(child)).toEqual([]);
+    expect(child.events.some((e) => e.type === 'turn_end')).toBe(false);
+    expect(child.record.prompts).toEqual([]);
+  });
+
+  it('an initialize rejection yields one error, kills the child and emits no turn_end', async () => {
+    const { child } = start({ ...SIMPLE, failAt: 'initialize' });
+    await waitFor(() => finished(child));
+    await settleMs();
+    expect(errors(child)).toEqual([{ type: 'error', message: expect.stringContaining('scripted failure') }]);
+    expect(child.events.some((e) => e.type === 'turn_end')).toBe(false);
+    expect(child.kills).toEqual(['SIGTERM']);
+  });
+
+  it("a prompt rejection yields one error with the agent's message", async () => {
+    const { child } = start({ ...SIMPLE, failAt: 'prompt' });
+    await waitFor(() => finished(child));
+    await settleMs();
+    expect(errors(child)).toEqual([{ type: 'error', message: expect.stringContaining('scripted failure') }]);
+    expect(child.events.some((e) => e.type === 'turn_end')).toBe(false);
+  });
+
+  it('the child crashing mid-turn yields one "exited before completion" error', async () => {
+    const { child } = start({ turns: [{ steps: [{ type: 'text', text: 'x' }, { type: 'crash' }] }] });
+    await waitFor(() => finished(child));
+    await settleMs();
+    expect(errors(child)).toEqual([{ type: 'error', message: 'ACP session exited before completion' }]);
+    expect(child.events.some((e) => e.type === 'turn_end')).toBe(false);
+  });
+
+  it('stdout closing right after session_started yields the error and no hang', async () => {
+    const { child } = start(HANG);
+    await waitFor(() => child.events.some((e) => e.type === 'session_started'));
+    child.stdout.end();
+    await waitFor(() => finished(child));
+    await settleMs();
+    expect(errors(child)).toHaveLength(1);
+    expect(errors(child)[0]).toMatchObject({ message: 'ACP session exited before completion' });
+  });
+
+  it('emits nothing after turn_end, not even when the child later exits', async () => {
+    const { child } = start(SIMPLE, { killGraceMs: 20 });
+    await waitFor(() => finished(child));
+    const count = child.events.length;
+    await waitFor(() => child.kills.length === 1);
+    await settleMs();
+    expect(child.events).toHaveLength(count);
+    expect(child.events.filter((e) => e.type === 'turn_end')).toHaveLength(1);
+  });
+
+  it('a pending permission is cancelled when the turn is aborted', async () => {
+    const { child, session } = start({
+      turns: [{ steps: [{ type: 'permission', toolId: 't1', title: 'Write', kind: 'edit' }, { type: 'hang' }] }],
+    });
+    await waitFor(() => child.uiRequests.length === 1);
+    session.abort();
+    await waitFor(() => finished(child));
+    expect(child.record.permissionAnswers).toEqual([{ outcome: { outcome: 'cancelled' } }]);
+    expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(false);
+  });
+
+  it('flush() after close is a safe no-op', async () => {
+    const { child, session } = start(SIMPLE, { killGraceMs: 20 });
+    await waitFor(() => child.kills.length === 1);
+    expect(() => session.flush()).not.toThrow();
+  });
+});

@@ -1,3 +1,4 @@
+import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import type { McpServerConfig } from '../../../../shared/domain/mcp';
 import type { AgentAnswer, AgentSession, AgentSessionIo } from '../domain/agent-mapper';
 import type { AgentRunPlan } from '../domain/agent-run-plan';
@@ -10,6 +11,7 @@ import type { AcpAgentProfile } from './profile';
 
 type PermissionOutcome = { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' };
 
+const EXITED_MESSAGE = 'ACP session exited before completion';
 const DEFAULT_PERMISSION_TITLE = 'The agent asks permission for an action';
 
 export interface AcpSessionOptions {
@@ -60,12 +62,11 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
   const serverIds = options.mcpServers.map((s) => s.id);
   const state = createEventMapState(now());
   const pending = new Map<string, { resolve: (outcome: PermissionOutcome) => void; options: AcpPermissionOption[] }>();
-  let done = false;
+  let finished = false;
+  let aborted = false;
+  let sessionId: string | undefined;
 
-  const fail = (message: string): void => {
-    if (done) return;
-    done = true;
-    io.emit({ type: 'error', message });
+  const killChild = (): void => {
     try {
       io.process.kill('SIGTERM');
     } catch {
@@ -73,15 +74,33 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
     }
   };
 
-  const emitMapped = (update: unknown): void => {
-    for (const event of mapSessionUpdate(update, state, { profile, serverIds }, now())) io.emit(event);
+  const cancelPending = (): void => {
+    for (const entry of pending.values()) entry.resolve({ outcome: 'cancelled' });
+    pending.clear();
+  };
+
+  // The single exit of a run: whatever ends it, nothing is emitted afterwards.
+  const finish = (end: { kind: 'turn_end'; event: AgentEvent[] } | { kind: 'error'; message: string }): void => {
+    if (finished) return;
+    finished = true;
+    cancelPending();
+    if (end.kind === 'turn_end') {
+      for (const event of end.event) io.emit(event);
+      return;
+    }
+    // After an abort the launcher already knows why the run ended.
+    if (aborted) return;
+    io.emit({ type: 'error', message: end.message });
+    killChild();
   };
 
   const connection = new AcpConnection(webStreamsFromChild({ stdin: io.stdin, stdout: io.stdout }), {
     onSessionUpdate: (_sessionId, update) => {
-      if (!done) emitMapped(update);
+      if (finished) return;
+      for (const event of mapSessionUpdate(update, state, { profile, serverIds }, now())) io.emit(event);
     },
-    onRequestPermission: (request) => requestPermission(request.toolCall, parseOptions(request.options)),
+    onRequestPermission: (request) =>
+      finished ? Promise.resolve({ outcome: 'cancelled' }) : requestPermission(request.toolCall, parseOptions(request.options)),
   });
 
   function requestPermission(rawToolCall: unknown, options: AcpPermissionOption[]): Promise<PermissionOutcome> {
@@ -122,21 +141,10 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
     });
   }
 
-  const cancelPending = (): void => {
-    for (const entry of pending.values()) entry.resolve({ outcome: 'cancelled' });
-    pending.clear();
-  };
-
-  const finishChild = (): void => {
+  const endChildInput = (): void => {
     io.stdin?.end();
     const grace = setTimeout(() => {
-      if (io.process.exitCode === null && !io.process.killed) {
-        try {
-          io.process.kill('SIGTERM');
-        } catch {
-          // the child is already gone
-        }
-      }
+      if (io.process.exitCode === null && !io.process.killed) killChild();
     }, killGraceMs);
     grace.unref();
     io.process.once('close', () => clearTimeout(grace));
@@ -147,29 +155,32 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
     if (info.authMethods.length > 0 && profile.authMethodId !== undefined) {
       await connection.authenticate(profile.authMethodId);
     }
-    const { sessionId } = await connection.newSession({
+    const created = await connection.newSession({
       cwd: plan.cwd,
       mcpServers: options.mcpServers.map(toAcpMcpServer),
     });
-    io.emit({ type: 'session_started', agentSessionId: sessionId });
+    if (aborted) return;
+    sessionId = created.sessionId;
+    io.emit({ type: 'session_started', agentSessionId: created.sessionId });
     const blocks: AcpPromptBlock[] = [
       { type: 'text', text: buildSystemPromptHeader(options.systemPrompt) + plan.prompt },
     ];
-    const response = await connection.prompt(sessionId, blocks);
-    if (done) return;
-    done = true;
+    const response = await connection.prompt(created.sessionId, blocks);
+    const events: AgentEvent[] = [];
     const usage = mapPromptUsage(response);
-    if (usage) io.emit(usage);
-    io.emit({ type: 'turn_end', stopReason: mapStopReason(response.stopReason) });
-    finishChild();
+    if (usage) events.push(usage);
+    events.push({ type: 'turn_end', stopReason: mapStopReason(response.stopReason) });
+    finish({ kind: 'turn_end', event: events });
+    endChildInput();
   };
 
-  io.process.once('close', () => {
-    cancelPending();
-    fail('ACP agent exited before completing the turn');
-  });
+  io.process.once('close', () => finish({ kind: 'error', message: EXITED_MESSAGE }));
+  void connection.closed.then(() => finish({ kind: 'error', message: EXITED_MESSAGE }));
 
-  run().catch((err: unknown) => fail(err instanceof Error ? err.message : String(err)));
+  run().catch((err: unknown) => {
+    const closed = connection.raw.signal.aborted;
+    finish({ kind: 'error', message: closed ? EXITED_MESSAGE : err instanceof Error ? err.message : String(err) });
+  });
 
   return {
     flush(): void {
@@ -189,7 +200,11 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
       return true;
     },
     abort(): void {
-      // Task 13
+      if (aborted) return;
+      aborted = true;
+      cancelPending();
+      const done = sessionId === undefined ? Promise.resolve() : connection.cancel(sessionId);
+      void done.finally(() => io.stdin?.end());
     },
   };
 }
