@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import {
   ClientSideConnection,
@@ -5,6 +6,7 @@ import {
   RequestError,
   ndJsonStream,
   type Client,
+  type NewSessionResponse,
   type RequestPermissionResponse,
 } from './sdk';
 import type { AcpClientCapabilities } from './profile';
@@ -23,6 +25,31 @@ export interface AcpAgentInfo {
   readonly capabilities: Readonly<Record<string, unknown>>;
   readonly authMethods: readonly { id: string; name?: string }[];
 }
+
+export interface AcpMcpServerSpec {
+  readonly name: string;
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly env: readonly { readonly name: string; readonly value: string }[];
+}
+
+export type AcpPromptBlock =
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'image'; readonly mimeType: string; readonly data: string }
+  | { readonly type: 'resource_link'; readonly uri: string; readonly name: string };
+
+const MODEL_FALLBACK_CODES: readonly number[] = [-32601, -32602, -32603, -32002];
+
+function mcpServers(specs: readonly AcpMcpServerSpec[]): NewSessionRequestServers {
+  return specs.map((s) => ({
+    name: s.name,
+    command: s.command,
+    args: [...s.args],
+    env: s.env.map((e) => ({ name: e.name, value: e.value })),
+  }));
+}
+
+type NewSessionRequestServers = Parameters<ClientSideConnection['newSession']>[0]['mcpServers'];
 
 const DEFAULT_CLIENT_INFO = { name: 'devia', version: 'desktop' };
 
@@ -70,6 +97,83 @@ export class AcpConnection {
 
   get closed(): Promise<void> {
     return this.raw.closed;
+  }
+
+  private async call<T>(request: () => Promise<T>): Promise<T> {
+    if (this.raw.signal.aborted) throw new Error('ACP connection closed');
+    try {
+      return await request();
+    } catch (err) {
+      if (this.raw.signal.aborted) throw new Error('ACP connection closed');
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  async authenticate(methodId: string): Promise<void> {
+    await this.call(() => this.raw.authenticate({ methodId }));
+  }
+
+  newSession(params: {
+    readonly cwd: string;
+    readonly mcpServers: readonly AcpMcpServerSpec[];
+  }): Promise<NewSessionResponse> {
+    return this.call(() =>
+      this.raw.newSession({ cwd: path.resolve(params.cwd), mcpServers: mcpServers(params.mcpServers) }),
+    );
+  }
+
+  async loadSession(params: {
+    readonly sessionId: string;
+    readonly cwd: string;
+    readonly mcpServers: readonly AcpMcpServerSpec[];
+  }): Promise<void> {
+    await this.call(() =>
+      this.raw.loadSession({
+        sessionId: params.sessionId,
+        cwd: path.resolve(params.cwd),
+        mcpServers: mcpServers(params.mcpServers),
+      }),
+    );
+  }
+
+  async prompt(
+    sessionId: string,
+    blocks: readonly AcpPromptBlock[],
+  ): Promise<{ stopReason: string; usage?: unknown }> {
+    const res = await this.call(() => this.raw.prompt({ sessionId, prompt: blocks.map((b) => ({ ...b })) }));
+    return { stopReason: res.stopReason, ...(res.usage != null && { usage: res.usage }) };
+  }
+
+  async cancel(sessionId: string): Promise<void> {
+    try {
+      await this.call(() => this.raw.cancel({ sessionId }));
+    } catch {
+      // cancelling a dead connection is a no-op
+    }
+  }
+
+  async setMode(sessionId: string, modeId: string): Promise<void> {
+    await this.call(() => this.raw.setSessionMode({ sessionId, modeId }));
+  }
+
+  /** Stable `session/set_config_option` first; falls back to the older `session/set_model`. False when neither is supported. */
+  async setModel(sessionId: string, modelId: string): Promise<boolean> {
+    const rejected = (err: unknown): boolean =>
+      typeof (err as { code?: unknown } | null)?.code === 'number' &&
+      MODEL_FALLBACK_CODES.includes((err as { code: number }).code);
+    try {
+      await this.call(() => this.raw.setSessionConfigOption({ sessionId, configId: 'model', value: modelId }));
+      return true;
+    } catch (err) {
+      if (!rejected(err)) throw err;
+    }
+    try {
+      await this.call(() => this.raw.extMethod('session/set_model', { sessionId, modelId }));
+      return true;
+    } catch (err) {
+      if (rejected(err)) return false;
+      throw err;
+    }
   }
 
   async initialize(clientCapabilities: AcpClientCapabilities): Promise<AcpAgentInfo> {

@@ -16,6 +16,8 @@ export interface FakeAcpScript {
   readonly turns: readonly FakeAcpTurn[];
   readonly history?: readonly unknown[];
   readonly failAt?: 'initialize' | 'newSession' | 'prompt';
+  /** which spelling of "set the model" the agent understands (default: config) */
+  readonly modelSupport?: 'config' | 'set_model' | 'none';
 }
 
 export type FakeAcpStep =
@@ -201,8 +203,16 @@ export function startFakeAcpAgent(
         return {};
       },
       setSessionConfigOption: async (params) => {
+        if ((script.modelSupport ?? 'config') !== 'config') throw RequestError.methodNotFound('session/set_config_option');
         record.setModels.push(params);
         return { configOptions: [] };
+      },
+      extMethod: async (method, params) => {
+        if (method !== 'session/set_model' || script.modelSupport !== 'set_model') {
+          throw RequestError.methodNotFound(method);
+        }
+        record.setModels.push(params);
+        return {};
       },
       prompt: async (params) => {
         record.prompts.push(params);
