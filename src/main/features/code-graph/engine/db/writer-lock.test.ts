@@ -155,48 +155,80 @@ describe('writer-lock', () => {
     expect(fs.readdirSync(dir)).toEqual([]);
   });
 
-  it('grants the lock to exactly one of several real processes', async () => {
-    const moduleUrl = pathToFileURL(
-      path.join(__dirname, 'writer-lock.ts'),
-    ).href;
-    const script = `
-      import(${JSON.stringify(moduleUrl)}).then((m) => {
-        const lock = m.acquireWriterLock(process.argv[1], 'sync');
-        process.stdout.write(lock ? 'LOCKED\\n' : 'BUSY\\n');
-        process.stdin.once('data', () => {
-          if (lock) lock.release();
-          process.exit(0);
-        });
+  const moduleUrl = pathToFileURL(path.join(__dirname, 'writer-lock.ts')).href;
+  const script = `
+    import(${JSON.stringify(moduleUrl)}).then((m) => {
+      const t0 = Number(process.argv[2]);
+      while (Date.now() < t0) {}
+      const lock = m.acquireWriterLock(process.argv[1], 'sync');
+      process.stdout.write(lock ? 'LOCKED\\n' : 'BUSY\\n');
+      process.stdin.once('data', () => {
+        if (lock) lock.release();
+        process.exit(0);
       });
-    `;
+    });
+  `;
+
+  async function race(raceDir: string): Promise<string[]> {
+    const t0 = Date.now() + 1500;
+    const children = Array.from({ length: 4 }, () => {
+      const child = spawn(
+        process.execPath,
+        ['--no-warnings', '-e', script, raceDir, String(t0)],
+        { stdio: ['pipe', 'pipe', 'inherit'] },
+      );
+      const result = new Promise<string>((resolve, reject) => {
+        let out = '';
+        child.stdout.on('data', (chunk: Buffer) => {
+          out += chunk.toString();
+          if (out.includes('\n')) resolve(out.trim());
+        });
+        child.on('error', reject);
+        child.on('exit', () => resolve(out.trim() || 'EXIT'));
+      });
+      const exited = new Promise<void>((resolve) =>
+        child.on('exit', () => resolve()),
+      );
+      return { child, result, exited };
+    });
+    const results = await Promise.all(children.map((c) => c.result));
+    for (const c of children) c.child.stdin.write('x');
+    await Promise.all(children.map((c) => c.exited));
+    return results;
+  }
+
+  function deadPid(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['-e', '0']);
+      child.on('error', reject);
+      child.on('exit', () => resolve(child.pid!));
+    });
+  }
+
+  it('grants the lock to exactly one of several simultaneous processes', async () => {
     for (let round = 0; round < 20; round++) {
       const raceDir = fs.mkdtempSync(path.join(dir, 'race-'));
-      const children = Array.from({ length: 4 }, () => {
-        const child = spawn(
-          process.execPath,
-          ['--no-warnings', '-e', script, raceDir],
-          { stdio: ['pipe', 'pipe', 'inherit'] },
-        );
-        const result = new Promise<string>((resolve, reject) => {
-          let out = '';
-          child.stdout.on('data', (chunk: Buffer) => {
-            out += chunk.toString();
-            if (out.includes('\n')) resolve(out.trim());
-          });
-          child.on('error', reject);
-          child.on('exit', () => resolve(out.trim() || 'EXIT'));
-        });
-        return { child, result };
-      });
-      const results = await Promise.all(children.map((c) => c.result));
+      const results = await race(raceDir);
       expect(results.filter((r) => r === 'LOCKED')).toHaveLength(1);
       expect(results.filter((r) => r === 'BUSY')).toHaveLength(3);
-      const exited = children.map(
-        (c) =>
-          new Promise<void>((resolve) => c.child.on('exit', () => resolve())),
+      expect(fs.readdirSync(raceDir)).toEqual([]);
+    }
+  }, 120_000);
+
+  it('grants a dead-pid lock to exactly one of several stealing processes', async () => {
+    for (let round = 0; round < 20; round++) {
+      const raceDir = fs.mkdtempSync(path.join(dir, 'steal-'));
+      fs.writeFileSync(
+        path.join(raceDir, 'writer.lock'),
+        JSON.stringify({
+          pid: await deadPid(),
+          owner: 'indexer',
+          since: Date.now(),
+        }),
       );
-      for (const c of children) c.child.stdin.write('x');
-      await Promise.all(exited);
+      const results = await race(raceDir);
+      expect(results.filter((r) => r === 'LOCKED')).toHaveLength(1);
+      expect(results.filter((r) => r === 'BUSY')).toHaveLength(3);
       expect(fs.readdirSync(raceDir)).toEqual([]);
     }
   }, 120_000);

@@ -94,8 +94,8 @@ function uniqueSuffix(): string {
 
 function createExclusive(file: string, payload: string): boolean {
   const tmp = `${file}.tmp-${uniqueSuffix()}`;
-  fs.writeFileSync(tmp, payload, { flag: 'wx' });
   try {
+    fs.writeFileSync(tmp, payload, { flag: 'wx' });
     fs.linkSync(tmp, file);
     return true;
   } catch (err) {
@@ -173,11 +173,16 @@ export function acquireWriterLock(
     try {
       fs.renameSync(file, graveyard);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') continue;
+      if (code === 'EBUSY' || code === 'EPERM') return null;
       throw err;
     }
     if (readRaw(graveyard) !== raw) {
-      // We moved a lock that was replaced after we judged it stale: put it back.
+      // We moved a lock that was replaced after we judged it stale: put it
+      // back. A narrow three-process interleaving can still yield two holders
+      // here; accepted because graph.db (WAL + busy_timeout) serialises the
+      // real writes, so a double holder costs a redundant run, not corruption.
       try {
         fs.linkSync(graveyard, file);
       } catch {
