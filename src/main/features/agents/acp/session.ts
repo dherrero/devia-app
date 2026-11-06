@@ -3,6 +3,9 @@ import type { McpServerConfig } from '../../../../shared/domain/mcp';
 import type { AgentAnswer, AgentSession, AgentSessionIo } from '../domain/agent-mapper';
 import type { AgentRunPlan } from '../domain/agent-run-plan';
 import { buildSystemPromptHeader } from '../shared/def-invocation';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { answerText } from '../shared/stream-session';
 import { AcpConnection, webStreamsFromChild, type AcpMcpServerSpec, type AcpPromptBlock } from './connection';
 import { createEventMapState, mapPromptUsage, mapSessionUpdate, mapStopReason } from './event-map';
@@ -11,6 +14,14 @@ import type { AcpAgentProfile } from './profile';
 
 type PermissionOutcome = { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' };
 
+const IMAGE_MIME: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+};
+const MODEL_UNSUPPORTED_STATUS = 'Model selection is not supported by the agent; using its default';
 const EXITED_MESSAGE = 'ACP session exited before completion';
 const DEFAULT_PERMISSION_TITLE = 'The agent asks permission for an action';
 
@@ -28,6 +39,22 @@ export interface AcpSessionOptions {
 }
 
 const DEFAULT_KILL_GRACE_MS = 500;
+
+interface ModeState {
+  readonly availableModes?: readonly { readonly id: string }[];
+}
+
+async function imageBlock(file: string, canEmbed: boolean): Promise<AcpPromptBlock> {
+  const absolute = path.resolve(file);
+  const link: AcpPromptBlock = { type: 'resource_link', uri: pathToFileURL(absolute).href, name: path.basename(absolute) };
+  const mimeType = IMAGE_MIME[path.extname(absolute).toLowerCase()];
+  if (!canEmbed || mimeType === undefined) return link;
+  try {
+    return { type: 'image', mimeType, data: (await readFile(absolute)).toString('base64') };
+  } catch {
+    return link;
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -155,14 +182,14 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
   const resumeOrCreate = async (
     capabilities: Readonly<Record<string, unknown>>,
     mcpServers: AcpMcpServerSpec[],
-  ): Promise<string> => {
+  ): Promise<{ sessionId: string; modes: ModeState | null | undefined }> => {
     const resumeId = plan.resumeSessionId;
     if (resumeId !== undefined && profile.continuity === 'native') {
       if (capabilities['loadSession'] === true) {
         replaying = true;
         try {
-          await connection.loadSession({ sessionId: resumeId, cwd: plan.cwd, mcpServers });
-          return resumeId;
+          const loaded = await connection.loadSession({ sessionId: resumeId, cwd: plan.cwd, mcpServers });
+          return { sessionId: resumeId, modes: loaded.modes };
         } catch {
           io.emit({ type: 'status', label: 'Previous session not found; starting a new one' });
         } finally {
@@ -172,7 +199,19 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
         io.emit({ type: 'status', label: 'The agent cannot resume sessions; conversation context is not carried over' });
       }
     }
-    return (await connection.newSession({ cwd: plan.cwd, mcpServers })).sessionId;
+    const created = await connection.newSession({ cwd: plan.cwd, mcpServers });
+    return { sessionId: created.sessionId, modes: created.modes };
+  };
+
+  const applyModeAndModel = async (id: string, modes: ModeState | null | undefined): Promise<void> => {
+    const modeId = profile.modeIds?.[plan.mode];
+    if (modeId !== undefined && modes?.availableModes?.some((m) => m.id === modeId)) {
+      await connection.setMode(id, modeId);
+    }
+    if (plan.model && plan.model !== 'default') {
+      const applied = await connection.setModel(id, plan.model).catch(() => false);
+      if (!applied) io.emit({ type: 'status', label: MODEL_UNSUPPORTED_STATUS });
+    }
   };
 
   const run = async (): Promise<void> => {
@@ -181,12 +220,17 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
       await connection.authenticate(profile.authMethodId);
     }
     const mcpServers = options.mcpServers.map(toAcpMcpServer);
-    const active = await resumeOrCreate(info.capabilities, mcpServers);
+    const { sessionId: active, modes } = await resumeOrCreate(info.capabilities, mcpServers);
     if (aborted) return;
     sessionId = active;
     io.emit({ type: 'session_started', agentSessionId: active });
+    await applyModeAndModel(active, modes);
+    const canEmbedImages = isRecord(info.capabilities['promptCapabilities'])
+      ? info.capabilities['promptCapabilities']['image'] === true
+      : false;
     const blocks: AcpPromptBlock[] = [
       { type: 'text', text: buildSystemPromptHeader(options.systemPrompt) + plan.prompt },
+      ...(await Promise.all(plan.imagePaths.map((file) => imageBlock(file, canEmbedImages)))),
     ];
     const response = await connection.prompt(active, blocks);
     const events: AgentEvent[] = [];

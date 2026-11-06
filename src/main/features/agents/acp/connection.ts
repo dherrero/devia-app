@@ -6,6 +6,7 @@ import {
   RequestError,
   ndJsonStream,
   type Client,
+  type LoadSessionResponse,
   type NewSessionResponse,
   type RequestPermissionResponse,
 } from './sdk';
@@ -126,8 +127,8 @@ export class AcpConnection {
     readonly sessionId: string;
     readonly cwd: string;
     readonly mcpServers: readonly AcpMcpServerSpec[];
-  }): Promise<void> {
-    await this.call(() =>
+  }): Promise<LoadSessionResponse> {
+    return this.call(() =>
       this.raw.loadSession({
         sessionId: params.sessionId,
         cwd: path.resolve(params.cwd),

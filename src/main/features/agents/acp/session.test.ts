@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import { profileFor } from './profile';
 import { openAcpSession, toAcpMcpServer, type AcpSessionOptions } from './session';
@@ -469,5 +472,115 @@ describe('openAcpSession — resume', () => {
     expect(child.record.loadSession).toBeUndefined();
     expect(child.record.newSession).toBeDefined();
     expect(child.events.filter((e) => e.type === 'status' && e.label !== 'streaming')).toEqual([]);
+  });
+});
+
+describe('openAcpSession — images, modes and model', () => {
+  const MODAL = { ...(KIMI as NonNullable<typeof KIMI>), modeIds: { plan: 'plan', apply: 'default' } };
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+  const dirs: string[] = [];
+  const tmp = (name: string, data: Buffer | string): string => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'acp-img-'));
+    dirs.push(dir);
+    const file = path.join(dir, name);
+    writeFileSync(file, data);
+    return file;
+  };
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+  const promptBlocks = (child: FakeChild): { type: string; [k: string]: unknown }[] =>
+    (child.record.prompts[0] as { prompt: { type: string }[] }).prompt;
+
+  it('sends an image block with base64 and mime when the agent supports images', async () => {
+    const file = tmp('shot.png', PNG);
+    const { child } = start(SIMPLE, { plan: makePlan({ imagePaths: [file] }) });
+    await waitFor(() => finished(child));
+    expect(promptBlocks(child)[1]).toMatchObject({ type: 'image', mimeType: 'image/png', data: PNG.toString('base64') });
+  });
+
+  it('maps each known extension to its mime type', async () => {
+    const files = ['a.jpg', 'b.jpeg', 'c.gif', 'd.webp'].map((n) => tmp(n, PNG));
+    const { child } = start(SIMPLE, { plan: makePlan({ imagePaths: files }) });
+    await waitFor(() => finished(child));
+    expect(promptBlocks(child).slice(1).map((b) => b['mimeType'])).toEqual([
+      'image/jpeg',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+    ]);
+  });
+
+  it('degrades to resource_link when the agent does not advertise image support', async () => {
+    const file = tmp('shot.png', PNG);
+    const { child } = start(
+      { ...SIMPLE, capabilities: { promptCapabilities: { image: false } } },
+      { plan: makePlan({ imagePaths: [file] }) },
+    );
+    await waitFor(() => finished(child));
+    expect(promptBlocks(child)[1]).toMatchObject({ type: 'resource_link', name: 'shot.png', uri: `file://${file}` });
+  });
+
+  it('degrades an unreadable or unknown-extension image to resource_link without throwing', async () => {
+    const odd = tmp('pic.bmp', PNG);
+    const missing = path.join(tmpdir(), 'acp-missing-dir', 'gone.png');
+    const { child } = start(SIMPLE, { plan: makePlan({ imagePaths: [odd, missing] }) });
+    await waitFor(() => finished(child));
+    expect(promptBlocks(child).slice(1)).toMatchObject([
+      { type: 'resource_link', name: 'pic.bmp' },
+      { type: 'resource_link', name: 'gone.png' },
+    ]);
+    expect(child.events.at(-1)).toMatchObject({ type: 'turn_end' });
+  });
+
+  it('image blocks come after the text block', async () => {
+    const file = tmp('shot.png', PNG);
+    const { child } = start(SIMPLE, { plan: makePlan({ imagePaths: [file] }) });
+    await waitFor(() => finished(child));
+    expect(promptBlocks(child).map((b) => b.type)).toEqual(['text', 'image']);
+  });
+
+  it('sets the agent mode mapped from the Devia mode when the agent offers it', async () => {
+    const { child } = start(
+      { ...SIMPLE, modes: [{ id: 'default' }, { id: 'plan' }] },
+      { profile: MODAL, plan: makePlan({ mode: 'plan' }) },
+    );
+    await waitFor(() => finished(child));
+    expect(child.record.setModes).toEqual([{ sessionId: 'fake-session-1', modeId: 'plan' }]);
+  });
+
+  it('does not set a mode the agent does not advertise', async () => {
+    const a = start({ ...SIMPLE, modes: [{ id: 'default' }] }, { profile: MODAL, plan: makePlan({ mode: 'plan' }) });
+    await waitFor(() => finished(a.child));
+    expect(a.child.record.setModes).toEqual([]);
+    const b = start(SIMPLE, { profile: MODAL, plan: makePlan({ mode: 'plan' }) });
+    await waitFor(() => finished(b.child));
+    expect(b.child.record.setModes).toEqual([]);
+    expect(errorsOf(b.child)).toEqual([]);
+  });
+
+  it('sets the requested model before prompting', async () => {
+    const { child } = start(SIMPLE, { plan: makePlan({ model: 'kimi-k2' }) });
+    await waitFor(() => finished(child));
+    expect(child.record.setModels[0]).toMatchObject({ configId: 'model', value: 'kimi-k2' });
+  });
+
+  it('continues with the default model and emits one status when setModel is unsupported', async () => {
+    const { child } = start({ ...SIMPLE, modelSupport: 'none' }, { plan: makePlan({ model: 'kimi-k2' }) });
+    await waitFor(() => finished(child));
+    const notes = child.events.filter(
+      (e) => e.type === 'status' && e.label === 'Model selection is not supported by the agent; using its default',
+    );
+    expect(notes).toHaveLength(1);
+    expect(child.events.at(-1)).toMatchObject({ type: 'turn_end', stopReason: 'completed' });
+  });
+
+  it('skips setModel for model default or null', async () => {
+    const a = start(SIMPLE, { plan: makePlan({ model: 'default' }) });
+    await waitFor(() => finished(a.child));
+    const b = start(SIMPLE, { plan: makePlan({ model: null }) });
+    await waitFor(() => finished(b.child));
+    expect(a.child.record.setModels).toEqual([]);
+    expect(b.child.record.setModels).toEqual([]);
   });
 });
