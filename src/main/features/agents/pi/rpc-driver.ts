@@ -32,7 +32,7 @@ import * as path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import type { Writable } from 'node:stream';
 import type { AgentEvent } from '../../../../shared/domain/agent-event';
-import { createJsonLineStream } from '../../cli-adapters/infrastructure/acp/acp-session';
+import { createJsonLineStream } from '../shared/json-lines';
 
 export interface PiExtensionUiRequest {
   id: string | number;
