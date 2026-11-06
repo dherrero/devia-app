@@ -89,7 +89,7 @@ describe('registry', () => {
     };
     registerExtractor(e);
     expect(extractorFor('go')).toBe(e);
-    expect(extractorFor('dart')).toBeUndefined();
+    expect(extractorFor('dart')?.language).toBe('dart');
   });
 });
 
