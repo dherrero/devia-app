@@ -38,6 +38,10 @@ export type FakeAcpStep =
       readonly title: string;
       readonly kind: string;
       readonly options?: readonly { optionId: string; name: string; kind: string }[];
+      /** emit the tool_call (pending) first, as real agents do */
+      readonly announce?: boolean;
+      /** wait this long before asking (the request lands after a cancel) */
+      readonly afterMs?: number;
     }
   | { readonly type: 'plan'; readonly entries: readonly { content: string; status: string }[] }
   | { readonly type: 'usage'; readonly inputTokens: number; readonly outputTokens: number }
@@ -144,6 +148,16 @@ export function startFakeAcpAgent(
         }
         case 'permission': {
           const options = step.options ?? DEFAULT_OPTIONS;
+          if (step.announce) {
+            await send(sessionId, {
+              sessionUpdate: 'tool_call',
+              toolCallId: step.toolId,
+              title: step.title,
+              kind: step.kind as ToolKind,
+              status: 'pending' as ToolCallStatus,
+            });
+          }
+          if (step.afterMs) await new Promise((resolve) => setTimeout(resolve, step.afterMs));
           const res = await conn.requestPermission({
             sessionId,
             toolCall: { toolCallId: step.toolId, title: step.title, kind: step.kind as ToolKind },

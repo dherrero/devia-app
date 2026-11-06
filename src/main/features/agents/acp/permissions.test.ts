@@ -12,7 +12,8 @@ const OPTIONS: AcpPermissionOption[] = [
   { optionId: 'a2', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'r1', name: 'Reject', kind: 'reject_once' },
 ];
-const SERVERS = ['devia-ui', 'devia-kanban', 'user-srv'];
+const SERVERS = ['devia-ui', 'devia-kanban', 'user-srv', 'devia-custom'];
+const DEVIA_SERVERS = ['devia-ui', 'devia-kanban'];
 
 function decide(
   kind: string | undefined,
@@ -26,6 +27,7 @@ function decide(
     mode,
     isRemote,
     serverIds: SERVERS,
+    deviaServerIds: DEVIA_SERVERS,
     profile: PROFILE,
   });
 }
@@ -58,6 +60,15 @@ describe('decidePermission', () => {
       kind: 'select',
       optionId: 'r1',
     });
+  });
+
+  it('plan does not trust a user server whose id merely starts with devia-', () => {
+    expect(decide('execute', 'plan', false, { title: 'mcp__devia-custom__run' })).toEqual({ kind: 'select', optionId: 'r1' });
+  });
+
+  it('plan does not trust an agent-chosen name that is not one of the Devia servers of the run', () => {
+    expect(decide('edit', 'plan', false, { title: 'devia-memory/notes' })).toEqual({ kind: 'select', optionId: 'r1' });
+    expect(decide('edit', 'plan', false, { title: 'devia-evil_write' })).toEqual({ kind: 'select', optionId: 'r1' });
   });
 
   it('plan asks for an unknown kind', () => {

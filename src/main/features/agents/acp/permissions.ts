@@ -14,7 +14,6 @@ export type PermissionDecision =
 
 const WRITE_KINDS: readonly string[] = ['edit', 'delete', 'move', 'execute'];
 const READ_KINDS: readonly string[] = ['read', 'search', 'think', 'fetch'];
-const DEVIA_TOOL_PREFIX = 'mcp__devia-';
 
 function firstOfKind(options: readonly AcpPermissionOption[], kinds: readonly string[]): AcpPermissionOption | null {
   for (const kind of kinds) {
@@ -43,11 +42,14 @@ export function decidePermission(input: {
   readonly mode: RunMode;
   readonly isRemote: boolean;
   readonly serverIds: readonly string[];
+  /** The Devia-owned servers of THIS run: an agent-chosen name alone never earns the plan-mode exemption. */
+  readonly deviaServerIds: readonly string[];
   readonly profile: AcpAgentProfile;
 }): PermissionDecision {
-  const { toolCall, options, mode, isRemote, serverIds, profile } = input;
+  const { toolCall, options, mode, isRemote, serverIds, deviaServerIds, profile } = input;
   const kind = toolCall.kind ?? '';
-  const isDeviaTool = profile.toolName(toolCall, serverIds).startsWith(DEVIA_TOOL_PREFIX);
+  const toolName = profile.toolName(toolCall, serverIds);
+  const isDeviaTool = deviaServerIds.some((id) => toolName.startsWith(`mcp__${id}__`));
 
   if (mode === 'plan' && WRITE_KINDS.includes(kind) && !isDeviaTool) {
     const reject = rejectOption(options);

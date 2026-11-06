@@ -24,6 +24,7 @@ async function waitFor(check: () => boolean, ms = 2000): Promise<void> {
   }
 }
 
+const idOf = (child: FakeChild, n = 0): string => child.uiRequests[n]?.callId ?? 'missing';
 const errorsOf = (child: FakeChild): AgentEvent[] => child.events.filter((e) => e.type === 'error');
 const finished = (child: FakeChild): boolean =>
   child.events.some((e) => e.type === 'turn_end' || e.type === 'error');
@@ -175,7 +176,7 @@ describe('openAcpSession — tools and permissions', () => {
     const { child, session } = start(permissionTurn(), { plan: makePlan({ mode: 'apply' }) });
     await waitFor(() => child.uiRequests.length === 1);
     expect(child.uiRequests[0]).toMatchObject({
-      callId: 't1',
+      callId: expect.stringContaining('t1'),
       kind: 'select',
       purpose: 'permission',
       title: 'Write file',
@@ -184,7 +185,7 @@ describe('openAcpSession — tools and permissions', () => {
         { id: 'reject', label: 'Reject' },
       ],
     });
-    expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(true);
+    expect(session.answer(idOf(child), { kind: 'select', value: 'Allow' })).toBe(true);
     await waitFor(() => finished(child));
     expect(outcomes(child)).toEqual([SELECTED_ALLOW]);
   });
@@ -192,7 +193,7 @@ describe('openAcpSession — tools and permissions', () => {
   it('answer() with an optionId resolves it too', async () => {
     const { child, session } = start(permissionTurn());
     await waitFor(() => child.uiRequests.length === 1);
-    session.answer('t1', { kind: 'text', text: 'reject' });
+    session.answer(idOf(child), { kind: 'text', text: 'reject' });
     await waitFor(() => finished(child));
     expect(outcomes(child)).toEqual([SELECTED_REJECT]);
   });
@@ -200,13 +201,13 @@ describe('openAcpSession — tools and permissions', () => {
   it('answer() with cancel or an unmatched answer denies', async () => {
     const a = start(permissionTurn());
     await waitFor(() => a.child.uiRequests.length === 1);
-    expect(a.session.answer('t1', { kind: 'cancel' })).toBe(true);
+    expect(a.session.answer(idOf(a.child), { kind: 'cancel' })).toBe(true);
     await waitFor(() => finished(a.child));
     expect(outcomes(a.child)).toEqual([CANCELLED]);
 
     const b = start(permissionTurn());
     await waitFor(() => b.child.uiRequests.length === 1);
-    b.session.answer('t1', { kind: 'text', text: 'sure, go ahead' });
+    b.session.answer(idOf(b.child), { kind: 'text', text: 'sure, go ahead' });
     await waitFor(() => finished(b.child));
     expect(outcomes(b.child)).toEqual([CANCELLED]);
   });
@@ -215,9 +216,9 @@ describe('openAcpSession — tools and permissions', () => {
     const { child, session } = start(permissionTurn());
     await waitFor(() => child.uiRequests.length === 1);
     expect(session.answer('nope', { kind: 'select', value: 'Allow' })).toBe(false);
-    session.answer('t1', { kind: 'cancel' });
+    session.answer(idOf(child), { kind: 'cancel' });
     await waitFor(() => finished(child));
-    expect(session.answer('t1', { kind: 'cancel' })).toBe(false);
+    expect(session.answer(idOf(child), { kind: 'cancel' })).toBe(false);
   });
 
   it('apply-yolo on desktop answers allow without a card', async () => {
@@ -231,7 +232,7 @@ describe('openAcpSession — tools and permissions', () => {
     const { child, session } = start(permissionTurn(), { plan: makePlan({ mode: 'apply-yolo', isRemote: true }) });
     await waitFor(() => child.uiRequests.length === 1);
     expect(outcomes(child)).toEqual([]);
-    session.answer('t1', { kind: 'select', value: 'Allow' });
+    session.answer(idOf(child), { kind: 'select', value: 'Allow' });
     await waitFor(() => finished(child));
     expect(outcomes(child)).toEqual([SELECTED_ALLOW]);
   });
@@ -249,7 +250,10 @@ describe('openAcpSession — tools and permissions', () => {
 
   it('plan allows a Devia MCP tool', async () => {
     const { child } = start(permissionTurn([], 'other', 'mcp__devia-kanban__kanban_list'), {
-      plan: makePlan({ mode: 'plan' }),
+      plan: makePlan({
+        mode: 'plan',
+        harness: { mcp: { devia: [mcpServer('devia-kanban')], user: [] }, skills: [], subagents: [], isolateExternalMcp: false },
+      }),
       mcpServers: [mcpServer('devia-kanban')],
     });
     await waitFor(() => finished(child));
@@ -288,12 +292,54 @@ describe('openAcpSession — tools and permissions', () => {
     expect(outcomes(child)).toEqual([CANCELLED]);
   });
 
+  it('uses a call id that cannot collide with the tool_use id the core already saw', async () => {
+    const { child, session } = start({
+      turns: [{ steps: [{ type: 'permission', toolId: 't1', title: 'Write file', kind: 'edit', announce: true }] }],
+    });
+    await waitFor(() => child.uiRequests.length === 1);
+    const callId = child.uiRequests[0]?.callId ?? '';
+    const toolUse = child.events.find((e) => e.type === 'tool_use');
+    expect(toolUse).toMatchObject({ id: 't1' });
+    expect(callId).not.toBe('t1');
+    expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(false);
+    expect(session.answer(callId, { kind: 'select', value: 'Allow' })).toBe(true);
+    await waitFor(() => finished(child));
+    expect(outcomes(child)).toEqual([SELECTED_ALLOW]);
+  });
+
+  it('keeps two permissions for the same tool call apart', async () => {
+    const { child, session } = start({
+      turns: [{ steps: [
+        { type: 'permission', toolId: 't1', title: 'Write a', kind: 'edit' },
+        { type: 'permission', toolId: 't1', title: 'Write b', kind: 'edit' },
+      ] }],
+    });
+    await waitFor(() => child.uiRequests.length === 1);
+    session.answer(child.uiRequests[0]?.callId ?? '', { kind: 'select', value: 'Allow' });
+    await waitFor(() => child.uiRequests.length === 2);
+    expect(child.uiRequests[1]?.callId).not.toBe(child.uiRequests[0]?.callId);
+    session.answer(child.uiRequests[1]?.callId ?? '', { kind: 'select', value: 'Reject' });
+    await waitFor(() => finished(child));
+    expect(outcomes(child)).toEqual([SELECTED_ALLOW, SELECTED_REJECT]);
+  });
+
+  it('draws no card for a permission request that arrives after the run was aborted', async () => {
+    const { child, session } = start(
+      { turns: [{ steps: [{ type: 'text', text: 'x' }, { type: 'permission', toolId: 't1', title: 'Write', kind: 'edit', afterMs: 80 }] }] },
+      { plan: makePlan({ mode: 'apply' }) },
+    );
+    await waitFor(() => child.events.some((e) => e.type === 'text_delta'));
+    session.abort();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(child.uiRequests).toEqual([]);
+  });
+
   it('forgets pending permissions when the child closes', async () => {
     const { child, session } = start(permissionTurn());
     await waitFor(() => child.uiRequests.length === 1);
     child.exit(1);
     await waitFor(() => finished(child));
-    expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(false);
+    expect(session.answer(idOf(child), { kind: 'select', value: 'Allow' })).toBe(false);
   });
 });
 
@@ -386,7 +432,7 @@ describe('openAcpSession — cancellation, errors and shutdown', () => {
     session.abort();
     await waitFor(() => finished(child));
     expect(child.record.permissionAnswers).toEqual([{ outcome: { outcome: 'cancelled' } }]);
-    expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(false);
+    expect(session.answer(idOf(child), { kind: 'select', value: 'Allow' })).toBe(false);
   });
 
   it('flush() after close is a safe no-op', async () => {

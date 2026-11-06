@@ -87,6 +87,8 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
   const now = options.now ?? Date.now;
   const killGraceMs = options.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
   const serverIds = options.mcpServers.map((s) => s.id);
+  const deviaServerIds = plan.harness.mcp.devia.map((s) => s.id);
+  let permissionSeq = 0;
   const state = createEventMapState(now());
   const pending = new Map<string, { resolve: (outcome: PermissionOutcome) => void; options: AcpPermissionOption[] }>();
   let finished = false;
@@ -128,7 +130,9 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
       for (const event of mapSessionUpdate(update, state, { profile, serverIds }, now())) io.emit(event);
     },
     onRequestPermission: (request) =>
-      finished ? Promise.resolve({ outcome: 'cancelled' }) : requestPermission(request.toolCall, parseOptions(request.options)),
+      finished || aborted
+        ? Promise.resolve({ outcome: 'cancelled' })
+        : requestPermission(request.toolCall, parseOptions(request.options)),
   });
 
   function requestPermission(rawToolCall: unknown, options: AcpPermissionOption[]): Promise<PermissionOutcome> {
@@ -146,12 +150,14 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
       mode: plan.mode,
       isRemote: plan.isRemote,
       serverIds,
+      deviaServerIds,
       profile,
     });
     if (decision.kind === 'select') return Promise.resolve({ outcome: 'selected', optionId: decision.optionId });
     if (decision.kind === 'cancel') return Promise.resolve({ outcome: 'cancelled' });
 
-    const callId = toolCall.toolCallId;
+    // Not the toolCallId: the core already saw it as a tool_use and would swallow a card keyed by it.
+    const callId = `acp-permission:${toolCall.toolCallId}:${++permissionSeq}`;
     return new Promise<PermissionOutcome>((resolve) => {
       pending.set(callId, { resolve, options });
       const drawn = io.requestUi({

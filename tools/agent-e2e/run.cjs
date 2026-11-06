@@ -64,7 +64,7 @@ const FAKE_SCRIPTS = {
     modes: [{ id: 'default' }, { id: 'plan' }],
     turns: [{ steps: [
       { type: 'tool', id: 'todo', title: 'devia-ui_devia_todo', kind: 'other', output: 'ok' },
-      { type: 'permission', toolId: 'w1', title: 'Write notes.txt', kind: 'edit' },
+      { type: 'permission', toolId: 'w1', title: 'Write notes.txt', kind: 'edit', announce: true },
       { type: 'tool', id: 'w1', title: 'Write notes.txt', kind: 'edit', output: 'written' },
       { type: 'tool', id: 'mem', title: 'devia-memory_mem_save', kind: 'other', output: 'saved' },
       { type: 'tool', id: 'spec', title: 'devia-kanban_kanban_create_spec', kind: 'other', output: 'S-1' },
