@@ -141,3 +141,154 @@ describe('toAcpMcpServer', () => {
     expect(toAcpMcpServer(mcpServer('b')).env).toEqual([]);
   });
 });
+
+describe('openAcpSession — tools and permissions', () => {
+  const permissionTurn = (extra: FakeAcpScript['turns'][number]['steps'] = [], kind = 'edit', title = 'Write file'): FakeAcpScript => ({
+    turns: [{ steps: [{ type: 'permission', toolId: 't1', title, kind }, ...extra] }],
+  });
+  const outcomes = (child: FakeChild): unknown[] => child.record.permissionAnswers;
+  const SELECTED_ALLOW = { outcome: { outcome: 'selected', optionId: 'allow' } };
+  const SELECTED_REJECT = { outcome: { outcome: 'selected', optionId: 'reject' } };
+  const CANCELLED = { outcome: { outcome: 'cancelled' } };
+
+  it('emits tool_use and tool_result for a tool turn', async () => {
+    const { child } = start({ turns: [{ steps: [{ type: 'tool', id: 't1', title: 'Read file', kind: 'read', output: 'ok' }] }] });
+    await waitFor(() => finished(child));
+    expect(child.events).toContainEqual({ type: 'tool_use', id: 't1', name: 'Read file', input: { title: 'Read file' } });
+    expect(child.events).toContainEqual({ type: 'tool_result', toolUseId: 't1', content: 'ok', isError: false });
+  });
+
+  it('names an MCP tool mcp__<server>__<tool>', async () => {
+    const { child } = start(
+      { turns: [{ steps: [{ type: 'tool', id: 't1', title: 'devia-kanban_kanban_list', kind: 'other' }] }] },
+      { mcpServers: [mcpServer('devia-kanban')] },
+    );
+    await waitFor(() => finished(child));
+    expect(child.events).toContainEqual(expect.objectContaining({ type: 'tool_use', name: 'mcp__devia-kanban__kanban_list' }));
+  });
+
+  it("apply asks: surfaces a card with purpose permission and the agent's options", async () => {
+    const { child, session } = start(permissionTurn(), { plan: makePlan({ mode: 'apply' }) });
+    await waitFor(() => child.uiRequests.length === 1);
+    expect(child.uiRequests[0]).toMatchObject({
+      callId: 't1',
+      kind: 'select',
+      purpose: 'permission',
+      title: 'Write file',
+      options: [
+        { id: 'allow', label: 'Allow' },
+        { id: 'reject', label: 'Reject' },
+      ],
+    });
+    expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(true);
+    await waitFor(() => finished(child));
+    expect(outcomes(child)).toEqual([SELECTED_ALLOW]);
+  });
+
+  it('answer() with an optionId resolves it too', async () => {
+    const { child, session } = start(permissionTurn());
+    await waitFor(() => child.uiRequests.length === 1);
+    session.answer('t1', { kind: 'text', text: 'reject' });
+    await waitFor(() => finished(child));
+    expect(outcomes(child)).toEqual([SELECTED_REJECT]);
+  });
+
+  it('answer() with cancel or an unmatched answer denies', async () => {
+    const a = start(permissionTurn());
+    await waitFor(() => a.child.uiRequests.length === 1);
+    expect(a.session.answer('t1', { kind: 'cancel' })).toBe(true);
+    await waitFor(() => finished(a.child));
+    expect(outcomes(a.child)).toEqual([CANCELLED]);
+
+    const b = start(permissionTurn());
+    await waitFor(() => b.child.uiRequests.length === 1);
+    b.session.answer('t1', { kind: 'text', text: 'sure, go ahead' });
+    await waitFor(() => finished(b.child));
+    expect(outcomes(b.child)).toEqual([CANCELLED]);
+  });
+
+  it('answer() for an unknown call id returns false', async () => {
+    const { child, session } = start(permissionTurn());
+    await waitFor(() => child.uiRequests.length === 1);
+    expect(session.answer('nope', { kind: 'select', value: 'Allow' })).toBe(false);
+    session.answer('t1', { kind: 'cancel' });
+    await waitFor(() => finished(child));
+    expect(session.answer('t1', { kind: 'cancel' })).toBe(false);
+  });
+
+  it('apply-yolo on desktop answers allow without a card', async () => {
+    const { child } = start(permissionTurn(), { plan: makePlan({ mode: 'apply-yolo' }) });
+    await waitFor(() => finished(child));
+    expect(child.uiRequests).toEqual([]);
+    expect(outcomes(child)).toEqual([SELECTED_ALLOW]);
+  });
+
+  it('apply-yolo on a REMOTE run still asks', async () => {
+    const { child, session } = start(permissionTurn(), { plan: makePlan({ mode: 'apply-yolo', isRemote: true }) });
+    await waitFor(() => child.uiRequests.length === 1);
+    expect(outcomes(child)).toEqual([]);
+    session.answer('t1', { kind: 'select', value: 'Allow' });
+    await waitFor(() => finished(child));
+    expect(outcomes(child)).toEqual([SELECTED_ALLOW]);
+  });
+
+  it('plan rejects an edit permission without a card and the tool ends failed', async () => {
+    const { child } = start(
+      permissionTurn([{ type: 'tool', id: 't1', title: 'Write file', kind: 'edit' }]),
+      { plan: makePlan({ mode: 'plan' }) },
+    );
+    await waitFor(() => finished(child));
+    expect(child.uiRequests).toEqual([]);
+    expect(outcomes(child)).toEqual([SELECTED_REJECT]);
+    expect(child.events).toContainEqual({ type: 'tool_result', toolUseId: 't1', content: '', isError: true });
+  });
+
+  it('plan allows a Devia MCP tool', async () => {
+    const { child } = start(permissionTurn([], 'other', 'mcp__devia-kanban__kanban_list'), {
+      plan: makePlan({ mode: 'plan' }),
+      mcpServers: [mcpServer('devia-kanban')],
+    });
+    await waitFor(() => finished(child));
+    expect(child.uiRequests).toEqual([]);
+    expect(outcomes(child)).toEqual([SELECTED_ALLOW]);
+  });
+
+  it.each([
+    ['apply', false],
+    ['apply-yolo', true],
+  ] as const)('when requestUi returns false the permission is denied, never approved (%s, remote=%s)', async (mode, isRemote) => {
+    const { child } = start(permissionTurn(), { plan: makePlan({ mode, isRemote }) }, { uiAvailable: false });
+    await waitFor(() => finished(child));
+    expect(child.uiRequests).toHaveLength(1);
+    expect(outcomes(child)).toEqual([SELECTED_REJECT]);
+  });
+
+  it('denies with cancelled when no reject option exists and nobody can draw the card', async () => {
+    const script: FakeAcpScript = {
+      turns: [
+        {
+          steps: [
+            {
+              type: 'permission',
+              toolId: 't1',
+              title: 'Write',
+              kind: 'edit',
+              options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+            },
+          ],
+        },
+      ],
+    };
+    const { child } = start(script, {}, { uiAvailable: false });
+    await waitFor(() => finished(child));
+    expect(outcomes(child)).toEqual([CANCELLED]);
+  });
+
+  it('forgets pending permissions when the child closes', async () => {
+    const { child, session } = start(permissionTurn());
+    await waitFor(() => child.uiRequests.length === 1);
+    child.exit(1);
+    await waitFor(() => finished(child));
+    expect(session.answer('t1', { kind: 'select', value: 'Allow' })).toBe(false);
+  });
+});
