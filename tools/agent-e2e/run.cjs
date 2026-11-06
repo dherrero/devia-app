@@ -4,7 +4,7 @@
  * Agent E2E harness (S-30 T-344). Drives REAL CLI agents through Devia's real
  * run pipeline and compares what happened against committed snapshots.
  *
- *   node tools/agent-e2e/run.cjs <claude|pi|opencode|all> [--update] [--record]
+ *   node tools/agent-e2e/run.cjs <claude|pi|opencode|acp-fake|all> [--update] [--record]
  *
  *   --update  rewrite snapshots/<agent>-<scenario>.json from this run
  *   --record  copy each run's raw stdout into
@@ -26,7 +26,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { buildHeadlessRun } = require('./headless.cjs');
+const { buildHeadlessRun, buildFakeAcpAgent } = require('./headless.cjs');
 const { SCENARIOS, ANSWER, HARNESS_TOKENS } = require('./scenarios.cjs');
 
 const APP_ROOT = path.resolve(__dirname, '../..');
@@ -49,7 +49,61 @@ const AGENTS = {
   // developer's real file.
   codex: {},
   gemini: {},
+  // S-41: real ACP agents through the AcpMapper (need the CLI installed and
+  // authenticated; the first run writes the snapshots, `--update` accepts a new one).
+  kimi: {},
+  hermes: {},
+  // S-41: a scripted ACP agent (free, deterministic) that exercises the AcpMapper
+  // through the real pipeline. Only for this harness, never in the catalog.
+  'acp-fake': { fake: true, answer: 'Allow' },
 };
+
+/** What the fake ACP agent does in each scenario (a FakeAcpScript, see agents/acp/testing). */
+const FAKE_SCRIPTS = {
+  apply: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    turns: [{ steps: [
+      { type: 'tool', id: 'todo', title: 'devia-ui_devia_todo', kind: 'other', output: 'ok' },
+      { type: 'permission', toolId: 'w1', title: 'Write notes.txt', kind: 'edit', announce: true },
+      { type: 'tool', id: 'w1', title: 'Write notes.txt', kind: 'edit', output: 'written' },
+      { type: 'tool', id: 'mem', title: 'devia-memory_mem_save', kind: 'other', output: 'saved' },
+      { type: 'tool', id: 'spec', title: 'devia-kanban_kanban_create_spec', kind: 'other', output: 'S-1' },
+      { type: 'text', text: 'Done: todo, permission, memory and spec.' },
+    ] }],
+  },
+  resume: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    history: [
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'earlier question' } },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'earlier answer' } },
+    ],
+    turns: [{ steps: [{ type: 'text', text: 'Verde' }] }],
+  },
+  plan: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    turns: [{ steps: [
+      { type: 'permission', toolId: 'w1', title: 'Write notas.txt', kind: 'edit' },
+      { type: 'tool', id: 'w1', title: 'Write notas.txt', kind: 'edit' },
+      { type: 'tool', id: 'list', title: 'devia-kanban_kanban_list_specs', kind: 'other', output: '[]' },
+      { type: 'text', text: 'I could not create the file; there are no specs.' },
+    ] }],
+  },
+  harness: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    turns: [{ steps: [
+      { type: 'tool', id: 'echo', title: 'e2e-echo_echo_token', kind: 'other', output: 'ECHO-7Q4Z' },
+      { type: 'text', text: 'ECHO-7Q4Z\nSKILL-3K9P\nROLE-8M2X' },
+    ] }],
+  },
+};
+
+/** An executable that runs the scripted ACP agent, so the launcher spawns a real child. */
+function writeFakeAcpLauncher(root) {
+  const cli = path.join(APP_ROOT, 'src/main/features/agents/acp/testing/fake-acp-agent.cli.cjs');
+  const bin = path.join(root, 'acp-fake');
+  fs.writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${cli}" "$@"\n`, { mode: 0o755 });
+  return bin;
+}
 
 // ── spawn interception ─────────────────────────────────────────────────────
 
@@ -74,7 +128,7 @@ childProcess.spawn = function patchedSpawn(command, args, options) {
     if (child.stdin) {
       const write = child.stdin.write.bind(child.stdin);
       child.stdin.write = (chunk, ...rest) => {
-        entry.stdin.push(String(chunk));
+        entry.stdin.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
         return write(chunk, ...rest);
       };
     }
@@ -111,6 +165,7 @@ function normalizer(ctx) {
     // Only a tmp root at the START of a path: `<DEVIA>/tmp/...` keeps its `/tmp`.
     for (const t of tmpRoots) out = out.replace(new RegExp(`(^|[\\s"'=:])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), '$1<TMP>');
     out = out.split(os.homedir()).join('~');
+    out = out.replace(/<DEVIA>\/kits\/devia-method\/v[^/\s"']+/g, '<DEVIA>/kits/devia-method/<VERSION>');
     out = out.replace(UUID, '<UUID>');
     out = out.replace(/\bses_[A-Za-z0-9]+/g, '<SESSION>');
     out = out.replace(/<TMP>\/devia-system-prompt-[^\s"]+/g, '<TMP>/devia-system-prompt-<RUN>.md');
@@ -142,6 +197,9 @@ function deliveredServers(spawn) {
       if (m) Object.keys(JSON.parse(m[1])).forEach((k) => ids.add(k));
     }
   }
+  for (const req of jsonRpcRequests(spawn)) {
+    if (req.method === 'session/new' || req.method === 'session/load') (req.params?.mcpServers ?? []).forEach((s) => ids.add(s.name));
+  }
   return [...ids].sort();
 }
 
@@ -151,18 +209,41 @@ function systemPromptChannel(spawn) {
     const v = spawn.args[i + 1] || '';
     return spawn.files[v] !== undefined ? 'argv-file' : 'argv';
   }
-  const stdin = spawn.stdin.join('');
+  const stdin = acpPromptText(spawn) ?? spawn.stdin.join('');
   if (stdin.includes('[System]')) return 'stdin-prepend';
   return 'none';
 }
 
-function systemPromptText(spawn) {
+/**
+ * S-40: Devia's per-turn context block, when the CLI got one as the first content
+ * block of its stream-json user message. Empty otherwise.
+ */
+function turnContextBlock(spawn) {
+  for (const line of spawn.stdin.join('').split('\n')) {
+    try {
+      const content = JSON.parse(line)?.message?.content;
+      if (!Array.isArray(content)) continue;
+      const block = content.map((b) => b?.text).find((t) => typeof t === 'string' && t.startsWith('<devia-turn-context'));
+      if (block) return block;
+    } catch { /* not a JSON line */ }
+  }
+  return '';
+}
+
+/**
+ * What the model is told as its system prompt. For a CLI that keeps its first
+ * turn's prompt (Claude, S-40) the per-turn block is part of it, so the facts the
+ * snapshots pin do not depend on which channel carries each sentence.
+ */
+function systemPromptText(spawn, withBlock = true) {
   const i = spawn.args.indexOf('--append-system-prompt');
   if (i >= 0) {
     const v = spawn.args[i + 1] || '';
-    return spawn.files[v] ?? v;
+    const text = spawn.files[v] ?? v;
+    const block = withBlock ? turnContextBlock(spawn) : '';
+    return block ? `${text}\n\n${block}` : text;
   }
-  const stdin = spawn.stdin.join('');
+  const stdin = acpPromptText(spawn) ?? spawn.stdin.join('');
   const m = /\[System\]\n([\s\S]*?)\n\n\[User\]/.exec(stdin);
   return m ? m[1] : '';
 }
@@ -191,11 +272,50 @@ function uiServerFacts(spawn) {
   return null;
 }
 
+/** The JSON-RPC requests the client wrote to an ACP child (S-41), in order. */
+function jsonRpcRequests(spawn) {
+  const out = [];
+  for (const line of spawn.stdin.join('').split('\n')) {
+    try {
+      const msg = JSON.parse(line);
+      if (msg && msg.jsonrpc === '2.0' && typeof msg.method === 'string') out.push(msg);
+    } catch { /* not a JSON line */ }
+  }
+  return out;
+}
+
+/** The text of the first session/prompt block, when this spawn is an ACP session. */
+function acpPromptText(spawn) {
+  const prompt = jsonRpcRequests(spawn).find((m) => m.method === 'session/prompt');
+  const block = prompt?.params?.prompt?.find((b) => b.type === 'text');
+  return typeof block?.text === 'string' ? block.text : null;
+}
+
+/** What reached an ACP agent through its protocol: facts only an AcpMapper run has. */
+function acpFacts(spawn, norm) {
+  const requests = jsonRpcRequests(spawn);
+  if (requests.length === 0) return null;
+  const session = requests.find((m) => m.method === 'session/new' || m.method === 'session/load');
+  const init = requests.find((m) => m.method === 'initialize');
+  return {
+    methods: requests.map((m) => m.method).filter((m, i, all) => all.indexOf(m) === i),
+    loadedSession: requests.some((m) => m.method === 'session/load'),
+    mcpServers: (session?.params?.mcpServers ?? []).map((s) => s.name).sort(),
+    mode: requests.filter((m) => m.method === 'session/set_mode').map((m) => m.params.modeId),
+    clientCapabilities: init?.params?.clientCapabilities ?? null,
+    cwd: norm(session?.params?.cwd ?? ''),
+    systemPromptSeen: /^\[System\]/.test(acpPromptText(spawn) ?? ''),
+  };
+}
+
 function stdinShape(spawn) {
   const raw = spawn.stdin.join('');
   if (!raw) return { format: 'none' };
   const lines = raw.split('\n').filter((l) => l.trim());
   const json = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } });
+  if (json.every((j) => j && j.jsonrpc === '2.0')) {
+    return { format: 'jsonrpc', methods: [...new Set(json.map((j) => j.method).filter((m) => typeof m === 'string'))] };
+  }
   if (json.every((j) => j && typeof j === 'object')) {
     return { format: 'jsonl', types: [...new Set(json.map((j) => j.type))].sort() };
   }
@@ -203,11 +323,25 @@ function stdinShape(spawn) {
 }
 
 /** Facts about the system prompt that must survive any refactor. */
-function systemPromptFacts(text) {
+function systemPromptFacts(text, kit = false, turn = null) {
   return {
     announcesUiTools: /devia_ask_user/.test(text),
     announcesMemory: /mem_save|mem_search/.test(text),
     mentionsKanban: /kanban/i.test(text),
+    // Only in the kit scenario, so the baselines of the others stay untouched.
+    ...(kit && {
+      kitPrompt: /## Devia Method/.test(text),
+      kitIndex: /## Skills/.test(text) && /`brainstorming`/.test(text),
+    }),
+    // Only in the origin scenarios (S-40): which channel the block declared, and
+    // whether the argv prompt still carries a stale Telegram claim.
+    ...(turn && {
+      turnContext: {
+        delivered: turn.block !== '',
+        channel: /- Channel: Telegram/.test(turn.block) ? 'telegram' : /- Channel: Devia desktop app/.test(turn.block) ? 'desktop' : null,
+        staleRemoteInArgvPrompt: /Remote session — Telegram/.test(turn.argvText),
+      },
+    }),
   };
 }
 
@@ -232,6 +366,7 @@ function runScenario(ctx, scenario) {
       done({ code: null, error: 'harness timeout' });
     }, RUN_TIMEOUT_MS);
 
+    const fallback = ctx.answer ?? ANSWER;
     const answer = (callId, content) =>
       setTimeout(() => ctx.registry.writeToolResult(ctx.project, callId, content), 150);
 
@@ -240,13 +375,24 @@ function runScenario(ctx, scenario) {
       onClaudeOutput: (line) => { try { events.push(JSON.parse(line)); } catch { /* raw */ } },
       onProcessEnd: (p) => done({ code: p.code, error: p.error }),
       onOutboxFile: () => {},
-      onQuestionAsk: (toolUseId) => { ui.push('ask_user'); answer(toolUseId, ANSWER); },
+      onQuestionAsk: (toolUseId) => { ui.push('ask_user'); answer(toolUseId, scenario.answer ?? fallback); },
       onUiToolRequest: (callId, tool, _input, _runId, expectsAnswer) => {
         ui.push(tool);
-        if (expectsAnswer) answer(callId, tool === 'confirm' ? 'yes' : ANSWER);
+        if (expectsAnswer) answer(callId, tool === 'confirm' ? 'yes' : (scenario.answer ?? fallback));
       },
-    }, scenario.mode);
+    }, scenario.mode, [], scenario.origin ?? 'renderer');
   });
+}
+
+/** The JSON the `origin-*` scenarios ask for: what the model says its channel is (S-40). */
+function originAnswer(text) {
+  const m = /\{[^{}]*\}/.exec(text);
+  try {
+    const parsed = m ? JSON.parse(m[0]) : {};
+    return { saidChannel: parsed.channel ?? null, saidCards: parsed.cards ?? null };
+  } catch {
+    return { saidChannel: null, saidCards: null };
+  }
 }
 
 function buildSnapshot(ctx, agent, scenario, result) {
@@ -262,8 +408,16 @@ function buildSnapshot(ctx, agent, scenario, result) {
         argv: normalizeArgv(spawn.args, norm),
         stdin: stdinShape(spawn),
         mcpServers: deliveredServers(spawn),
-        systemPrompt: { channel: systemPromptChannel(spawn), ...systemPromptFacts(systemPromptText(spawn)) },
+        systemPrompt: {
+          channel: systemPromptChannel(spawn),
+          ...systemPromptFacts(
+            systemPromptText(spawn),
+            scenario.kit === true,
+            scenario.origin !== undefined ? { block: turnContextBlock(spawn), argvText: systemPromptText(spawn, false) } : null,
+          ),
+        },
         uiServer: uiServerFacts(spawn),
+        ...(acpFacts(spawn, norm) && { acp: acpFacts(spawn, norm) }),
         ...(Object.keys(spawn.configEnv).length > 0 && { configEnv: spawn.configEnv }),
       }
     : { spawned: false };
@@ -274,12 +428,33 @@ function buildSnapshot(ctx, agent, scenario, result) {
     deviaTools,
     uiCards: [...new Set(result.ui)].sort(),
     ...(scenario.id === 'resume' && { recalled: finalText.includes(ANSWER) }),
+    ...(scenario.origin !== undefined && originAnswer(finalText)),
     ...(scenario.id === 'plan' && { wroteFile: fs.existsSync(path.join(ctx.projectDir, 'notas.txt')) }),
+    ...(scenario.kit && kitBehaviour(ctx, result, finalText)),
     ...(scenario.harness && {
       quoted: Object.fromEntries(Object.entries(HARNESS_TOKENS).map(([k, token]) => [k, finalText.includes(token)])),
     }),
   };
   return { agent, scenario: scenario.id, wiring, behaviour };
+}
+
+/**
+ * S-38: did the method kick in before anything was built? `loadedSkill` looks
+ * for the brainstorming skill being loaded by any route (Claude's Skill tool,
+ * `devia_skill`, or a plain read of its SKILL.md); `wroteCode` is whether the
+ * project holds anything but the git repo.
+ */
+function kitBehaviour(ctx, result, finalText) {
+  const uses = result.events.filter((e) => e.type === 'tool_use');
+  const loadedSkill = uses.some((e) => /brainstorming/.test(JSON.stringify(e.input ?? e.arguments ?? e.args ?? e)));
+  const entries = fs.readdirSync(ctx.projectDir).filter((n) => !['.git', '.gitignore', '.claude', '.devia', '.mcp.json', '.pi', '.codex', '.gemini', 'opencode.json'].includes(n));
+  return {
+    loadedSkill,
+    askedBeforeBuilding: result.ui.includes('ask_user') || /\?/.test(finalText),
+    wroteCode: entries.length > 0,
+    ...(process.env.E2E_DEBUG && { debug: { entries, tools: uses.map((e) => e.name), text: finalText.slice(0, 700) } }),
+    usedKanban: uses.some((e) => /kanban_create_(spec|task)/.test(e.name)),
+  };
 }
 
 /**
@@ -361,15 +536,23 @@ async function runAgent(agent, flags) {
   fs.mkdirSync(projectDir);
   childProcess.execSync('git init -q', { cwd: projectDir });
   const deviaDir = path.join(workspaceRoot, '.devia-app');
-  const { useCase, registry, sessions, userServers } = buildHeadlessRun({ agentId: agent, workspaceRoot, deviaDir, ...AGENTS[agent] });
-  const ctx = { useCase, registry, userServers, project: 'proj', projectDir, workspaceRoot, deviaDir };
+  const fakeAcp = AGENTS[agent].fake ? buildFakeAcpAgent(writeFakeAcpLauncher(workspaceRoot)) : undefined;
+  const { useCase, registry, sessions, userServers, setKit } = buildHeadlessRun({
+    agentId: agent, workspaceRoot, deviaDir, ...(AGENTS[agent].model && { model: AGENTS[agent].model }), ...(fakeAcp && { fakeAcp }),
+  });
+  const ctx = { useCase, registry, userServers, setKit, project: 'proj', projectDir, workspaceRoot, deviaDir, answer: AGENTS[agent].answer };
   let failures = 0;
-  const scenarios = flags.scenario ? SCENARIOS.filter((s) => s.id === flags.scenario) : SCENARIOS;
+  const scenarios = (flags.scenario ? SCENARIOS.filter((s) => s.id === flags.scenario) : SCENARIOS)
+    .filter((s) => !s.claudeOnly || agent === 'claude')
+    .filter((s) => !fakeAcp || FAKE_SCRIPTS[s.id] !== undefined);
   for (const scenario of scenarios) {
     process.stdout.write(`▶ ${agent}/${scenario.id} … `);
     if (scenario.harness) setUpHarness(ctx);
+    if (scenario.kit) ctx.setKit(true);
+    if (fakeAcp) fakeAcp.def.env = { FAKE_ACP_SCRIPT: JSON.stringify(FAKE_SCRIPTS[scenario.id]) };
     const result = await runScenario(ctx, scenario);
     if (scenario.harness) ctx.userServers.set([]);
+    if (scenario.kit) ctx.setKit(false);
     persistTranscript(ctx, sessions, scenario, result);
     const snap = buildSnapshot(ctx, agent, scenario, result);
     const file = path.join(SNAP_DIR, `${agent}-${scenario.id}.json`);

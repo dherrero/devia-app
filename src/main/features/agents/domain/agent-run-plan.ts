@@ -36,6 +36,12 @@ export interface AgentRunPlan {
   /** Telegram / remote origin: no interactive UI beyond the remote-safe tools. */
   readonly isRemote: boolean;
   readonly harness: HarnessPlan;
+  /**
+   * Per-turn context block the mapper must deliver inside the user turn (S-40).
+   * Present only for mappers with `freezesSystemPrompt`, and only when it must
+   * travel this turn (first turn, changed, or after a compaction).
+   */
+  readonly turnContext?: string;
   /** Devia's interface-card rendezvous for this run (S-25), agent-agnostic. */
   readonly ui: {
     /** Per-run directory the `devia-ui` server and the core meet in. */
@@ -60,6 +66,10 @@ export interface HarnessPlan {
   };
   readonly skills: readonly SkillRef[];
   readonly subagents: readonly SubagentRef[];
+  /** The starter kit riding with this run (S-38); `dir` is a complete, read-only plugin root. */
+  readonly kit?: { readonly id: string; readonly dir: string };
+  /** Absolute dirs outside `cwd` the agent must reach to use the harness (e.g. a starter kit's scripts). */
+  readonly readDirs?: readonly string[];
   /** Load ONLY Devia's MCP servers (S-1 T-15) where the CLI can enforce it. */
   readonly isolateExternalMcp: boolean;
 }

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { MAX_SKILL_BYTES, listSkills, loadSkill, makeSkillResolver } from './skill-reader';
+import { MAX_SKILL_BYTES, listSkills, loadSkill, loadSkillResource, makeSkillResolver } from './skill-reader';
 
 let root = '';
 let skillsDir = '';
@@ -199,5 +199,62 @@ describe('several skill roots (S-30 T-356: every dir Devia manages skills in)', 
     expect(listSkills(roots).map((s) => `${s.name}:${s.description}`)).toEqual(['only-global:G', 'shared:project copy']);
     expect(loadSkill(roots, 'shared')).toContain('PROJECT');
     expect(loadSkill(roots, 'only-global')).toBe('G');
+  });
+});
+
+describe('files bundled with a skill (S-38)', () => {
+  const writeFile = (rel: string, content: string | Buffer): void => {
+    const file = path.join(skillsDir, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  };
+
+  it('serves a reference file by <skill>/<relative path>', () => {
+    writeSkill('debugging', 'BODY');
+    writeFile('debugging/references/root-cause.md', 'ROOT CAUSE');
+    expect(loadSkillResource([skillsDir], 'debugging/references/root-cause.md')).toBe('ROOT CAUSE');
+  });
+
+  it('refuses traversal, absolute paths, hidden tricks and unknown skills', () => {
+    writeSkill('debugging', 'BODY');
+    writeFile('secret.md', 'NOPE');
+    for (const name of ['debugging/../secret.md', 'debugging/./x', '../debugging/SKILL.md', 'debugging//x', 'debugging/a\\b', 'ghost/x.md', 'debugging']) {
+      expect(loadSkillResource([skillsDir], name), name).toBeNull();
+    }
+  });
+
+  it('refuses a symlink inside the skill, even one that points at a real file elsewhere', () => {
+    writeSkill('debugging', 'BODY');
+    writeFile('outside.txt', 'OUTSIDE');
+    fs.symlinkSync(path.join(skillsDir, 'outside.txt'), path.join(skillsDir, 'debugging', 'link.md'));
+    expect(loadSkillResource([skillsDir], 'debugging/link.md')).toBeNull();
+  });
+
+  it('refuses binary files and truncates huge ones', () => {
+    writeSkill('debugging', 'BODY');
+    writeFile('debugging/image.bin', Buffer.from([1, 2, 0, 3]));
+    writeFile('debugging/big.md', 'x'.repeat(MAX_SKILL_BYTES + 10));
+    expect(loadSkillResource([skillsDir], 'debugging/image.bin')).toBeNull();
+    expect(loadSkillResource([skillsDir], 'debugging/big.md')).toContain('[truncated by Devia');
+  });
+
+  it('is reachable through devia_skill, and a bare load states the skill directory for its scripts', async () => {
+    writeSkill('debugging', 'BODY');
+    writeFile('debugging/prompts/x.md', 'PROMPT');
+    const resolve = makeSkillResolver([skillsDir]);
+    expect(await resolve('skill', { op: 'load', name: 'debugging/prompts/x.md' })).toEqual({ text: 'PROMPT' });
+    expect(await resolve('skill', { op: 'load', name: 'debugging' })).toEqual({
+      text: `Skill directory: ${path.join(skillsDir, 'debugging')}\n\nBODY`,
+    });
+    expect(await resolve('skill', { op: 'load', name: 'debugging/missing.md' })).toMatchObject({ isError: true });
+  });
+
+  it('lists a skill folder only when it is real: a linked one is skipped, so the core scans the real parent', () => {
+    const cache = path.join(root, 'cache', 'src');
+    fs.mkdirSync(path.join(cache, 'linked'), { recursive: true });
+    fs.writeFileSync(path.join(cache, 'linked', 'SKILL.md'), 'L');
+    fs.symlinkSync(path.join(cache, 'linked'), path.join(skillsDir, 'linked'), 'dir');
+    expect(listSkills([skillsDir])).toEqual([]);
+    expect(listSkills([cache]).map((x) => x.name)).toEqual(['linked']);
   });
 });

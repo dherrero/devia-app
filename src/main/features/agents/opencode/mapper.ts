@@ -49,6 +49,7 @@ export class OpencodeMapper implements AgentMapper {
   readonly id = 'opencode';
   readonly harnessSupport: HarnessSupport = { mcp: 'native', skills: 'devia', subagents: 'native' };
   readonly isolatesExternalMcp = false;
+  readonly freezesSystemPrompt = false;
 
   constructor(readonly def: RuntimeAgentDef, _deps: MapperDeps, private readonly home: () => string = os.homedir) {}
 
@@ -70,7 +71,7 @@ export class OpencodeMapper implements AgentMapper {
     const delivered = new Set(delivery.mcpServerIds);
     const servers = [...plan.harness.mcp.user, ...plan.harness.mcp.devia].filter((s) => delivered.has(s.id));
     retireOpencodeProjectMcp(plan.cwd, this.home());
-    const config = writeOpencodeRunConfig(buildOpencodeRunConfig(servers, plan.harness.subagents, process.env), plan.deviaDir);
+    const config = writeOpencodeRunConfig(buildOpencodeRunConfig(servers, plan.harness.subagents, process.env, plan.harness.readDirs ?? []), plan.deviaDir);
 
     const flags = this.def.buildExtraArgs?.({ systemPrompt, capabilities: plan.capabilities }) ?? [];
     const resume = plan.resumeSessionId !== undefined ? this.def.buildResumeArgs?.(plan.resumeSessionId) ?? [] : [];

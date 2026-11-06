@@ -1,0 +1,70 @@
+{
+  "agent": "acp-fake",
+  "scenario": "resume",
+  "wiring": {
+    "command": "acp-fake",
+    "argv": [
+      "acp"
+    ],
+    "stdin": {
+      "format": "jsonrpc",
+      "methods": [
+        "initialize",
+        "session/load",
+        "session/set_mode",
+        "session/prompt"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "stdin-prepend",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": null,
+    "acp": {
+      "methods": [
+        "initialize",
+        "session/load",
+        "session/set_mode",
+        "session/prompt"
+      ],
+      "loadedSession": true,
+      "mcpServers": [
+        "devia-kanban",
+        "devia-memory",
+        "devia-ui"
+      ],
+      "mode": [
+        "default"
+      ],
+      "clientCapabilities": {
+        "fs": {
+          "readTextFile": false,
+          "writeTextFile": false
+        },
+        "terminal": false
+      },
+      "cwd": "<WS>/proj",
+      "systemPromptSeen": true
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "turn_end"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [],
+    "uiCards": [],
+    "recalled": true
+  }
+}

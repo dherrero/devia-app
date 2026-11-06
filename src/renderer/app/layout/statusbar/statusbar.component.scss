@@ -67,6 +67,31 @@
       color: var(--dv-dim);
       min-width: 0;
     }
+    .agent-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      min-width: 0;
+      background: none;
+      border: 0;
+      padding: 0.0625rem 0.25rem;
+      margin: 0 -0.25rem;
+      border-radius: 0.25rem;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+    .agent-chip:hover { background: var(--dv-hover, rgba(255, 255, 255, 0.08)); }
+    .agent-chip .ic { width: 0.6875rem; height: 0.6875rem; }
+    .agent-label {
+      color: var(--dv-fg);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 10rem;
+    }
+    .effort-select { color: var(--dv-fg); font-weight: 500; }
     .model {
       display: inline-flex;
       align-items: center;

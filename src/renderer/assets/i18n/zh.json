@@ -87,6 +87,8 @@
     "agent_working": "智能体工作中",
     "mode_suffix": "模式",
     "model_tooltip": "当前模型",
+    "agent_tooltip": "当前代理 · 点击切换",
+    "effort_tooltip": "投入程度 · 点击更改",
     "context_tooltip": "{{used}} / {{total}} tokens",
     "context_compactions": "{{count}} 次压缩",
     "cost_tooltip": "本次会话累计费用",

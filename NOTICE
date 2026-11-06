@@ -7,6 +7,12 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party components keep their own licenses; see each package under
 node_modules after installing, or package-lock.json for the exact versions.
 
+Devia Method, the development method built into Devia (resources/kits/devia-method), started from the
+open-source skills library "superpowers" by Jesse Vincent (https://github.com/obra/superpowers),
+Copyright (c) 2025 Jesse Vincent, MIT License. Some of its skills are copied unchanged and the others
+were rewritten for Devia. The pinned copy, with its license text, is kept in vendor/upstream, and the
+license text ships with the method in resources/kits/devia-method/LICENSE.
+
 The optional image dependency sharp (pulled in by @xenova/transformers) ships
 prebuilt libvips binaries licensed under LGPL-3.0-or-later. They are used as
 separate, dynamically loaded libraries and are not modified.

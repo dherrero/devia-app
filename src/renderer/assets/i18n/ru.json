@@ -87,6 +87,8 @@
     "agent_working": "агент работает",
     "mode_suffix": "режим",
     "model_tooltip": "Активная модель",
+    "agent_tooltip": "Активный агент · нажмите, чтобы сменить",
+    "effort_tooltip": "Уровень усилий · нажмите, чтобы изменить",
     "context_tooltip": "{{used}} / {{total}} токенов",
     "context_compactions": "сжатий: {{count}}",
     "cost_tooltip": "Стоимость сеанса",

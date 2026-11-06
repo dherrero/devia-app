@@ -87,6 +87,8 @@
     "agent_working": "l'agent travaille",
     "mode_suffix": "mode",
     "model_tooltip": "Modèle actif",
+    "agent_tooltip": "Agent actif · cliquer pour changer",
+    "effort_tooltip": "Niveau d'effort · cliquer pour changer",
     "context_tooltip": "{{used}} / {{total}} jetons",
     "context_compactions": "{{count}} compactages",
     "cost_tooltip": "Coût cumulé de la session",

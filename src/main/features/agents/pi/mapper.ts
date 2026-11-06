@@ -36,6 +36,7 @@ export class PiMapper implements AgentMapper {
   readonly id = 'pi';
   readonly harnessSupport: HarnessSupport = { mcp: 'native', skills: 'native', subagents: 'devia' };
   readonly isolatesExternalMcp = false;
+  readonly freezesSystemPrompt = false;
 
   constructor(readonly def: RuntimeAgentDef, _deps: MapperDeps) {}
 

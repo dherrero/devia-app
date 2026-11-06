@@ -130,6 +130,8 @@
     "changes_label": "{{count}} cambios",
     "changes_tooltip": "{{count}} archivos modificados o sin trackear",
     "model_tooltip": "Modelo activo",
+    "agent_tooltip": "Agente activo · clic para cambiar",
+    "effort_tooltip": "Nivel de esfuerzo · clic para cambiar",
     "context_tooltip": "{{used}} / {{total}} tokens",
     "context_compactions": "{{count}} compactaciones",
     "cost_tooltip": "Coste acumulado de la sesión",
@@ -627,7 +629,22 @@
       "style_label": "Forma",
       "style_rounded": "Redondeado",
       "style_sharp": "Angular",
-      "tab_templates": "Plantillas (bases)"
+      "tab_templates": "Plantillas (bases)",
+      "tab_starter_kit": "Kit inicial",
+      "starter_kit_heading": "Método Devia",
+      "starter_kit_hint": "La forma propia de Devia de construir software, integrada en cada agente que maneja: el agente aclara qué quieres antes de construir, lo diseña contigo, planifica en pasos pequeños en el tablero, escribe primero los tests y verifica antes de dar algo por terminado. Funciona igual con todos los agentes.",
+      "starter_kit_global_label": "Usar el método Devia",
+      "starter_kit_on": "Activado",
+      "starter_kit_off": "Desactivado",
+      "starter_kit_project_label": "Este proyecto",
+      "starter_kit_project_follow": "Seguir el global",
+      "starter_kit_project_hint": "Sustituye el interruptor global solo para este proyecto.",
+      "starter_kit_version": "{{name}} {{version}} · {{count}} skills",
+      "starter_kit_native": "{{agent}} ya tiene un método de desarrollo instalado, así que Devia no añadirá el suyo encima.",
+      "starter_kit_unavailable": "No se pudo preparar el kit incluido; los agentes funcionarán sin él.",
+      "starter_kit_skills_heading": "Skills incluidas",
+      "starter_kit_effective_on": "Activo en este proyecto.",
+      "starter_kit_effective_off": "No activo en este proyecto."
     },
     "session_import": {
       "title": "Importar sesiones de agentes",
@@ -994,6 +1011,19 @@
       "note_declined": "✕ Rechazado: {{detail}}",
       "note_picked": "✓ Elegido: {{detail}}",
       "note_pick_cancelled": "✕ No se eligió nada"
+    }
+  },
+  "starter_kit": {
+    "intro": {
+      "title_on": "El método Devia está activado",
+      "body_on": "Devia guía ahora a tus agentes con un método de desarrollo: aclarar primero, planificar, testear, verificar. Puedes desactivarlo cuando quieras en Ajustes.",
+      "title_off": "¿Probar el método Devia?",
+      "body_off": "Devia puede guiar a cualquier agente con un método de desarrollo: aclarar primero, planificar en pasos pequeños, testear antes, verificar antes de terminar.",
+      "keep": "Entendido",
+      "disable": "Desactivar",
+      "enable": "Activar",
+      "later": "Ahora no",
+      "more": "Detalles"
     }
   }
 }

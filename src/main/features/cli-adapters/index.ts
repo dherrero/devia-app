@@ -16,6 +16,7 @@ import { TestAgentUseCase } from './application/test-agent.use-case';
 
 import { registerCliAdaptersIpc, toView } from './ipc/cli-adapters.ipc';
 import type { RuntimeAgentDef } from './domain/runtime-agent-def';
+import { sanitiseUserAcp } from '../agents/acp/profiles/custom';
 
 export { AGENT_DEFS, DEFAULT_AGENT_ID, StaticCliAdapterRegistry } from './infrastructure/registry';
 export type { CliAdapterRegistry, AgentDetector } from './domain/ports';
@@ -114,17 +115,30 @@ export function normaliseUserDef(value: unknown): RuntimeAgentDef | null {
     ? (obj['fallbackModels'] as RuntimeAgentDef['fallbackModels'])
     : [];
   const streamFormat: RuntimeAgentDef['streamFormat'] =
-    obj['streamFormat'] === 'plain' || obj['streamFormat'] === 'claude-stream-json' || obj['streamFormat'] === 'json-event-stream'
+    obj['streamFormat'] === 'plain' || obj['streamFormat'] === 'claude-stream-json' || obj['streamFormat'] === 'json-event-stream' ||
+    obj['streamFormat'] === 'acp-json-rpc'
       ? obj['streamFormat']
       : 'plain';
+
+  // S-41: a user ACP agent is declared, never scripted — its argv is a validated
+  // list of strings, so a hostile agent-defs.json can only name a PATH binary.
+  const acp = streamFormat === 'acp-json-rpc' ? sanitiseUserAcp(obj['acp']) : undefined;
+  if (acp === null) {
+    console.warn(
+      `[cli-adapters] user-supplied def "${id}": acp.args must be at most 32 single-line strings of at most 256 characters. Skipping.`,
+    );
+    return null;
+  }
 
   // `buildArgs` is required by the TypeScript interface but user-supplied defs
   // loaded from JSON obviously cannot provide a function. Provide a no-op
   // default so the launcher can safely call it; the launcher will also guard
   // against unavailable agents.
-  const buildArgs = typeof obj['buildArgs'] === 'function'
-    ? (obj['buildArgs'] as RuntimeAgentDef['buildArgs'])
-    : () => [];
+  const buildArgs = acp
+    ? () => [...acp.args]
+    : typeof obj['buildArgs'] === 'function'
+      ? (obj['buildArgs'] as RuntimeAgentDef['buildArgs'])
+      : () => [];
 
   // ── Security: sanitise env-related fields ────────────────────────────────
   // Strip the `env` field entirely — static env injection from JSON is not a
@@ -162,7 +176,7 @@ export function normaliseUserDef(value: unknown): RuntimeAgentDef | null {
   // future extension fields remain compatible; env-sensitive fields are always
   // explicitly set to the sanitised values below.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { env: _env, envOverrideKeys: _envOverrideKeys, ...safeObjRest } = obj as Record<string, unknown> & { env?: unknown; envOverrideKeys?: unknown };
+  const { env: _env, envOverrideKeys: _envOverrideKeys, acp: _acp, ...safeObjRest } = obj as Record<string, unknown> & { env?: unknown; envOverrideKeys?: unknown; acp?: unknown };
 
   return {
     // UC-FIX-018: default to 'unsupported' for user-supplied defs that omit
@@ -177,6 +191,7 @@ export function normaliseUserDef(value: unknown): RuntimeAgentDef | null {
     streamFormat,
     buildArgs,
     // env is intentionally omitted — stripped from user-supplied defs.
+    ...(acp && { acp, continuity: acp.continuity, systemPromptStrategy: 'stdin-prepend' as const }),
     ...(rawEnvOverrideKeys !== undefined ? { envOverrideKeys: rawEnvOverrideKeys } : {}),
   };
 }

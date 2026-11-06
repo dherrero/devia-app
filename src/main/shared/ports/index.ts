@@ -13,3 +13,4 @@ export type { SkillListReader } from './skill-list-reader.port';
 export type { SnapshotCapturer } from './snapshot-capturer.port';
 export type { SddProjectPurger } from './sdd-project-purger.port';
 export type { QueueInspector } from './queue-inspector.port';
+export type { StarterKitsPort, StarterKitRun } from './starter-kits.port';

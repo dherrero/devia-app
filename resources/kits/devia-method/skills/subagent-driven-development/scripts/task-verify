@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Run a task's test command, keep the full output in a file, print its tail,
+# and exit with the command's own status. It records nothing: the caller
+# closes the task on the kanban (kanban_close_task) only when this exits 0.
+# One call instead of two because every tool call re-reads the whole context.
+#
+# Usage: task-verify [--name LABEL] -- TEST_COMMAND [ARGS...]
+# Output file: <repo-root>/.devia/review/tests-<label>-<timestamp>.log
+# (the directory ignores itself, so nothing here ever shows up in git status).
+set -euo pipefail
+
+label=task
+if [ "${1:-}" = "--name" ]; then
+  label=${2:?--name needs a value}
+  shift 2
+fi
+if [ "${1:-}" != "--" ] || [ $# -lt 2 ]; then
+  echo "usage: task-verify [--name LABEL] -- TEST_COMMAND [ARGS...]" >&2
+  exit 2
+fi
+shift
+
+root=$(CDPATH='' cd -- "$(git rev-parse --show-toplevel)" && pwd -P)
+dir="$root/.devia/review"
+mkdir -p "$dir"
+[ -e "$dir/.gitignore" ] || printf '*\n' > "$dir/.gitignore"
+log="$dir/tests-${label}-$(date +%Y%m%d-%H%M%S).log"
+
+rc=0
+"$@" > "$log" 2>&1 || rc=$?
+
+tail -n 8 "$log"
+if [ "$rc" -ne 0 ]; then
+  echo "task-verify: the test command exited $rc; do NOT close the task (full output: $log)" >&2
+  exit "$rc"
+fi
+echo "task-verify: passed (full output: $log)"

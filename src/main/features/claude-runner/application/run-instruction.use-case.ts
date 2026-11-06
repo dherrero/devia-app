@@ -10,6 +10,7 @@ import type {
   StateStore,
 } from '../../../shared/ports';
 import type { TechDetector } from '../../workspace/domain/ports';
+import type { StarterKitsPort } from '../../../shared/ports';
 import type { AttachmentPayload, OutboxFile, SavedAttachment } from '../../../../shared/domain/attachment';
 import type { CliAdapterRegistry } from '../../cli-adapters';
 import type { AgentRunner } from '../infrastructure/cli-runner-adapter';
@@ -17,10 +18,13 @@ import { resolveCurrentAgent } from '../infrastructure/cli-runner-adapter';
 import { buildSystemPrompt } from '../infrastructure/system-prompt';
 import { buildMemoryProtocolHint } from '../infrastructure/memory-protocol';
 import { buildRemoteProtocolHint } from '../infrastructure/remote-protocol';
-import { buildUiFallbackHint } from '../infrastructure/ui-tools-protocol';
+import { buildUiFallbackHint, buildUiToolsHint } from '../infrastructure/ui-tools-protocol';
 import { buildWorktreeProtocolHint } from '../infrastructure/worktree-protocol';
 import { buildPlanProtocolHint } from '../infrastructure/plan-protocol';
 import { buildMemoryContextHint } from '../infrastructure/memory-context-hint';
+import { orderedBodies, splitBodies, type PromptBodies } from '../infrastructure/prompt-bodies';
+import { hashTurnContext, renderTurnContext, type TurnFacts } from '../infrastructure/turn-context';
+import { TurnContextTracker } from '../infrastructure/turn-context-tracker';
 import { sanitizeForMemory, buildRunSummary } from '../infrastructure/memory-capture';
 import { resolveAndValidateCwd, findEscapingImagePath } from '../../cli-adapters/infrastructure/resolve-cwd';
 import { isPathContained } from '../../../shared/workspace-paths';
@@ -74,6 +78,14 @@ const MEMORY_SERVER_ID = 'devia-memory';
 /** S-2 F3.4: how fresh a previous-agent `mem_session_summary` must be to ride
  *  the handoff brief instead of the compressed/deterministic body. */
 const HANDOFF_RICH_SUMMARY_MAX_AGE_MS = 15 * 60 * 1_000;
+
+/**
+ * The first events that prove the model consumed the user turn it was given
+ * (S-40): a `status` or `session_started` only proves the CLI booted.
+ */
+const MODEL_ANSWERED_EVENTS: ReadonlySet<string> = new Set([
+  'text_delta', 'thinking_start', 'thinking_delta', 'tool_use', 'usage', 'turn_end',
+]);
 
 /** Tools that modify files on disk and therefore warrant a diff snapshot. */
 const FILE_EDITING_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
@@ -174,6 +186,8 @@ export interface RunInstructionHandlers {
  * argv and translating its event stream back to the renderer.
  */
 export class RunInstructionUseCase {
+  private readonly turnContextTracker: TurnContextTracker;
+
   constructor(private readonly deps: {
     config: ConfigRepository;
     sessions: SessionStore;
@@ -230,6 +244,8 @@ export class RunInstructionUseCase {
      * every run to whichever agent is active; absent ⇒ none.
      */
     harnessCatalog?: HarnessCatalog;
+    /** S-39: the starter kit (Devia Method) that travels with the run, when one applies. */
+    starterKits?: StarterKitsPort;
     /**
      * S-25 F2.4: whether the user already chose to always allow this exact
      * action in this project. Keyed by the BASE checkout, like memory/kanban.
@@ -326,7 +342,14 @@ export class RunInstructionUseCase {
      * file may be sent from — and only when it is THIS run's cwd.
      */
     isLiveSessionWorktree?: (workdir: string) => boolean;
-  }) {}
+    /**
+     * S-40: which per-turn context block each native session already has, so an
+     * unchanged one is not repeated. Defaults to a fresh in-memory tracker.
+     */
+    turnContextTracker?: TurnContextTracker;
+  }) {
+    this.turnContextTracker = deps.turnContextTracker ?? new TurnContextTracker();
+  }
 
   execute(
     projectName: string,
@@ -675,7 +698,19 @@ export class RunInstructionUseCase {
     // to any agent; each mapper adds its CLI's native channel on top.
     const skills = this.deps.harnessCatalog?.skills(cwd) ?? [];
     const subagents = this.deps.harnessCatalog?.subagents(projectCheckout) ?? [];
-    const skillsDirs = [...new Set(skills.map((s) => path.dirname(s.dir)))];
+    // S-39: a starter kit (Devia Method) rides along. Its skills are served last,
+    // so a project's or the user's own skill of the same name wins.
+    const kit = this.deps.starterKits?.resolve({ agentId: def.id, projectCheckout, cwd }) ?? null;
+    // A skill installed by Devia is a symlink into its cache: `devia_skill` scans
+    // the directory that holds the REAL folders (it refuses linked ones on purpose).
+    const realSkillsDir = (dir: string): string => {
+      try {
+        return path.dirname(fs.realpathSync(dir));
+      } catch {
+        return path.dirname(dir);
+      }
+    };
+    const skillsDirs = [...new Set([...skills.map((s) => realSkillsDir(s.dir)), ...(kit ? [kit.skillsDir] : [])])];
     const subagentsDir = subagents[0] ? path.dirname(subagents[0].file) : undefined;
 
     // S-32: `devia_send_file` needs a chat to send to (relay connected) that
@@ -705,7 +740,7 @@ export class RunInstructionUseCase {
         isRemote,
         delivered: true,
         // `devia_skill` serves both skills and sub-agents.
-        hasSkills: skills.length > 0 || subagents.length > 0,
+        hasSkills: skills.length > 0 || subagents.length > 0 || kit !== null,
         canSendFiles,
         ...(cfg.uiTools?.enabled && { preferences: cfg.uiTools.enabled }),
       }),
@@ -734,6 +769,16 @@ export class RunInstructionUseCase {
       ...(memoryServer ? [memoryServer] : []),
       ...(withUi && uiServer ? [uiServer] : []),
     ];
+    // S-43: the files attached to THIS message live in `<deviaDir>/attachments`,
+    // outside the cwd. Confined modes (plan/apply) need that dir to `Read` them —
+    // headless Claude cannot answer the permission prompt. Only when something
+    // was attached, so every other run's argv stays byte-identical; apply-yolo
+    // is unconfined already. Never a `send_file` root (see `sendRoots`).
+    const attachmentDirs =
+      saved.length > 0 && requestedMode !== 'apply-yolo'
+        ? [path.join(this.deps.config.deviaDir(), 'attachments')]
+        : [];
+    const readDirs = [...(kit ? [kit.dir] : []), ...attachmentDirs];
     const basePlan: AgentRunPlan = {
       runId,
       agentId: def.id,
@@ -745,7 +790,9 @@ export class RunInstructionUseCase {
       imagePaths,
       // Whole-workspace visibility so a project can reference its siblings.
       // Confined modes only — `apply-yolo` already runs without confinement.
-      extraAllowedDirs: requestedMode !== 'apply-yolo' && cfg.workspaceRoot ? [cfg.workspaceRoot] : [],
+      extraAllowedDirs: requestedMode !== 'apply-yolo'
+        ? [...(cfg.workspaceRoot ? [cfg.workspaceRoot] : []), ...(kit ? [kit.dir] : []), ...attachmentDirs]
+        : [],
       ...(resumeSessionId !== undefined && { resumeSessionId }),
       model: modelPrefs.model ?? null,
       reasoning: modelPrefs.reasoning ?? null,
@@ -760,6 +807,8 @@ export class RunInstructionUseCase {
         },
         skills,
         subagents,
+        ...(kit && { kit: { id: kit.id, dir: kit.dir } }),
+        ...(readDirs.length > 0 && { readDirs }),
         isolateExternalMcp: cfg.memory.blockExternalMemory,
       },
       ui: { rendezvousDir: uiDir, toolTimeoutMs: QUESTION_TIMEOUT_MS },
@@ -797,18 +846,24 @@ export class RunInstructionUseCase {
     const worktreeHint = buildWorktreeProtocolHint(cwd !== cwdResult.resolvedPath);
     // Plan mode blocks file-writers but keeps the kanban MCP: tell the agent to
     // persist long plans as kanban specs instead of attempting failing writes.
-    const planHint = buildPlanProtocolHint(requestedMode === 'plan');
-    const allBodies = [
-      ...packBodies,
-      ...(skillRegistryHint ? [skillRegistryHint] : []),
-      ...(memoryHint ? [memoryHint] : []),
-      ...(memoryContextHint ? [memoryContextHint] : []),
-      ...(handoffHint ? [handoffHint] : []),
-      ...(worktreeHint ? [worktreeHint] : []),
-      ...(remoteHint ? [remoteHint] : []),
-      ...(uiFallbackHint ? [uiFallbackHint] : []),
-      ...(planHint ? [planHint] : []),
-    ];
+    // S-39: with the method on, plan mode hands its sequence over to the method's
+    // skills instead of ordering "explore, then persist" on its own.
+    const planHint = buildPlanProtocolHint(requestedMode === 'plan', kit !== null);
+    // S-39: the kit's bootstrap and skill index — the same text for every agent.
+    const kitHint = kit?.prompt ?? null;
+    const promptBodies: PromptBodies = {
+      packs: packBodies,
+      skillRegistry: skillRegistryHint || null,
+      kit: kitHint || null,
+      memoryProtocol: memoryHint || null,
+      memoryContext: memoryContextHint || null,
+      handoff: handoffHint || null,
+      worktree: worktreeHint || null,
+      remote: remoteHint || null,
+      uiFallback: uiFallbackHint || null,
+      plan: planHint || null,
+    };
+    const allBodies = orderedBodies(promptBodies);
     // Built here (not earlier) because the baseline only offers the tools this
     // run actually got.
     const baseline = buildSystemPrompt(tech, { advertised: uiAdvertised });
@@ -819,9 +874,36 @@ export class RunInstructionUseCase {
       );
     }
 
+    // S-40: a CLI that keeps its FIRST turn's system prompt on resume (Claude
+    // Code) gets only what holds for the whole session there; what can differ
+    // from one turn to the next (channel, mode, tools, worktree, a memory
+    // re-injection) travels as a binding block in the user turn, resent only
+    // when it changed. Every other agent keeps receiving the full prompt.
+    let promptForMapper = systemPrompt;
+    let planForPrepare = plan;
+    let turnContextDelivery: { hash: string } | null = null;
+    if (mapper.freezesSystemPrompt) {
+      const { stable, turn } = splitBodies(promptBodies, { firstTurn: isFirstTurnOfSession });
+      promptForMapper = composeSystemPrompt(buildSystemPrompt(tech, { advertised: [] }), stable);
+      const uiToolsLine = buildUiToolsHint(uiAdvertised);
+      const facts: TurnFacts = {
+        channel: isRemote ? 'telegram' : 'desktop',
+        mode: requestedMode,
+        cwd,
+        isolatedWorktree: cwd !== cwdResult.resolvedPath,
+        uiTools: uiAdvertised,
+      };
+      const block = renderTurnContext(facts, [...(uiToolsLine ? [uiToolsLine] : []), ...turn]);
+      const hash = hashTurnContext(block);
+      if (this.turnContextTracker.shouldSend({ resumeSessionId, hash, force: reinjectAfterCompaction })) {
+        planForPrepare = { ...plan, turnContext: block };
+        turnContextDelivery = { hash };
+      }
+    }
+
     // The agent's mapper turns the plan into argv / stdin / env / temp files —
     // MCP delivery, the system-prompt channel, resume flags, permission flags.
-    const prepareResult = mapper.prepareRun(plan, systemPrompt, delivery);
+    const prepareResult = mapper.prepareRun(planForPrepare, promptForMapper, delivery);
     const prepared = prepareResult.ok ? prepareResult.run : null;
     // A temp-file write can fail after the prompt was composed: stop serving
     // the cards of a server that never reached the agent.
@@ -989,12 +1071,29 @@ export class RunInstructionUseCase {
               }
             }
 
+            // S-40: the model started answering, so it consumed this turn's context
+            // block; remember it for that native session so an unchanged block is
+            // not repeated. A run that dies earlier records nothing and resends.
+            if (turnContextDelivery !== null && MODEL_ANSWERED_EVENTS.has(parsed.type)) {
+              const deliveredTo = this.deps.registry.find(identity)?.agentSessionId;
+              if (deliveredTo) {
+                this.turnContextTracker.markDelivered(deliveredTo, turnContextDelivery.hash);
+                turnContextDelivery = null;
+              }
+            }
+
             // E-DSK-13 Fase D: the agent compacted its context mid-run. Flag the
             // identity so the next run re-injects Devia's memory (Fase A only
             // injects on the first turn of a session, so a resumed-but-compacted
             // session would otherwise never recover it).
-            if (parsed.type === 'context_compacted' && cfg.memory.enabled) {
-              this.deps.markContextCompacted?.(identity);
+            if (parsed.type === 'context_compacted') {
+              // S-40: the per-turn block was summarised away too, memory on or off.
+              const compacted = this.deps.registry.find(identity)?.agentSessionId;
+              if (compacted) this.turnContextTracker.invalidate(compacted);
+              // A compaction ahead of the first model event may have summarised
+              // this very turn away, block included: never mark it delivered.
+              turnContextDelivery = null;
+              if (cfg.memory.enabled) this.deps.markContextCompacted?.(identity);
             }
 
             if (parsed.type === 'rate_limit' && parsed.status === 'rejected') {
@@ -1080,6 +1179,7 @@ export class RunInstructionUseCase {
           // the same way forever. Conservative match — never clears on
           // unrelated errors (auth, network, sandbox).
           if (resumeSessionId !== undefined && isSessionNotFoundError(msg)) {
+            this.turnContextTracker.invalidate(resumeSessionId);
             const rec = this.deps.registry.find(identity);
             if (rec) {
               rec.agentSessionId = null;

@@ -87,6 +87,8 @@
     "agent_working": "एजेंट काम कर रहा है",
     "mode_suffix": "मोड",
     "model_tooltip": "सक्रिय मॉडल",
+    "agent_tooltip": "सक्रिय एजेंट · बदलने के लिए क्लिक करें",
+    "effort_tooltip": "प्रयास स्तर · बदलने के लिए क्लिक करें",
     "context_tooltip": "{{used}} / {{total}} टोकन",
     "context_compactions": "{{count}} संपीड़न",
     "cost_tooltip": "सत्र की कुल लागत",

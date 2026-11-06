@@ -29,10 +29,14 @@ function loadModules() {
     KanbanMcpInjector: req('src-main/features/sdd/mcp-server/kanban-mcp-injector.js').KanbanMcpInjector,
     UiMcpInjector: req('src-main/features/ui-tools/mcp-server/ui-mcp-injector.js').UiMcpInjector,
     StaticMapperRegistry: req('src-main/features/agents/infrastructure/static-mapper-registry.js').StaticMapperRegistry,
+    DEDICATED_MAPPERS: req('src-main/features/agents/infrastructure/static-mapper-registry.js').DEDICATED_MAPPERS,
+    AcpMapper: req('src-main/features/agents/acp/mapper.js').AcpMapper,
+    defaultToolName: req('src-main/features/agents/acp/tool-name.js').defaultToolName,
     NativeConfigMcpDelivery: req('src-main/features/agents/shared/native-config-mcp.js').NativeConfigMcpDelivery,
     createHarnessCatalog: req('src-main/features/claude-runner/infrastructure/harness-catalog.js').createHarnessCatalog,
     SkillReader: req('src-main/features/skills/infrastructure/skill-reader.js').SkillReader,
     SubAgentReader: req('src-main/features/sub-agents/infrastructure/sub-agent-reader.js').SubAgentReader,
+    buildStarterKitsFeature: req('src-main/features/starter-kits/index.js').buildStarterKitsFeature,
   };
 }
 
@@ -82,8 +86,43 @@ function createUserServers() {
 }
 
 /**
- * @param {{ agentId: string, workspaceRoot: string, deviaDir: string, model?: string }} opts
- * @returns {{ useCase: any, registry: any, sessions: ReturnType<typeof createSessionStore>, userServers: ReturnType<typeof createUserServers> }}
+ * A scripted ACP agent for the harness (S-41): `acp-fake` is NEVER in the
+ * production catalog. It gets its own def (a launcher script around
+ * `fake-acp-agent.cli.cjs`) and its own profile, injected here through the
+ * mapper registry's `dedicated` seam so no production file knows about it.
+ * The script of each scenario travels in `def.env.FAKE_ACP_SCRIPT`.
+ */
+function buildFakeAcpAgent(binPath) {
+  const m = loadModules();
+  const profile = {
+    id: 'acp-fake',
+    args: () => ['acp'],
+    continuity: 'native',
+    planEnforcement: 'permission-policy',
+    modeIds: { plan: 'plan', apply: 'default', 'apply-yolo': 'default' },
+    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    toolName: m.defaultToolName,
+  };
+  const def = {
+    id: 'acp-fake',
+    name: 'Fake ACP agent',
+    bin: binPath,
+    versionArgs: ['--version'],
+    fallbackModels: [{ id: 'default', label: 'default' }],
+    buildArgs: () => [...profile.args({ model: null })],
+    streamFormat: 'acp-json-rpc',
+    providerType: 'cli',
+    applicability: 'direct',
+    continuity: profile.continuity,
+    systemPromptStrategy: 'stdin-prepend',
+    env: {},
+  };
+  return { def, factory: (d, deps) => new m.AcpMapper(d, profile, deps) };
+}
+
+/**
+ * @param {{ agentId: string, workspaceRoot: string, deviaDir: string, model?: string, fakeAcp?: { def: any, factory: any } }} opts
+ * @returns {{ useCase: any, registry: any, sessions: ReturnType<typeof createSessionStore>, userServers: ReturnType<typeof createUserServers>, setKit: (enabled: boolean) => void }}
  */
 function buildHeadlessRun(opts) {
   const m = loadModules();
@@ -108,13 +147,25 @@ function buildHeadlessRun(opts) {
   // An empty $HOME: the developer's own global skills must not leak into the
   // snapshots (they would make them machine-specific).
   const emptyHome = path.join(opts.workspaceRoot, '.home');
+  // S-38: the real starter-kits feature over the repository's bundled kit. Off
+  // until a scenario asks (`setKit`), so every other scenario keeps its baseline.
+  const starterKits = m.buildStarterKitsFeature({
+    config,
+    bundledKitsDir: () => path.resolve(__dirname, '../../resources/kits'),
+    home: () => emptyHome,
+  });
+  starterKits.feature.register({ ipc: { handle() {} } });
+  const setKit = (enabled) => starterKits.set({ id: 'devia-method', enabled });
+  const agents = new m.StaticCliAdapterRegistry();
+  if (opts.fakeAcp) agents.registerAdditional([opts.fakeAcp.def]);
+  const dedicated = opts.fakeAcp ? { ...m.DEDICATED_MAPPERS, [opts.fakeAcp.def.id]: opts.fakeAcp.factory } : m.DEDICATED_MAPPERS;
   const useCase = new m.RunInstructionUseCase({
     config,
     sessions,
     state: { load() {}, save() {} },
     registry,
     runner: new m.LauncherBackedAgentRunner(new m.ChildProcessCliLauncher()),
-    agents: new m.StaticCliAdapterRegistry(),
+    agents,
     attachments: {
       save() { throw new Error('unused'); },
       saveAll() { throw new Error('unused'); },
@@ -127,17 +178,18 @@ function buildHeadlessRun(opts) {
       enterpriseMcpConfigPresent: () => false,
       // Never touch the developer's real ~/.codex/config.toml from the harness.
       ensureCodexTrust: () => undefined,
-    }),
+    }, dedicated),
     kanbanMcpServer: (p) => kanban.serverConfig(p),
     memoryMcpServer: (p, a) => memory.serverConfig(p, a),
     uiMcpServer: (dir, tools, harness) => ui.serverConfig(dir, tools, harness),
     mcpServers: userServers,
+    starterKits: starterKits.port,
     harnessCatalog: m.createHarnessCatalog({
       skills: new m.SkillReader(emptyHome),
       subagents: (projectAbs) => new m.SubAgentReader().list(projectAbs),
     }),
   });
-  return { useCase, registry, sessions, userServers };
+  return { useCase, registry, sessions, userServers, setKit };
 }
 
-module.exports = { buildHeadlessRun };
+module.exports = { buildHeadlessRun, buildFakeAcpAgent };

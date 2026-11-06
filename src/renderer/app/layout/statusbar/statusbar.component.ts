@@ -1,9 +1,11 @@
 ﻿import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { ButtonComponent, DialogService, IconComponent, TooltipDirective } from '@devia/ui';
+import { ButtonComponent, DialogService, IconComponent, SelectComponent, TooltipDirective } from '@devia/ui';
 import {
   LucideArrowDownToLine,
+  LucideBot,
   LucideCpu,
   LucideFolder,
   LucideGitBranch,
@@ -11,13 +13,14 @@ import {
 } from '@lucide/angular';
 import { AppStateService } from '../../core/services/app-state.service';
 import { ElectronApiService } from '../../core/services/electron-api.service';
+import { KeyboardShortcutsService } from '../../core/layout/keyboard-shortcuts.service';
 import { BranchSwitcherComponent } from '../../features/git/branch-switcher/branch-switcher.component';
 
 @Component({
   selector: 'ds-statusbar',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent, DecimalPipe, IconComponent, TranslateModule, TooltipDirective],
+  imports: [ButtonComponent, DecimalPipe, FormsModule, IconComponent, SelectComponent, TranslateModule, TooltipDirective],
   templateUrl: './statusbar.component.html',
   styleUrl: './statusbar.component.scss',
 })
@@ -26,7 +29,9 @@ export class StatusbarComponent {
   private readonly translate = inject(TranslateService);
   private readonly dialogs = inject(DialogService);
   private readonly api = inject(ElectronApiService);
+  private readonly shortcuts = inject(KeyboardShortcutsService);
   readonly LucideArrowDownToLine = LucideArrowDownToLine;
+  readonly LucideBot = LucideBot;
   readonly LucideCpu = LucideCpu;
   readonly LucideFolder = LucideFolder;
   readonly LucideGitBranch = LucideGitBranch;
@@ -92,6 +97,42 @@ export class StatusbarComponent {
   onPull() {
     if (!this.canPull()) return;
     void this.state.pullGit();
+  }
+
+  // Active agent's display name (falls back to its id until detection lands).
+  readonly agentName = computed<string>(() => {
+    const id = this.state.config()?.agentId;
+    if (!id) return '';
+    return this.state.detectedAgents()?.find((a) => a.id === id)?.name ?? id;
+  });
+
+  // Effort levels the active agent exposes (empty → no selector in the footer).
+  readonly reasoningOptions = computed(() => {
+    const id = this.state.config()?.agentId;
+    const agent = this.state.detectedAgents()?.find((a) => a.id === id);
+    return (agent?.reasoningOptions ?? []).map((r) => ({ value: r.id, label: r.label }));
+  });
+
+  readonly activeReasoning = computed<string>(() => {
+    const cfg = this.state.config();
+    return (cfg && cfg.agentModels?.[cfg.agentId]?.reasoning) || 'default';
+  });
+
+  async onReasoningChange(reasoning: string): Promise<void> {
+    const cfg = this.state.config();
+    if (!cfg || reasoning === this.activeReasoning()) return;
+    // agent:setModel overwrites BOTH fields, so forward the current model.
+    const model = cfg.agentModels?.[cfg.agentId]?.model ?? null;
+    await this.api.setAgentModel({
+      agentId: cfg.agentId,
+      model,
+      reasoning: reasoning === 'default' ? null : reasoning,
+    });
+    this.state.config.set(await this.api.getConfig());
+  }
+
+  openAgentSettings() {
+    this.shortcuts.openSettings('execution');
   }
 
   readonly showCost = computed<boolean>(() => (this.state.sessionCostUsd() ?? 0) > 0);

@@ -87,6 +87,8 @@
     "agent_working": "agent treballant",
     "mode_suffix": "mode",
     "model_tooltip": "Model actiu",
+    "agent_tooltip": "Agent actiu · clic per canviar",
+    "effort_tooltip": "Nivell d'esforç · clic per canviar",
     "context_tooltip": "{{used}} / {{total}} tokens",
     "context_compactions": "{{count}} compactacions",
     "cost_tooltip": "Cost acumulat de la sessió",

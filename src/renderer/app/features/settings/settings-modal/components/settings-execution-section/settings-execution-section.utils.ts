@@ -12,10 +12,16 @@ export function filterVisibleAgents(
   rawQuery: string,
 ): DetectedAgentView[] {
   const query = rawQuery.trim().toLowerCase();
-  if (!query) return agents;
-  return agents.filter((agent) =>
-    agent.id === selectedAgentId || matchesAgentQuery(agent, query),
-  );
+  const visible = query
+    ? agents.filter((agent) => agent.id === selectedAgentId || matchesAgentQuery(agent, query))
+    : agents;
+  return installedFirst(visible);
+}
+
+/** Installed agents first, then the missing ones; `Array.sort` is stable so the
+ *  original order is kept inside each group. Returns a new array. */
+function installedFirst(agents: DetectedAgentView[]): DetectedAgentView[] {
+  return [...agents].sort((a, b) => Number(!!b.available) - Number(!!a.available));
 }
 
 export function getNextAgentPanelState(

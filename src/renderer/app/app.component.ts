@@ -23,12 +23,12 @@ import { StatusbarComponent } from './layout/statusbar/statusbar.component';
 import { ToastsComponent } from './layout/toasts/toasts.component';
 import { ToastService } from './core/services/toast.service';
 import { UpgradeToastComponent } from './layout/upgrade/upgrade-toast.component';
+import { StarterKitIntroComponent } from './layout/starter-kit/starter-kit-intro.component';
 import { UpgradeToastService } from './layout/upgrade/services/upgrade-toast.service';
 import { RightRailComponent } from './layout/right-rail/right-rail.component';
 import { KanbanStateService } from './features/kanban/services/kanban-state.service';
 import { BootstrapModalComponent } from './features/kanban/components/bootstrap-modal/bootstrap-modal.component';
 import { WorkspaceModalComponent } from './features/settings/workspace-modal/workspace-modal.component';
-import { SettingsModalComponent } from './features/settings/settings-modal/settings-modal.component';
 import { SessionImportModalComponent } from './features/session-import/session-import-modal.component';
 import { CreateProjectModalComponent } from './features/projects/create-project-modal/create-project-modal.component';
 import { BasesEditorModalComponent } from './features/settings/bases-editor-modal/bases-editor-modal.component';
@@ -55,6 +55,7 @@ import type { UpdateStatus } from '../types/devia';
     StatusbarComponent,
     ToastsComponent,
     UpgradeToastComponent,
+    StarterKitIntroComponent,
     RightRailComponent,
     SplashScreenComponent,
   ],
@@ -218,17 +219,7 @@ export class AppComponent implements OnInit {
   }
 
   openSettings(section?: string) {
-    this.cdkDialog.open(SettingsModalComponent, {
-      width: 'min(54rem, calc(100vw - 2rem))',
-      maxWidth: 'calc(100vw - 2rem)',
-      height: 'min(36rem, calc(100vh - 2rem))',
-      maxHeight: 'calc(100vh - 2rem)',
-      panelClass: 'dv-dialog-panel',
-      backdropClass: 'dv-dialog-backdrop',
-      autoFocus: 'first-tabbable',
-      restoreFocus: true,
-      ...(section ? { data: { section } } : {}),
-    });
+    this.shortcuts.openSettings(section);
   }
 
   stopAll() {

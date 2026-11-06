@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { TranslateModule } from '@ngx-translate/core';
 import { StatusbarComponent } from './statusbar.component';
 import { AppStateService } from '../../core/services/app-state.service';
+import { KeyboardShortcutsService } from '../../core/layout/keyboard-shortcuts.service';
 import { ElectronApiService } from '../../core/services/electron-api.service';
 import type { BillingMode } from '../../../../shared/domain/billing';
 import type { GitInfo } from '../../../types/devia';
@@ -14,6 +15,8 @@ type StatusbarStub = {
   gitInfo: WritableSignal<GitInfo | null>;
   syncingGit: WritableSignal<boolean>;
   activeModel: WritableSignal<string | null>;
+  config: WritableSignal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>;
+  detectedAgents: WritableSignal<{ id: string; name: string; reasoningOptions?: { id: string; label: string }[] }[] | null>;
   contextPct: WritableSignal<number | null>;
   contextUsageTokens: WritableSignal<number | null>;
   contextWindowTokens: WritableSignal<number | null>;
@@ -32,6 +35,8 @@ function makeStub(): StatusbarStub {
     gitInfo: signal<GitInfo | null>(null),
     syncingGit: signal<boolean>(false),
     activeModel: signal<string | null>(null),
+    config: signal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>(null),
+    detectedAgents: signal<{ id: string; name: string; reasoningOptions?: { id: string; label: string }[] }[] | null>(null),
     contextPct: signal<number | null>(null),
     contextUsageTokens: signal<number | null>(null),
     contextWindowTokens: signal<number | null>(null),
@@ -47,14 +52,20 @@ function makeStub(): StatusbarStub {
 describe('StatusbarComponent — centered group (S-1 T-3)', () => {
   let fixture: ComponentFixture<StatusbarComponent>;
   let stub: StatusbarStub;
+  const shortcuts = { openSettings: vi.fn() };
+  const api = { getAppVersion: () => Promise.resolve('9.9.9'), setAgentModel: vi.fn(), getConfig: vi.fn() };
 
   beforeEach(async () => {
     stub = makeStub();
+    shortcuts.openSettings.mockClear();
+    api.setAgentModel.mockReset().mockResolvedValue({});
+    api.getConfig.mockReset();
     await TestBed.configureTestingModule({
       imports: [StatusbarComponent, TranslateModule.forRoot()],
       providers: [
         { provide: AppStateService, useValue: stub },
-        { provide: ElectronApiService, useValue: { getAppVersion: () => Promise.resolve('9.9.9') } },
+        { provide: KeyboardShortcutsService, useValue: shortcuts },
+        { provide: ElectronApiService, useValue: api },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(StatusbarComponent);
@@ -88,6 +99,70 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
     const label = fixture.nativeElement.querySelector('.model-label');
     expect(label).not.toBeNull();
     expect(label.textContent.trim()).toBe('opus-4-7');
+  });
+
+  // ── agent chip ──────────────────────────────────────────────────────────
+
+  it('renders the agent display name before the model', () => {
+    stub.config.set({ agentId: 'claude' });
+    stub.detectedAgents.set([{ id: 'claude', name: 'Claude Code' }]);
+    stub.activeModel.set('claude-opus-4-7');
+    fixture.detectChanges();
+    const group = fixture.nativeElement.querySelector('.center-group') as HTMLElement;
+    expect(group.firstElementChild?.classList.contains('agent-chip')).toBe(true);
+    expect(group.querySelector('.agent-label')?.textContent?.trim()).toBe('Claude Code');
+  });
+
+  it('falls back to the agent id and shows the chip without an active model', () => {
+    stub.config.set({ agentId: 'codex' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.agent-label')?.textContent?.trim()).toBe('codex');
+    expect(fixture.nativeElement.querySelector('.model')).toBeNull();
+  });
+
+  it('opens Settings on the execution section when the chip is clicked', () => {
+    stub.config.set({ agentId: 'claude' });
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement).click();
+    expect(shortcuts.openSettings).toHaveBeenCalledWith('execution');
+  });
+
+  // ── effort selector ─────────────────────────────────────────────────────
+
+  const LEVELS = [{ id: 'default', label: 'Default' }, { id: 'high', label: 'High' }];
+
+  it('hides the effort selector when the agent exposes no reasoning options', () => {
+    stub.config.set({ agentId: 'gemini' });
+    stub.detectedAgents.set([{ id: 'gemini', name: 'Gemini' }]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.effort-select')).toBeNull();
+  });
+
+  it('shows the effort selector between model and context bar', () => {
+    stub.config.set({ agentId: 'claude' });
+    stub.detectedAgents.set([{ id: 'claude', name: 'Claude Code', reasoningOptions: LEVELS }]);
+    stub.activeModel.set('claude-opus-4-7');
+    stub.contextPct.set(0.3);
+    fixture.detectChanges();
+    const kids = Array.from(fixture.nativeElement.querySelector('.center-group').children) as HTMLElement[];
+    const names = kids.map((k) => k.classList.contains('agent-chip') ? 'agent' : k.classList.contains('model') ? 'model' : k.classList.contains('effort-select') ? 'effort' : k.classList.contains('ctx') ? 'ctx' : 'other');
+    expect(names).toEqual(['agent', 'model', 'effort', 'ctx']);
+  });
+
+  it('persists a new effort preserving the current model, then refreshes config', async () => {
+    stub.config.set({ agentId: 'claude', agentModels: { claude: { model: 'opus' } } });
+    stub.detectedAgents.set([{ id: 'claude', name: 'Claude Code', reasoningOptions: LEVELS }]);
+    api.getConfig.mockResolvedValue({ agentId: 'claude', agentModels: { claude: { model: 'opus', reasoning: 'high' } } });
+    await fixture.componentInstance.onReasoningChange('high');
+    expect(api.setAgentModel).toHaveBeenCalledWith({ agentId: 'claude', model: 'opus', reasoning: 'high' });
+    expect(fixture.componentInstance.activeReasoning()).toBe('high');
+  });
+
+  it('sends reasoning null when going back to default', async () => {
+    stub.config.set({ agentId: 'claude', agentModels: { claude: { reasoning: 'high' } } });
+    api.getConfig.mockResolvedValue({ agentId: 'claude' });
+    await fixture.componentInstance.onReasoningChange('default');
+    expect(api.setAgentModel).toHaveBeenCalledWith({ agentId: 'claude', model: null, reasoning: null });
   });
 
   // ── progress bar ────────────────────────────────────────────────────────

@@ -76,3 +76,23 @@ describe('Claude buildExtraArgs — mode-aware argv (REV-AGENT-CORE-006)', () =>
     expect(disallowList).toEqual(expect.arrayContaining(['WebSearch', 'WebFetch']));
   });
 });
+
+describe('Claude buildArgs — reasoning effort', () => {
+  const build = (reasoning?: string): string[] =>
+    claudeAgentDef.buildArgs('p', [], [], { model: 'opus', ...(reasoning ? { reasoning } : {}) });
+
+  it('declares reasoning options led by "default"', () => {
+    expect(claudeAgentDef.reasoningOptions?.[0]?.id).toBe('default');
+    expect(claudeAgentDef.reasoningOptions?.map((r) => r.id)).toContain('max');
+  });
+
+  it('emits --effort for a concrete level', () => {
+    const args = build('high');
+    expect(args[args.indexOf('--effort') + 1]).toBe('high');
+  });
+
+  it('omits --effort for "default" or when unset', () => {
+    expect(build('default')).not.toContain('--effort');
+    expect(build()).not.toContain('--effort');
+  });
+});
