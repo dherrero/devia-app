@@ -7,6 +7,10 @@ const pairs = [
     'src/main/features/code-graph/engine/extraction/wasm',
     'dist/main/main/features/code-graph/engine/extraction/wasm',
   ],
+  [
+    'src/main/features/code-graph/engine/db',
+    'dist/main/main/features/code-graph/engine/db',
+  ],
 ];
 
 for (const [from, to] of pairs) {
@@ -14,6 +18,7 @@ for (const [from, to] of pairs) {
   const dst = path.join(root, to);
   fs.mkdirSync(dst, { recursive: true });
   for (const f of fs.readdirSync(src)) {
-    if (f.endsWith('.wasm')) fs.copyFileSync(path.join(src, f), path.join(dst, f));
+    if (f.endsWith('.wasm') || f.endsWith('.sql'))
+      fs.copyFileSync(path.join(src, f), path.join(dst, f));
   }
 }
