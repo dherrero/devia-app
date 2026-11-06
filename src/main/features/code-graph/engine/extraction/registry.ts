@@ -1,5 +1,6 @@
 import type { CodeGraphLanguage } from '../../../../../shared/domain/code-graph';
 import type { LanguageExtractor } from './extractor';
+import { javaExtractor } from './languages/java';
 import { pythonExtractor } from './languages/python';
 import { javascriptExtractor, typescriptExtractor } from './languages/typescript';
 
@@ -16,3 +17,4 @@ export function extractorFor(lang: CodeGraphLanguage): LanguageExtractor | undef
 registerExtractor(typescriptExtractor);
 registerExtractor(javascriptExtractor);
 registerExtractor(pythonExtractor);
+registerExtractor(javaExtractor);
