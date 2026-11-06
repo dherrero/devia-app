@@ -261,6 +261,44 @@ describe('typescriptExtractor', () => {
     });
   });
 
+  it('only emits declarations whose container is a module, namespace, class or function body', async () => {
+    const ex = await extractFixture('nesting.ts');
+    expect(ex.errors).toEqual([]);
+    const symbols = ex.nodes
+      .filter((n) => n.kind !== 'file' && n.kind !== 'import' && n.kind !== 'export')
+      .map((n) => `${n.kind}:${n.qualifiedName}`);
+    expect(symbols).toEqual([
+      'function:outer',
+      'function:outer.inner',
+      'constant:o',
+      'method:o.m',
+      'class:A',
+      'method:A.m',
+      'type_alias:Shape',
+      'method:Shape.area',
+      'property:Shape.side',
+    ]);
+
+    const file = fileNode(ex);
+    const outer = nodeOf(ex, 'function', 'outer');
+    const inner = nodeOf(ex, 'function', 'outer.inner');
+    expect(hasContains(ex, outer, inner)).toBe(true);
+    expect(refNamed(ex, 'calls', 'tick').fromNodeId).toBe(file.id);
+    expect(refNamed(ex, 'calls', 'run').fromNodeId).toBe(file.id);
+    expect(refNamed(ex, 'calls', 'helper').fromNodeId).toBe(file.id);
+    expect(refNamed(ex, 'calls', 'deep').fromNodeId).toBe(inner.id);
+    expect(refNamed(ex, 'calls', 'inner').fromNodeId).toBe(outer.id);
+
+    const o = nodeOf(ex, 'constant', 'o');
+    const om = nodeOf(ex, 'method', 'o.m');
+    expect(hasContains(ex, o, om)).toBe(true);
+    expect(refNamed(ex, 'calls', 'ping').fromNodeId).toBe(om.id);
+
+    const a = nodeOf(ex, 'class', 'A');
+    expect(hasContains(ex, a, nodeOf(ex, 'method', 'A.m'))).toBe(true);
+    expect(refNamed(ex, 'extends', 'Base').fromNodeId).toBe(a.id);
+  });
+
   it('never throws on garbage input', async () => {
     const ex = await extractSource('src/junk.ts', '}{ class ( => @@ import from ;;; <<>>');
     expect(ex.errors.length).toBeGreaterThan(0);

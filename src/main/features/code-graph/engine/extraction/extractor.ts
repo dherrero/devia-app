@@ -147,9 +147,9 @@ export class ExtractionBuilder {
     this.scopes.push({ node, endIndex: syntax.endIndex });
   }
 
-  addSymbol(init: SymbolInit, parent: Scope): GraphNode {
+  addSymbol(init: SymbolInit, parent: GraphNode): GraphNode {
     const { syntax, isExported, ...fields } = init;
-    const qualifiedName = parent.node === this.file ? init.name : `${parent.node.qualifiedName}.${init.name}`;
+    const qualifiedName = parent === this.file ? init.name : `${parent.qualifiedName}.${init.name}`;
     const startLine = lineOf(syntax);
     const id = makeNodeId(this.relPath, init.kind, qualifiedName, startLine);
     const existing = this.byId.get(id);
@@ -166,7 +166,7 @@ export class ExtractionBuilder {
     };
     this.nodes.push(node);
     this.byId.set(id, node);
-    this.edges.push({ source: parent.node.id, target: id, kind: 'contains', provenance: 'static' });
+    this.edges.push({ source: parent.id, target: id, kind: 'contains', provenance: 'static' });
     return node;
   }
 

@@ -33,16 +33,16 @@ describe('ExtractionBuilder', () => {
 
       const cls = required(tree.rootNode.namedChild(0));
       const method = required(cls.childForFieldName('body')?.namedChild(0));
-      const a = b.addSymbol({ kind: 'class', name: 'A', syntax: cls }, b.scopeAt(cls));
+      const a = b.addSymbol({ kind: 'class', name: 'A', syntax: cls }, b.scopeAt(cls).node);
       b.enterScope(cls, a);
       expect(b.scopeAt(method).node).toBe(a);
       const m = b.addSymbol(
         { kind: 'method', name: 'm', syntax: method, signature: headerText(source, method, method.childForFieldName('body')) },
-        b.scopeAt(method),
+        a,
       );
       expect(m.qualifiedName).toBe('A.m');
       expect(m.signature).toBe('def m(self):');
-      expect(b.addSymbol({ kind: 'method', name: 'm', syntax: method }, b.scopeAt(method))).toBe(m);
+      expect(b.addSymbol({ kind: 'method', name: 'm', syntax: method }, a)).toBe(m);
       b.addRef(m.id, 'self.x.run', 'calls', method, { via: 'test' });
 
       const after = required(tree.rootNode.namedChild(1));

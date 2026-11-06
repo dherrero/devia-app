@@ -13,11 +13,19 @@ import {
   walk,
   type FileExtraction,
   type LanguageExtractor,
-  type Scope,
   type SymbolInit,
 } from '../extractor';
 
 // Adapted from codegraph (MIT), src/extraction/languages/typescript.ts and javascript.ts.
+//
+// Which declarations become symbols is decided by their syntactic container, not by the scope
+// stack (blocks and callbacks are not scopes, so the stack alone leaks their locals to module level):
+// - module level and namespace bodies: every declaration, `const/let/var` included;
+// - the direct body of a function/method: nested declarations (`outer.inner`), never variables;
+// - class/interface bodies, the object type of a type alias, a class expression or object literal
+//   held by a module-level variable: members (`A.m`, `o.m`);
+// - anything else (if/for/try/switch blocks, callbacks, nested type literals, anonymous classes): nothing.
+// Calls and references inside skipped code still hang off the enclosing symbol or the file.
 
 const DECLARATION_KINDS: Readonly<Record<string, NodeKind>> = {
   function_declaration: 'function',
@@ -47,6 +55,17 @@ const SCOPE_KINDS: ReadonlySet<NodeKind> = new Set([
   'method',
   'component',
 ]);
+
+const MEMBER_TYPES: ReadonlySet<string> = new Set([
+  'method_definition',
+  'method_signature',
+  'abstract_method_signature',
+  'public_field_definition',
+  'field_definition',
+  'property_signature',
+]);
+
+const CALLABLE_KINDS: ReadonlySet<NodeKind> = new Set(['function', 'method', 'component']);
 
 const FUNCTION_VALUES: ReadonlySet<string> = new Set([
   'arrow_function',
@@ -82,6 +101,8 @@ interface Ctx {
   source: string;
   b: ExtractionBuilder;
   exportedLocals: Map<string, boolean>;
+  /** Syntax node id → the symbol it declares (or whose members it holds). */
+  owners: Map<number, GraphNode>;
 }
 
 function createExtractor(language: CodeGraphLanguage, extensions: string[]): LanguageExtractor {
@@ -90,7 +111,7 @@ function createExtractor(language: CodeGraphLanguage, extensions: string[]): Lan
     extensions,
     extract(relPath: string, source: string, tree: Tree): FileExtraction {
       const b = new ExtractionBuilder(relPath, language, tree.rootNode);
-      const ctx: Ctx = { source, b, exportedLocals: new Map() };
+      const ctx: Ctx = { source, b, exportedLocals: new Map(), owners: new Map() };
       try {
         walk(tree.rootNode, (node) => {
           b.noteSyntaxError(node);
@@ -114,7 +135,8 @@ function declare(node: Node, kind: NodeKind, ctx: Ctx): boolean {
   const exportDefault = isExportDefault(wrapper);
   const nameNode = node.childForFieldName('name') ?? node.childForFieldName('property');
   const name = nameNode ? unquote(nodeText(source, nameNode)) : exportDefault ? 'default' : undefined;
-  if (!name) return true;
+  const parent = name ? parentSymbol(node, ctx, true) : undefined;
+  if (!name || !parent) return true;
 
   const fnValue = kind === 'property' ? functionValueOf(node) : undefined;
   if (fnValue) kind = 'method';
@@ -132,19 +154,21 @@ function declare(node: Node, kind: NodeKind, ctx: Ctx): boolean {
   addDocAndDecorators(init, node, wrapper, ctx);
   if (exportDefault) init.metadata = { exportDefault: true };
 
-  const symbol = b.addSymbol(init, b.scopeAt(node));
+  const symbol = b.addSymbol(init, parent);
+  ctx.owners.set(node.id, symbol);
+  if (fnValue) ctx.owners.set(fnValue.id, symbol);
   for (const decorator of init.decorators ?? []) b.addRef(symbol.id, decorator, 'decorates', node);
   if (SCOPE_KINDS.has(kind)) b.enterScope(node, symbol);
   if (kind === 'class') addHeritage(node, symbol, ctx);
   if (kind === 'interface') addInterfaceExtends(node, symbol, ctx);
-  if (kind === 'enum' && body) addEnumMembers(body, ctx);
+  if (kind === 'enum' && body) addEnumMembers(body, symbol, ctx);
   return true;
 }
 
 function visitVariables(node: Node, ctx: Ctx): boolean {
   const { b, source } = ctx;
-  const scope = b.scopeAt(node);
-  if (scope.node.kind !== 'file' && scope.node.kind !== 'namespace') return true;
+  const parent = parentSymbol(node, ctx, false);
+  if (!parent) return true;
   const wrapper = statementOf(node);
   const isConst = node.children.some((c) => c?.type === 'const');
   for (const declarator of node.namedChildren) {
@@ -156,21 +180,25 @@ function visitVariables(node: Node, ctx: Ctx): boolean {
     const name = nodeText(source, nameNode);
     const fn = value && FUNCTION_VALUES.has(value.type) ? value : undefined;
     const body = fn?.childForFieldName('body');
+    const classValue = value?.type === 'class' ? value : undefined;
     const kind: NodeKind = fn
       ? isComponent(name, body) ? 'component' : 'function'
-      : isConst ? 'constant' : 'variable';
+      : classValue ? 'class' : isConst ? 'constant' : 'variable';
     const init: SymbolInit = {
       kind,
       name,
       syntax: declarator,
-      signature: headerText(source, declarator, body),
+      signature: headerText(source, declarator, body ?? classValue?.childForFieldName('body')),
       isExported: wrapper.type === 'export_statement',
     };
     if (fn && hasToken(fn, 'async')) init.isAsync = true;
     const doc = jsDocOf(wrapper, source);
     if (doc) init.docstring = doc;
-    const symbol = b.addSymbol(init, scope);
-    if (fn) b.enterScope(declarator, symbol);
+    const symbol = b.addSymbol(init, parent);
+    ctx.owners.set(declarator.id, symbol);
+    if (value) ctx.owners.set(value.id, symbol);
+    if (fn || classValue) b.enterScope(declarator, symbol);
+    if (classValue) addHeritage(classValue, symbol, ctx);
   }
   return true;
 }
@@ -339,15 +367,27 @@ function addCommonJsImport(call: Node, spec: string, ctx: Ctx): void {
 
 function addImportNode(spec: string, at: Node, ctx: Ctx): void {
   const signature = headerText(ctx.source, statementOf(at));
-  ctx.b.addSymbol({ kind: 'import', name: spec, syntax: at, signature }, fileScope(ctx));
+  ctx.b.addSymbol({ kind: 'import', name: spec, syntax: at, signature }, ctx.b.file);
 }
 
 function addExportNode(name: string, at: Node, metadata: RefMetadata, ctx: Ctx): void {
-  ctx.b.addSymbol({ kind: 'export', name, syntax: at, isExported: true, metadata }, fileScope(ctx));
+  ctx.b.addSymbol({ kind: 'export', name, syntax: at, isExported: true, metadata }, ctx.b.file);
 }
 
-function fileScope(ctx: Ctx): Scope {
-  return { node: ctx.b.file, endIndex: Number.POSITIVE_INFINITY };
+/** The symbol a declaration belongs to, or undefined when it must not become a symbol (see header). */
+function parentSymbol(node: Node, ctx: Ctx, allowInFunctionBody: boolean): GraphNode | undefined {
+  const owner = (syntax: Node | null): GraphNode | undefined => (syntax ? ctx.owners.get(syntax.id) : undefined);
+  if (MEMBER_TYPES.has(node.type)) {
+    const container = node.parent;
+    return owner(container) ?? owner(container?.parent ?? null);
+  }
+  const container = statementOf(node).parent;
+  if (!container) return undefined;
+  if (container.type === 'program') return ctx.b.file;
+  if (container.type !== 'statement_block') return undefined;
+  const holder = owner(container.parent);
+  if (holder?.kind === 'namespace') return holder;
+  return allowInFunctionBody && holder && CALLABLE_KINDS.has(holder.kind) ? holder : undefined;
 }
 
 function markExportedLocals(ctx: Ctx): void {
@@ -388,14 +428,13 @@ function addTypeRef(type: Node | null, symbol: GraphNode, kind: 'extends' | 'imp
   if (name) ctx.b.addRef(symbol.id, name, kind, type);
 }
 
-function addEnumMembers(body: Node, ctx: Ctx): void {
-  const scope = ctx.b.scopeAt(body);
+function addEnumMembers(body: Node, symbol: GraphNode, ctx: Ctx): void {
   for (const member of body.namedChildren) {
     if (!member) continue;
     const nameNode = member.type === 'enum_assignment' ? member.childForFieldName('name') : member;
     if (!nameNode || (member.type !== 'enum_assignment' && member.type !== 'property_identifier')) continue;
     const name = unquote(nodeText(ctx.source, nameNode));
-    ctx.b.addSymbol({ kind: 'enum_member', name, syntax: member, signature: headerText(ctx.source, member) }, scope);
+    ctx.b.addSymbol({ kind: 'enum_member', name, syntax: member, signature: headerText(ctx.source, member) }, symbol);
   }
 }
 
