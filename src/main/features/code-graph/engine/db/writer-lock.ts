@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -16,22 +17,30 @@ export interface WriterLock {
 const LOCK_NAME = 'writer.lock';
 const DEFAULT_STALE_MS = 30 * 60 * 1000;
 
-const ownedFiles = new Set<string>();
+const STALE_UNPARSEABLE_GRACE_MS = 2000;
+const MAX_ATTEMPTS = 3;
+
+interface OwnedLock {
+  file: string;
+  token: string;
+}
+
+const owned = new Set<OwnedLock>();
 let exitHookRegistered = false;
 
 function registerExitHook(): void {
   if (exitHookRegistered) return;
   exitHookRegistered = true;
   process.on('exit', () => {
-    for (const file of ownedFiles) removeIfOurs(file);
+    for (const lock of owned) removeIfOurs(lock);
   });
 }
 
-function readFile(file: string): WriterLockInfo | null {
+function parse(raw: string): (WriterLockInfo & { token?: string }) | null {
   try {
-    const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (typeof raw !== 'object' || raw === null) return null;
-    const { pid, owner, since } = raw as Record<string, unknown>;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null) return null;
+    const { pid, owner, since, token } = value as Record<string, unknown>;
     if (
       typeof pid !== 'number' ||
       typeof since !== 'number' ||
@@ -39,16 +48,32 @@ function readFile(file: string): WriterLockInfo | null {
     ) {
       return null;
     }
-    return { pid, owner, since };
+    return typeof token === 'string'
+      ? { pid, owner, since, token }
+      : { pid, owner, since };
   } catch {
     return null;
   }
 }
 
-function removeIfOurs(file: string): void {
-  if (readFile(file)?.pid !== process.pid) return;
+function readRaw(file: string): string | null {
   try {
-    fs.unlinkSync(file);
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+function readFile(file: string) {
+  const raw = readRaw(file);
+  return raw === null ? null : parse(raw);
+}
+
+function removeIfOurs(lock: OwnedLock): void {
+  const current = readFile(lock.file);
+  if (current?.pid !== process.pid || current.token !== lock.token) return;
+  try {
+    fs.unlinkSync(lock.file);
   } catch {
     // already gone
   }
@@ -63,24 +88,55 @@ function isAlive(pid: number): boolean {
   }
 }
 
-function writeNew(file: string, info: WriterLockInfo): boolean {
-  let fd: number;
+function uniqueSuffix(): string {
+  return `${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+}
+
+function createExclusive(file: string, payload: string): boolean {
+  const tmp = `${file}.tmp-${uniqueSuffix()}`;
+  fs.writeFileSync(tmp, payload, { flag: 'wx' });
   try {
-    fd = fs.openSync(file, 'wx');
+    fs.linkSync(tmp, file);
+    return true;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false;
-    throw err;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST') return false;
+    if (code !== 'ENOSYS' && code !== 'EPERM' && code !== 'ENOTSUP') throw err;
+    // Filesystem without hard links: fall back to O_EXCL create (the file is
+    // briefly empty, which readers cover with the unparseable-lock grace).
+    try {
+      fs.writeFileSync(file, payload, { flag: 'wx' });
+      return true;
+    } catch (inner) {
+      if ((inner as NodeJS.ErrnoException).code === 'EEXIST') return false;
+      throw inner;
+    }
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // already gone
+    }
+  }
+}
+
+function isStale(file: string, raw: string | null, staleMs: number): boolean {
+  const info = raw === null ? null : parse(raw);
+  if (info !== null) {
+    return !isAlive(info.pid) || Date.now() - info.since > staleMs;
   }
   try {
-    fs.writeFileSync(fd, JSON.stringify(info));
-  } finally {
-    fs.closeSync(fd);
+    return Date.now() - fs.statSync(file).mtimeMs > STALE_UNPARSEABLE_GRACE_MS;
+  } catch {
+    return false;
   }
-  return true;
 }
 
 export function readWriterLock(dir: string): WriterLockInfo | null {
-  return readFile(path.join(dir, LOCK_NAME));
+  const info = readFile(path.join(dir, LOCK_NAME));
+  return info === null
+    ? null
+    : { pid: info.pid, owner: info.owner, since: info.since };
 }
 
 export function isFullIndexRunning(dir: string): boolean {
@@ -95,28 +151,52 @@ export function acquireWriterLock(
 ): WriterLock | null {
   const file = path.join(dir, LOCK_NAME);
   const staleMs = opts.staleMs ?? DEFAULT_STALE_MS;
-  const info: WriterLockInfo = { pid: process.pid, owner, since: Date.now() };
+  const token = crypto.randomBytes(8).toString('hex');
+  const payload = JSON.stringify({
+    pid: process.pid,
+    owner,
+    since: Date.now(),
+    token,
+  });
 
-  if (!writeNew(file, info)) {
-    const current = readFile(file);
-    const stale =
-      current === null ||
-      !isAlive(current.pid) ||
-      Date.now() - current.since > staleMs;
-    if (!stale) return null;
-    fs.writeFileSync(file, JSON.stringify(info));
-    const confirmed = readFile(file);
-    if (confirmed?.pid !== process.pid || confirmed.since !== info.since) {
+  let acquired = false;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS && !acquired; attempt++) {
+    if (createExclusive(file, payload)) {
+      acquired = true;
+      break;
+    }
+    const raw = readRaw(file);
+    if (raw === null) continue;
+    if (!isStale(file, raw, staleMs)) return null;
+
+    const graveyard = `${file}.stale-${uniqueSuffix()}`;
+    try {
+      fs.renameSync(file, graveyard);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw err;
+    }
+    if (readRaw(graveyard) !== raw) {
+      // We moved a lock that was replaced after we judged it stale: put it back.
+      try {
+        fs.linkSync(graveyard, file);
+      } catch {
+        // someone else already holds a newer lock
+      }
+      fs.rmSync(graveyard, { force: true });
       return null;
     }
+    fs.rmSync(graveyard, { force: true });
   }
+  if (!acquired) return null;
 
-  ownedFiles.add(file);
+  const handle: OwnedLock = { file, token };
+  owned.add(handle);
   registerExitHook();
   return {
     release(): void {
-      ownedFiles.delete(file);
-      removeIfOurs(file);
+      owned.delete(handle);
+      removeIfOurs(handle);
     },
   };
 }

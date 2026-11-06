@@ -1,6 +1,8 @@
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   acquireWriterLock,
@@ -105,6 +107,8 @@ describe('writer-lock', () => {
 
   it('steals a corrupt lock file', () => {
     fs.writeFileSync(lockFile, 'garbage');
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(lockFile, old, old);
     const lock = acquireWriterLock(dir, 'indexer');
     expect(lock).not.toBeNull();
     lock!.release();
@@ -119,4 +123,81 @@ describe('writer-lock', () => {
     }
     expect(process.listenerCount('exit')).toBe(before);
   });
+
+  it('does not steal an empty lock file younger than the grace period', () => {
+    fs.writeFileSync(lockFile, '');
+    expect(acquireWriterLock(dir, 'indexer')).toBeNull();
+    expect(fs.existsSync(lockFile)).toBe(true);
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(lockFile, old, old);
+    const lock = acquireWriterLock(dir, 'indexer');
+    expect(lock).not.toBeNull();
+    lock!.release();
+  });
+
+  it('a stale handle cannot release a newer lock of the same process', () => {
+    const stale = acquireWriterLock(dir, 'sync')!;
+    fs.unlinkSync(lockFile);
+    const fresh = acquireWriterLock(dir, 'indexer')!;
+    expect(fresh).not.toBeNull();
+    stale.release();
+    expect(readWriterLock(dir)?.owner).toBe('indexer');
+    fresh.release();
+    expect(fs.existsSync(lockFile)).toBe(false);
+  });
+
+  it('leaves no temp or stale files behind', () => {
+    fs.writeFileSync(
+      lockFile,
+      JSON.stringify({ pid: 999999, owner: 'indexer', since: Date.now() }),
+    );
+    acquireWriterLock(dir, 'sync')!.release();
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it('grants the lock to exactly one of several real processes', async () => {
+    const moduleUrl = pathToFileURL(
+      path.join(__dirname, 'writer-lock.ts'),
+    ).href;
+    const script = `
+      import(${JSON.stringify(moduleUrl)}).then((m) => {
+        const lock = m.acquireWriterLock(process.argv[1], 'sync');
+        process.stdout.write(lock ? 'LOCKED\\n' : 'BUSY\\n');
+        process.stdin.once('data', () => {
+          if (lock) lock.release();
+          process.exit(0);
+        });
+      });
+    `;
+    for (let round = 0; round < 20; round++) {
+      const raceDir = fs.mkdtempSync(path.join(dir, 'race-'));
+      const children = Array.from({ length: 4 }, () => {
+        const child = spawn(
+          process.execPath,
+          ['--no-warnings', '-e', script, raceDir],
+          { stdio: ['pipe', 'pipe', 'inherit'] },
+        );
+        const result = new Promise<string>((resolve, reject) => {
+          let out = '';
+          child.stdout.on('data', (chunk: Buffer) => {
+            out += chunk.toString();
+            if (out.includes('\n')) resolve(out.trim());
+          });
+          child.on('error', reject);
+          child.on('exit', () => resolve(out.trim() || 'EXIT'));
+        });
+        return { child, result };
+      });
+      const results = await Promise.all(children.map((c) => c.result));
+      expect(results.filter((r) => r === 'LOCKED')).toHaveLength(1);
+      expect(results.filter((r) => r === 'BUSY')).toHaveLength(3);
+      const exited = children.map(
+        (c) =>
+          new Promise<void>((resolve) => c.child.on('exit', () => resolve())),
+      );
+      for (const c of children) c.child.stdin.write('x');
+      await Promise.all(exited);
+      expect(fs.readdirSync(raceDir)).toEqual([]);
+    }
+  }, 120_000);
 });
