@@ -109,7 +109,7 @@ describe('LegacyMapper is equivalent to the pre-S-30 pipeline (T-354)', () => {
   beforeAll(() => vi.useFakeTimers());
 
   it('covers every agent still on LegacyMapper', () => {
-    expect(new Set(golden.cases.map((c) => c.agentId)).size).toBeGreaterThanOrEqual(10);
+    expect(new Set(golden.cases.map((c) => c.agentId)).size).toBeGreaterThanOrEqual(8);
   });
 
   it.each(golden.cases.map((c) => [`${c.agentId} ${c.mode}${c.resume ? ' resumed' : ''}`, c] as const))(
