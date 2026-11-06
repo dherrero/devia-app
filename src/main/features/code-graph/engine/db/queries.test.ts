@@ -218,4 +218,45 @@ describe('GraphQueries', () => {
     expect(q.getMeta('t')).toBeUndefined();
     expect(q.transaction(() => 5)).toBe(5);
   });
+
+  it('round-trips every optional node field and omits absent ones', () => {
+    const full = node('f', 'full', 'a.ts', {
+      signature: 's',
+      docstring: 'd',
+      isTest: true,
+      visibility: 'protected',
+      isAsync: true,
+      isStatic: true,
+      isAbstract: true,
+      decorators: ['@a', '@b'],
+      metadata: { k: 'v', flag: true },
+    });
+    const bare = node('g', 'bare', 'a.ts');
+    q.insertNodes([full, bare]);
+    expect(q.nodeById('f')).toEqual(full);
+    const read = q.nodeById('g');
+    expect(read).toEqual(bare);
+    for (const key of [
+      'visibility',
+      'isAsync',
+      'isStatic',
+      'isAbstract',
+      'decorators',
+      'metadata',
+    ]) {
+      expect(read).not.toHaveProperty(key);
+    }
+  });
+
+  it('re-inserting a node keeps its edges and refreshes FTS', () => {
+    q.insertNodes([node('a', 'oldname', 'a.ts'), node('b', 'target', 'a.ts')]);
+    q.insertEdges([{ source: 'a', target: 'b', kind: 'calls', line: 1 }]);
+    q.insertNodes([node('a', 'newname', 'a.ts')]);
+    expect(q.edgesFrom('a')).toHaveLength(1);
+    const hit = (term: string): unknown[] =>
+      db.prepare('SELECT id FROM nodes_fts WHERE nodes_fts MATCH ?').all(term);
+    expect(hit('newname')).toEqual([{ id: 'a' }]);
+    expect(hit('oldname')).toEqual([]);
+    expect(q.counts().nodes).toBe(2);
+  });
 });

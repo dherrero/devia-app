@@ -49,6 +49,12 @@ interface NodeRow {
   signature: string | null;
   is_exported: number;
   is_test: number;
+  visibility: string | null;
+  is_async: number;
+  is_static: number;
+  is_abstract: number;
+  decorators: string | null;
+  metadata: string | null;
 }
 
 interface EdgeRow {
@@ -88,6 +94,14 @@ function toNode(r: NodeRow): GraphNode {
   if (r.signature !== null) n.signature = r.signature;
   if (r.docstring !== null) n.docstring = r.docstring;
   if (r.is_test === 1) n.isTest = true;
+  if (r.visibility !== null)
+    n.visibility = r.visibility as NonNullable<GraphNode['visibility']>;
+  if (r.is_async === 1) n.isAsync = true;
+  if (r.is_static === 1) n.isStatic = true;
+  if (r.is_abstract === 1) n.isAbstract = true;
+  if (r.decorators !== null)
+    n.decorators = JSON.parse(r.decorators) as string[];
+  if (r.metadata !== null) n.metadata = JSON.parse(r.metadata) as RefMetadata;
   return n;
 }
 
@@ -182,9 +196,17 @@ export class GraphQueries {
 
   insertNodes(nodes: GraphNode[]): void {
     const s = this.stmt(
-      `INSERT OR REPLACE INTO nodes (id, kind, name, qualified_name, file_path, language, start_line, end_line,
-         docstring, signature, is_exported, is_test, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO nodes (id, kind, name, qualified_name, file_path, language, start_line, end_line,
+         docstring, signature, is_exported, is_test, visibility, is_async, is_static, is_abstract,
+         decorators, metadata, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         kind = excluded.kind, name = excluded.name, qualified_name = excluded.qualified_name,
+         file_path = excluded.file_path, language = excluded.language, start_line = excluded.start_line,
+         end_line = excluded.end_line, docstring = excluded.docstring, signature = excluded.signature,
+         is_exported = excluded.is_exported, is_test = excluded.is_test, visibility = excluded.visibility,
+         is_async = excluded.is_async, is_static = excluded.is_static, is_abstract = excluded.is_abstract,
+         decorators = excluded.decorators, metadata = excluded.metadata, updated_at = excluded.updated_at`,
     );
     const now = Date.now();
     this.transaction(() => {
@@ -202,6 +224,12 @@ export class GraphQueries {
           n.signature ?? null,
           n.isExported ? 1 : 0,
           n.isTest ? 1 : 0,
+          n.visibility ?? null,
+          n.isAsync ? 1 : 0,
+          n.isStatic ? 1 : 0,
+          n.isAbstract ? 1 : 0,
+          n.decorators ? JSON.stringify(n.decorators) : null,
+          n.metadata ? JSON.stringify(n.metadata) : null,
           now,
         );
       }

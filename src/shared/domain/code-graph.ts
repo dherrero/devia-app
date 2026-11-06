@@ -62,6 +62,12 @@ export interface GraphNode {
   docstring?: string;
   isExported: boolean;
   isTest?: boolean;
+  visibility?: 'public' | 'protected' | 'private' | 'package';
+  isAsync?: boolean;
+  isStatic?: boolean;
+  isAbstract?: boolean;
+  decorators?: string[];
+  metadata?: RefMetadata;
 }
 
 export interface GraphEdge {

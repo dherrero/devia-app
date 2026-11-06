@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS nodes (
     signature TEXT,
     is_exported INTEGER NOT NULL DEFAULT 0,
     is_test INTEGER NOT NULL DEFAULT 0,
+    visibility TEXT,
+    is_async INTEGER NOT NULL DEFAULT 0,
+    is_static INTEGER NOT NULL DEFAULT 0,
+    is_abstract INTEGER NOT NULL DEFAULT 0,
+    decorators TEXT,
+    metadata TEXT,
     updated_at INTEGER NOT NULL
 );
 

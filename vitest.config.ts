@@ -6,6 +6,7 @@ export default defineConfig({
   root: __dirname,
   test: {
     environment: 'node',
+    execArgv: ['--disable-warning=ExperimentalWarning'],
     include: ['src/main/**/*.test.ts', 'src/shared/**/*.test.ts', 'tools/**/*.test.ts'],
     coverage: {
       provider: 'v8',
