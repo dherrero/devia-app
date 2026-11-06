@@ -1,5 +1,8 @@
 import type { RuntimeAgentDef } from '../../cli-adapters/domain/runtime-agent-def';
 import type { AgentMapper, MapperRegistry } from '../domain';
+import { AcpMapper } from '../acp/mapper';
+import { profileFor, type AcpAgentProfile } from '../acp/profile';
+import { profileFromUserDef } from '../acp/profiles/custom';
 import { ClaudeMapper } from '../claude/mapper';
 import { PiMapper } from '../pi/mapper';
 import { OpencodeMapper } from '../opencode/mapper';
@@ -9,7 +12,7 @@ import type { MapperDeps } from './mapper-deps';
 /** Builds the dedicated mapper for one agent from its def. */
 export type MapperFactory = (def: RuntimeAgentDef, deps: MapperDeps) => AgentMapper;
 
-/** Agents with their own mapper (S-30 phase 1); every other def runs on `LegacyMapper`. */
+/** Agents with their own mapper (S-30 phase 1); an id with an ACP profile (S-41) runs on `AcpMapper`; every other def on `LegacyMapper`. */
 export const DEDICATED_MAPPERS: Readonly<Record<string, MapperFactory>> = {
   claude: (def, deps) => new ClaudeMapper(def, deps),
   pi: (def, deps) => new PiMapper(def, deps),
@@ -33,8 +36,20 @@ export class StaticMapperRegistry implements MapperRegistry {
     const cached = this.cache.get(def);
     if (cached) return cached;
     const factory = this.dedicated[def.id];
-    const mapper = factory ? factory(def, this.deps) : new LegacyMapper(def, this.deps);
+    const mapper = factory ? factory(def, this.deps) : this.fallbackFor(def);
     this.cache.set(def, mapper);
     return mapper;
+  }
+
+  private fallbackFor(def: RuntimeAgentDef): AgentMapper {
+    const profile = def.streamFormat === 'acp-json-rpc' ? this.acpProfileFor(def) : undefined;
+    return profile
+      ? new AcpMapper(def, profile, this.deps)
+      : new LegacyMapper(def, this.deps);
+  }
+
+  /** A built-in profile wins: a user def can never re-point a built-in ACP id. */
+  private acpProfileFor(def: RuntimeAgentDef): AcpAgentProfile | undefined {
+    return profileFor(def.id) ?? profileFromUserDef(def) ?? undefined;
   }
 }
