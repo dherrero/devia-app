@@ -50,6 +50,29 @@ describe('filterVisibleAgents', () => {
       'cursor',
     ]);
   });
+
+  describe('installed first', () => {
+    const mixed = [
+      agent({ id: 'a', name: 'A', available: false }),
+      agent({ id: 'b', name: 'B', available: true }),
+      agent({ id: 'c', name: 'C', available: false }),
+      agent({ id: 'd', name: 'D', available: true }),
+    ];
+
+    it('lists installed agents before missing ones, keeping order within each group', () => {
+      expect(filterVisibleAgents(mixed, 'b', '').map((a) => a.id)).toEqual(['b', 'd', 'a', 'c']);
+    });
+
+    it('applies the same order while searching', () => {
+      expect(filterVisibleAgents(mixed, 'a', 'd').map((a) => a.id)).toEqual(['d', 'a']);
+    });
+
+    it('does not mutate the input array', () => {
+      const copy = [...mixed];
+      filterVisibleAgents(mixed, 'b', '');
+      expect(mixed).toEqual(copy);
+    });
+  });
 });
 
 describe('getNextAgentPanelState', () => {
