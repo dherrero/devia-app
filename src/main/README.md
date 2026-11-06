@@ -86,7 +86,8 @@ Soporte multi-agente: Claude Code, Codex, Gemini, OpenCode, Cursor Agent, Copilo
 **`registry.ts`**: catálogo de todos los agentes en tres tiers:
 1. CLI de primer nivel (Claude, Codex, Gemini, OpenCode, Cursor Agent, Copilot)
 2. Adaptados con streaming plain-text (Qwen, DeepSeek, Qoder)
-3. Planificados/informativos (APIs directas, MCP, local-model, ACP)
+3. ACP (Kimi, Hermes y agentes definidos por el usuario) mediante el `AcpMapper` genérico (S-41)
+4. Planificados/informativos (APIs directas, MCP, local-model)
 
 **IPC**: `agents:list`, `agent:select`, `agent:test`, `agent:set-model`, `agent:set-env`.
 
