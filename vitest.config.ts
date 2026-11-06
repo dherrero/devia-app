@@ -25,7 +25,7 @@ export default defineConfig({
       // same PR. Never lower one to make a build green — that is the whole
       // point of the mechanism.
       include: ['src/main/**/*.ts', 'src/shared/**/*.ts'],
-      exclude: ['**/*.test.ts', '**/*.spec.ts'],
+      exclude: ['**/*.test.ts', '**/*.spec.ts', '**/__fixtures__/**'],
       reporter: ['text', 'html'],
       thresholds: {
         lines: 62,

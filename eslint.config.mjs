@@ -82,7 +82,7 @@ const tsRules = {
 
 export default [
   {
-    ignores: ['dist/**', 'release/**', 'coverage/**', 'node_modules/**', '.angular/**', 'tmp/**'],
+    ignores: ['dist/**', 'release/**', 'coverage/**', 'node_modules/**', '.angular/**', 'tmp/**', '**/__fixtures__/**'],
   },
   {
     // The old eslintrc did not report stale disable comments; keep it that way.
