@@ -64,6 +64,7 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
   const pending = new Map<string, { resolve: (outcome: PermissionOutcome) => void; options: AcpPermissionOption[] }>();
   let finished = false;
   let aborted = false;
+  let replaying = false;
   let sessionId: string | undefined;
 
   const killChild = (): void => {
@@ -96,7 +97,7 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
 
   const connection = new AcpConnection(webStreamsFromChild({ stdin: io.stdin, stdout: io.stdout }), {
     onSessionUpdate: (_sessionId, update) => {
-      if (finished) return;
+      if (finished || replaying) return;
       for (const event of mapSessionUpdate(update, state, { profile, serverIds }, now())) io.emit(event);
     },
     onRequestPermission: (request) =>
@@ -150,22 +151,44 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
     io.process.once('close', () => clearTimeout(grace));
   };
 
+  // Replay-continuity profiles never load: the use case already folded the conversation into the prompt.
+  const resumeOrCreate = async (
+    capabilities: Readonly<Record<string, unknown>>,
+    mcpServers: AcpMcpServerSpec[],
+  ): Promise<string> => {
+    const resumeId = plan.resumeSessionId;
+    if (resumeId !== undefined && profile.continuity === 'native') {
+      if (capabilities['loadSession'] === true) {
+        replaying = true;
+        try {
+          await connection.loadSession({ sessionId: resumeId, cwd: plan.cwd, mcpServers });
+          return resumeId;
+        } catch {
+          io.emit({ type: 'status', label: 'Previous session not found; starting a new one' });
+        } finally {
+          replaying = false;
+        }
+      } else {
+        io.emit({ type: 'status', label: 'The agent cannot resume sessions; conversation context is not carried over' });
+      }
+    }
+    return (await connection.newSession({ cwd: plan.cwd, mcpServers })).sessionId;
+  };
+
   const run = async (): Promise<void> => {
     const info = await connection.initialize(profile.clientCapabilities);
     if (info.authMethods.length > 0 && profile.authMethodId !== undefined) {
       await connection.authenticate(profile.authMethodId);
     }
-    const created = await connection.newSession({
-      cwd: plan.cwd,
-      mcpServers: options.mcpServers.map(toAcpMcpServer),
-    });
+    const mcpServers = options.mcpServers.map(toAcpMcpServer);
+    const active = await resumeOrCreate(info.capabilities, mcpServers);
     if (aborted) return;
-    sessionId = created.sessionId;
-    io.emit({ type: 'session_started', agentSessionId: created.sessionId });
+    sessionId = active;
+    io.emit({ type: 'session_started', agentSessionId: active });
     const blocks: AcpPromptBlock[] = [
       { type: 'text', text: buildSystemPromptHeader(options.systemPrompt) + plan.prompt },
     ];
-    const response = await connection.prompt(created.sessionId, blocks);
+    const response = await connection.prompt(active, blocks);
     const events: AgentEvent[] = [];
     const usage = mapPromptUsage(response);
     if (usage) events.push(usage);

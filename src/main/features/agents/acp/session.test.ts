@@ -21,6 +21,7 @@ async function waitFor(check: () => boolean, ms = 2000): Promise<void> {
   }
 }
 
+const errorsOf = (child: FakeChild): AgentEvent[] => child.events.filter((e) => e.type === 'error');
 const finished = (child: FakeChild): boolean =>
   child.events.some((e) => e.type === 'turn_end' || e.type === 'error');
 
@@ -389,5 +390,84 @@ describe('openAcpSession — cancellation, errors and shutdown', () => {
     const { child, session } = start(SIMPLE, { killGraceMs: 20 });
     await waitFor(() => child.kills.length === 1);
     expect(() => session.flush()).not.toThrow();
+  });
+});
+
+describe('openAcpSession — resume', () => {
+  const NATIVE = { ...(KIMI as NonNullable<typeof KIMI>), continuity: 'native' as const };
+  const HISTORY = [
+    { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'old question' } },
+    { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'old answer' } },
+    { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'old thought' } },
+    { sessionUpdate: 'tool_call', toolCallId: 'old1', title: 'Read file', kind: 'read', status: 'pending' },
+    { sessionUpdate: 'tool_call_update', toolCallId: 'old1', status: 'completed' },
+  ];
+  const resumable: FakeAcpScript = {
+    history: HISTORY,
+    turns: [{ steps: [{ type: 'text', text: 'new answer' }] }],
+  };
+  const resume = (script: FakeAcpScript, over: Partial<AcpSessionOptions> = {}) =>
+    start(script, { profile: NATIVE, plan: makePlan({ resumeSessionId: 'saved-1' }), ...over });
+
+  it('loads the saved session when native, resumable and the agent supports loadSession', async () => {
+    const { child } = resume(resumable);
+    await waitFor(() => finished(child));
+    expect(child.record.loadSession).toMatchObject({ sessionId: 'saved-1', cwd: '/work/project' });
+    expect(child.record.newSession).toBeUndefined();
+    expect(child.record.prompts).toHaveLength(1);
+    expect((child.record.prompts[0] as { sessionId: string }).sessionId).toBe('saved-1');
+  });
+
+  it('the replayed history is not emitted as events', async () => {
+    const { child } = resume(resumable);
+    await waitFor(() => finished(child));
+    const text = child.events.filter((e) => e.type === 'text_delta');
+    expect(text).toEqual([{ type: 'text_delta', delta: 'new answer' }]);
+    expect(types(child.events)).not.toContain('thinking_delta');
+    expect(types(child.events)).not.toContain('tool_use');
+    expect(types(child.events)).not.toContain('tool_result');
+  });
+
+  it('the new turn after a load streams normally and session_started carries the resumed id', async () => {
+    const { child } = resume(resumable);
+    await waitFor(() => finished(child));
+    expect(child.events[0]).toEqual({ type: 'session_started', agentSessionId: 'saved-1' });
+    expect(child.events.at(-1)).toEqual({ type: 'turn_end', stopReason: 'completed' });
+  });
+
+  it('falls back to newSession with a status when loadSession fails', async () => {
+    const { child } = resume({ ...resumable, failAt: 'loadSession' });
+    await waitFor(() => finished(child));
+    expect(child.events).toContainEqual({ type: 'status', label: 'Previous session not found; starting a new one' });
+    expect(child.record.newSession).toBeDefined();
+    expect(child.events).toContainEqual({ type: 'session_started', agentSessionId: 'fake-session-1' });
+    expect(child.events.at(-1)).toEqual({ type: 'turn_end', stopReason: 'completed' });
+    expect(errorsOf(child)).toEqual([]);
+  });
+
+  it('a replay-continuity profile never calls loadSession even with a resume id', async () => {
+    const { child } = start(resumable, { plan: makePlan({ resumeSessionId: 'saved-1' }) });
+    await waitFor(() => finished(child));
+    expect(child.record.loadSession).toBeUndefined();
+    expect(child.record.newSession).toBeDefined();
+  });
+
+  it('a native profile with an agent without loadSession starts a new session and warns once', async () => {
+    const { child } = resume({ ...resumable, capabilities: { loadSession: false } });
+    await waitFor(() => finished(child));
+    expect(child.record.loadSession).toBeUndefined();
+    expect(child.record.newSession).toBeDefined();
+    const warnings = child.events.filter(
+      (e) => e.type === 'status' && e.label.startsWith('The agent cannot resume sessions'),
+    );
+    expect(warnings).toHaveLength(1);
+  });
+
+  it('no resume id means newSession', async () => {
+    const { child } = start(resumable, { profile: NATIVE });
+    await waitFor(() => finished(child));
+    expect(child.record.loadSession).toBeUndefined();
+    expect(child.record.newSession).toBeDefined();
+    expect(child.events.filter((e) => e.type === 'status' && e.label !== 'streaming')).toEqual([]);
   });
 });

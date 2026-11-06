@@ -15,7 +15,7 @@ export interface FakeAcpScript {
   readonly modes?: readonly { id: string; name?: string }[];
   readonly turns: readonly FakeAcpTurn[];
   readonly history?: readonly unknown[];
-  readonly failAt?: 'initialize' | 'newSession' | 'prompt';
+  readonly failAt?: 'initialize' | 'newSession' | 'loadSession' | 'prompt';
   /** which spelling of "set the model" the agent understands (default: config) */
   readonly modelSupport?: 'config' | 'set_model' | 'none';
 }
@@ -195,6 +195,7 @@ export function startFakeAcpAgent(
       },
       loadSession: async (params) => {
         record.loadSession = params;
+        if (script.failAt === 'loadSession') throw scriptedError();
         for (const update of script.history ?? []) await send(params.sessionId, update as Record<string, unknown>);
         return {};
       },
