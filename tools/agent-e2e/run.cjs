@@ -4,7 +4,7 @@
  * Agent E2E harness (S-30 T-344). Drives REAL CLI agents through Devia's real
  * run pipeline and compares what happened against committed snapshots.
  *
- *   node tools/agent-e2e/run.cjs <claude|pi|opencode|all> [--update] [--record]
+ *   node tools/agent-e2e/run.cjs <claude|pi|opencode|acp-fake|all> [--update] [--record]
  *
  *   --update  rewrite snapshots/<agent>-<scenario>.json from this run
  *   --record  copy each run's raw stdout into
@@ -26,7 +26,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { buildHeadlessRun } = require('./headless.cjs');
+const { buildHeadlessRun, buildFakeAcpAgent } = require('./headless.cjs');
 const { SCENARIOS, ANSWER, HARNESS_TOKENS } = require('./scenarios.cjs');
 
 const APP_ROOT = path.resolve(__dirname, '../..');
@@ -49,7 +49,57 @@ const AGENTS = {
   // developer's real file.
   codex: {},
   gemini: {},
+  // S-41: a scripted ACP agent (free, deterministic) that exercises the AcpMapper
+  // through the real pipeline. Only for this harness, never in the catalog.
+  'acp-fake': { fake: true, answer: 'Allow' },
 };
+
+/** What the fake ACP agent does in each scenario (a FakeAcpScript, see agents/acp/testing). */
+const FAKE_SCRIPTS = {
+  apply: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    turns: [{ steps: [
+      { type: 'tool', id: 'todo', title: 'devia-ui_devia_todo', kind: 'other', output: 'ok' },
+      { type: 'permission', toolId: 'w1', title: 'Write notes.txt', kind: 'edit' },
+      { type: 'tool', id: 'w1', title: 'Write notes.txt', kind: 'edit', output: 'written' },
+      { type: 'tool', id: 'mem', title: 'devia-memory_mem_save', kind: 'other', output: 'saved' },
+      { type: 'tool', id: 'spec', title: 'devia-kanban_kanban_create_spec', kind: 'other', output: 'S-1' },
+      { type: 'text', text: 'Done: todo, permission, memory and spec.' },
+    ] }],
+  },
+  resume: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    history: [
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'earlier question' } },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'earlier answer' } },
+    ],
+    turns: [{ steps: [{ type: 'text', text: 'Verde' }] }],
+  },
+  plan: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    turns: [{ steps: [
+      { type: 'permission', toolId: 'w1', title: 'Write notas.txt', kind: 'edit' },
+      { type: 'tool', id: 'w1', title: 'Write notas.txt', kind: 'edit' },
+      { type: 'tool', id: 'list', title: 'devia-kanban_kanban_list_specs', kind: 'other', output: '[]' },
+      { type: 'text', text: 'I could not create the file; there are no specs.' },
+    ] }],
+  },
+  harness: {
+    modes: [{ id: 'default' }, { id: 'plan' }],
+    turns: [{ steps: [
+      { type: 'tool', id: 'echo', title: 'e2e-echo_echo_token', kind: 'other', output: 'ECHO-7Q4Z' },
+      { type: 'text', text: 'ECHO-7Q4Z\nSKILL-3K9P\nROLE-8M2X' },
+    ] }],
+  },
+};
+
+/** An executable that runs the scripted ACP agent, so the launcher spawns a real child. */
+function writeFakeAcpLauncher(root) {
+  const cli = path.join(APP_ROOT, 'src/main/features/agents/acp/testing/fake-acp-agent.cli.cjs');
+  const bin = path.join(root, 'acp-fake');
+  fs.writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${cli}" "$@"\n`, { mode: 0o755 });
+  return bin;
+}
 
 // ── spawn interception ─────────────────────────────────────────────────────
 
@@ -74,7 +124,7 @@ childProcess.spawn = function patchedSpawn(command, args, options) {
     if (child.stdin) {
       const write = child.stdin.write.bind(child.stdin);
       child.stdin.write = (chunk, ...rest) => {
-        entry.stdin.push(String(chunk));
+        entry.stdin.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
         return write(chunk, ...rest);
       };
     }
@@ -143,6 +193,9 @@ function deliveredServers(spawn) {
       if (m) Object.keys(JSON.parse(m[1])).forEach((k) => ids.add(k));
     }
   }
+  for (const req of jsonRpcRequests(spawn)) {
+    if (req.method === 'session/new' || req.method === 'session/load') (req.params?.mcpServers ?? []).forEach((s) => ids.add(s.name));
+  }
   return [...ids].sort();
 }
 
@@ -152,7 +205,7 @@ function systemPromptChannel(spawn) {
     const v = spawn.args[i + 1] || '';
     return spawn.files[v] !== undefined ? 'argv-file' : 'argv';
   }
-  const stdin = spawn.stdin.join('');
+  const stdin = acpPromptText(spawn) ?? spawn.stdin.join('');
   if (stdin.includes('[System]')) return 'stdin-prepend';
   return 'none';
 }
@@ -186,7 +239,7 @@ function systemPromptText(spawn, withBlock = true) {
     const block = withBlock ? turnContextBlock(spawn) : '';
     return block ? `${text}\n\n${block}` : text;
   }
-  const stdin = spawn.stdin.join('');
+  const stdin = acpPromptText(spawn) ?? spawn.stdin.join('');
   const m = /\[System\]\n([\s\S]*?)\n\n\[User\]/.exec(stdin);
   return m ? m[1] : '';
 }
@@ -215,11 +268,50 @@ function uiServerFacts(spawn) {
   return null;
 }
 
+/** The JSON-RPC requests the client wrote to an ACP child (S-41), in order. */
+function jsonRpcRequests(spawn) {
+  const out = [];
+  for (const line of spawn.stdin.join('').split('\n')) {
+    try {
+      const msg = JSON.parse(line);
+      if (msg && msg.jsonrpc === '2.0' && typeof msg.method === 'string') out.push(msg);
+    } catch { /* not a JSON line */ }
+  }
+  return out;
+}
+
+/** The text of the first session/prompt block, when this spawn is an ACP session. */
+function acpPromptText(spawn) {
+  const prompt = jsonRpcRequests(spawn).find((m) => m.method === 'session/prompt');
+  const block = prompt?.params?.prompt?.find((b) => b.type === 'text');
+  return typeof block?.text === 'string' ? block.text : null;
+}
+
+/** What reached an ACP agent through its protocol: facts only an AcpMapper run has. */
+function acpFacts(spawn, norm) {
+  const requests = jsonRpcRequests(spawn);
+  if (requests.length === 0) return null;
+  const session = requests.find((m) => m.method === 'session/new' || m.method === 'session/load');
+  const init = requests.find((m) => m.method === 'initialize');
+  return {
+    methods: requests.map((m) => m.method).filter((m, i, all) => all.indexOf(m) === i),
+    loadedSession: requests.some((m) => m.method === 'session/load'),
+    mcpServers: (session?.params?.mcpServers ?? []).map((s) => s.name).sort(),
+    mode: requests.filter((m) => m.method === 'session/set_mode').map((m) => m.params.modeId),
+    clientCapabilities: init?.params?.clientCapabilities ?? null,
+    cwd: norm(session?.params?.cwd ?? ''),
+    systemPromptSeen: /^\[System\]/.test(acpPromptText(spawn) ?? ''),
+  };
+}
+
 function stdinShape(spawn) {
   const raw = spawn.stdin.join('');
   if (!raw) return { format: 'none' };
   const lines = raw.split('\n').filter((l) => l.trim());
   const json = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } });
+  if (json.every((j) => j && j.jsonrpc === '2.0')) {
+    return { format: 'jsonrpc', methods: [...new Set(json.map((j) => j.method).filter((m) => typeof m === 'string'))] };
+  }
   if (json.every((j) => j && typeof j === 'object')) {
     return { format: 'jsonl', types: [...new Set(json.map((j) => j.type))].sort() };
   }
@@ -270,6 +362,7 @@ function runScenario(ctx, scenario) {
       done({ code: null, error: 'harness timeout' });
     }, RUN_TIMEOUT_MS);
 
+    const fallback = ctx.answer ?? ANSWER;
     const answer = (callId, content) =>
       setTimeout(() => ctx.registry.writeToolResult(ctx.project, callId, content), 150);
 
@@ -278,10 +371,10 @@ function runScenario(ctx, scenario) {
       onClaudeOutput: (line) => { try { events.push(JSON.parse(line)); } catch { /* raw */ } },
       onProcessEnd: (p) => done({ code: p.code, error: p.error }),
       onOutboxFile: () => {},
-      onQuestionAsk: (toolUseId) => { ui.push('ask_user'); answer(toolUseId, scenario.answer ?? ANSWER); },
+      onQuestionAsk: (toolUseId) => { ui.push('ask_user'); answer(toolUseId, scenario.answer ?? fallback); },
       onUiToolRequest: (callId, tool, _input, _runId, expectsAnswer) => {
         ui.push(tool);
-        if (expectsAnswer) answer(callId, tool === 'confirm' ? 'yes' : (scenario.answer ?? ANSWER));
+        if (expectsAnswer) answer(callId, tool === 'confirm' ? 'yes' : (scenario.answer ?? fallback));
       },
     }, scenario.mode, [], scenario.origin ?? 'renderer');
   });
@@ -320,6 +413,7 @@ function buildSnapshot(ctx, agent, scenario, result) {
           ),
         },
         uiServer: uiServerFacts(spawn),
+        ...(acpFacts(spawn, norm) && { acp: acpFacts(spawn, norm) }),
         ...(Object.keys(spawn.configEnv).length > 0 && { configEnv: spawn.configEnv }),
       }
     : { spawned: false };
@@ -438,15 +532,20 @@ async function runAgent(agent, flags) {
   fs.mkdirSync(projectDir);
   childProcess.execSync('git init -q', { cwd: projectDir });
   const deviaDir = path.join(workspaceRoot, '.devia-app');
-  const { useCase, registry, sessions, userServers, setKit } = buildHeadlessRun({ agentId: agent, workspaceRoot, deviaDir, ...AGENTS[agent] });
-  const ctx = { useCase, registry, userServers, setKit, project: 'proj', projectDir, workspaceRoot, deviaDir };
+  const fakeAcp = AGENTS[agent].fake ? buildFakeAcpAgent(writeFakeAcpLauncher(workspaceRoot)) : undefined;
+  const { useCase, registry, sessions, userServers, setKit } = buildHeadlessRun({
+    agentId: agent, workspaceRoot, deviaDir, ...(AGENTS[agent].model && { model: AGENTS[agent].model }), ...(fakeAcp && { fakeAcp }),
+  });
+  const ctx = { useCase, registry, userServers, setKit, project: 'proj', projectDir, workspaceRoot, deviaDir, answer: AGENTS[agent].answer };
   let failures = 0;
   const scenarios = (flags.scenario ? SCENARIOS.filter((s) => s.id === flags.scenario) : SCENARIOS)
-    .filter((s) => !s.claudeOnly || agent === 'claude');
+    .filter((s) => !s.claudeOnly || agent === 'claude')
+    .filter((s) => !fakeAcp || FAKE_SCRIPTS[s.id] !== undefined);
   for (const scenario of scenarios) {
     process.stdout.write(`▶ ${agent}/${scenario.id} … `);
     if (scenario.harness) setUpHarness(ctx);
     if (scenario.kit) ctx.setKit(true);
+    if (fakeAcp) fakeAcp.def.env = { FAKE_ACP_SCRIPT: JSON.stringify(FAKE_SCRIPTS[scenario.id]) };
     const result = await runScenario(ctx, scenario);
     if (scenario.harness) ctx.userServers.set([]);
     if (scenario.kit) ctx.setKit(false);

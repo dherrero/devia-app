@@ -12,12 +12,21 @@ node tools/agent-e2e/run.cjs pi                       # one agent: claude | pi |
 node tools/agent-e2e/run.cjs all --update             # accept a new baseline
 node tools/agent-e2e/run.cjs opencode --record        # refresh wire fixtures
 node tools/agent-e2e/run.cjs claude --scenario apply  # one scenario
+node tools/agent-e2e/run.cjs acp-fake                 # free: the AcpMapper against a scripted ACP agent
 ```
 
 **Costs real money and needs the CLIs installed and logged in. Never runs in CI.**
 Claude runs on `haiku`; OpenCode on `opencode/deepseek-v4.1-flash-free` (the
 default `big-pickle` stalls mid-turn on tool-heavy prompts); pi on its
 configured default model.
+
+`acp-fake` (S-41) costs nothing and needs no CLI: the launcher spawns
+`src/main/features/agents/acp/testing/fake-acp-agent.cli.cjs`, driven by a per-scenario
+script (`FAKE_SCRIPTS` in `run.cjs`). It exists only in this harness (injected through
+the mapper registry's `dedicated` seam) and adds an `acp` block to the `wiring` half:
+JSON-RPC methods sent, MCP servers handed to `session/new`/`session/load`, session mode
+set, client capabilities and whether the `[System]` header reached `session/prompt`.
+It is not part of `all`.
 
 ## How it works
 

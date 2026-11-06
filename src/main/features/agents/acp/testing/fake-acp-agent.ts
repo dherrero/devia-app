@@ -97,6 +97,16 @@ export function startFakeAcpAgent(
   let wakeHang: (() => void) | undefined;
   const denied = new Set<string>();
 
+  const modeState = () =>
+    script.modes
+      ? {
+          modes: {
+            currentModeId: script.modes[0]?.id ?? 'default',
+            availableModes: script.modes.map((m) => ({ id: m.id, name: m.name ?? m.id })),
+          },
+        }
+      : {};
+
   const agentFor = (conn: AgentSideConnection): Agent => {
     const send = (sessionId: string, update: Record<string, unknown>): Promise<void> =>
       conn.sessionUpdate({ sessionId, update: update as SessionUpdate });
@@ -183,21 +193,13 @@ export function startFakeAcpAgent(
         record.newSession = params;
         if (script.failAt === 'newSession') throw scriptedError();
         sessionCounter += 1;
-        return {
-          sessionId: `fake-session-${sessionCounter}`,
-          ...(script.modes && {
-            modes: {
-              currentModeId: script.modes[0]?.id ?? 'default',
-              availableModes: script.modes.map((m) => ({ id: m.id, name: m.name ?? m.id })),
-            },
-          }),
-        };
+        return { sessionId: `fake-session-${sessionCounter}`, ...modeState() };
       },
       loadSession: async (params) => {
         record.loadSession = params;
         if (script.failAt === 'loadSession') throw scriptedError();
         for (const update of script.history ?? []) await send(params.sessionId, update as Record<string, unknown>);
-        return {};
+        return { ...modeState() };
       },
       setSessionMode: async (params) => {
         record.setModes.push(params);
