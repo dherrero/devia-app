@@ -33,6 +33,8 @@ export interface AcpSessionOptions {
   readonly systemPrompt: string;
   /** Servers to hand to session/new (Devia's + the user's), already filtered to the delivered ones. */
   readonly mcpServers: readonly McpServerConfig[];
+  /** Closing reminder appended to the user text (models weigh the last instruction most). */
+  readonly userReminder?: string;
   readonly now?: () => number;
   /** Time the child gets to exit after its stdin closes before SIGTERM (default 500). */
   readonly killGraceMs?: number;
@@ -235,7 +237,13 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
       ? info.capabilities['promptCapabilities']['image'] === true
       : false;
     const blocks: AcpPromptBlock[] = [
-      { type: 'text', text: buildSystemPromptHeader(options.systemPrompt) + plan.prompt },
+      {
+        type: 'text',
+        text:
+          buildSystemPromptHeader(options.systemPrompt) +
+          plan.prompt +
+          (options.userReminder ? `\n\n${options.userReminder}` : ''),
+      },
       ...(await Promise.all(plan.imagePaths.map((file) => imageBlock(file, canEmbedImages)))),
     ];
     const response = await connection.prompt(active, blocks);

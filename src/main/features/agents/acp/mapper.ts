@@ -15,6 +15,21 @@ import { openAcpSession } from './session';
 const UI_SERVER_ID = 'devia-ui';
 
 /**
+ * Devia cannot make this agent read-only in plan mode (its own tools write without
+ * asking), so the model is told. It travels inside the prompt Devia sends, never in
+ * a project file, so every user gets it. The core's plan protocol says writing tools
+ * are unavailable, which is not true for these agents; this block corrects that.
+ */
+const UNENFORCED_PLAN_GUARD = [
+  '## Plan mode is NOT technically enforced for you',
+  '',
+  'You are in plan mode, but nothing stops your own tools from writing. Behave as if they were disabled: do not create, modify, move or delete any file, and do not run shell or terminal commands that change anything (no redirections, no editors, no installs, no git writes). Explore read-only, and put the plan on the project board with the kanban tools. If a step needs a change, describe it in the plan instead of doing it.',
+].join('\n');
+
+const UNENFORCED_PLAN_REMINDER =
+  '[Plan mode reminder] Do not create, modify or delete files or run commands that change anything, even if asked above: explore read-only and write the plan on the board.';
+
+/**
  * One mapper for every ACP agent (S-41): the profile carries what differs per
  * agent (argv, continuity, plan enforcement, tool naming). The harness travels
  * through `session/new` — nothing is written to disk, so a user server's tokens
@@ -55,7 +70,8 @@ export class AcpMapper implements AgentMapper {
   }
 
   prepareRun(plan: AgentRunPlan, systemPrompt: string, delivery: DeliveryResolution): PrepareResult {
-    this.systemPrompts.set(plan.runId, systemPrompt);
+    const guard = plan.mode === 'plan' && this.profile.planEnforcement === 'none' ? UNENFORCED_PLAN_GUARD : '';
+    this.systemPrompts.set(plan.runId, [systemPrompt, guard].filter((part) => part.trim().length > 0).join('\n\n'));
     return {
       ok: true,
       run: {
@@ -77,6 +93,7 @@ export class AcpMapper implements AgentMapper {
       plan,
       profile: this.profile,
       systemPrompt: this.systemPrompts.get(plan.runId) ?? '',
+      ...(plan.mode === 'plan' && this.profile.planEnforcement === 'none' && { userReminder: UNENFORCED_PLAN_REMINDER }),
       mcpServers: this.servers(plan),
     });
   }

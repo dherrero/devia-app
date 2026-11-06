@@ -58,16 +58,12 @@
       "status",
       "text_delta",
       "thinking_delta",
-      "tool_result",
-      "tool_use",
       "turn_end",
       "usage"
     ],
     "sessionStarted": true,
-    "deviaTools": [
-      "mcp__devia-kanban__kanban_list_specs"
-    ],
+    "deviaTools": [],
     "uiCards": [],
-    "wroteFile": true
+    "wroteFile": false
   }
 }

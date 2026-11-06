@@ -147,3 +147,40 @@ async function waitForTurn(events: { type: string }[]): Promise<void> {
     await new Promise((r) => setTimeout(r, 5));
   }
 }
+
+describe('AcpMapper plan guard (the model is told, because Devia cannot enforce plan mode for this agent)', () => {
+  const sentText = async (m: AcpMapper, plan: AgentRunPlan): Promise<string> => {
+    m.prepareRun(plan, 'SYS', m.resolveDelivery(plan));
+    const child = createFakeChild({ turns: [{ steps: [{ type: 'text', text: 'hi' }] }] });
+    m.openSession(child.io, plan);
+    await waitForTurn(child.events);
+    const prompt = child.record.prompts[0] as { prompt: { text: string }[] };
+    return prompt.prompt[0]?.text ?? '';
+  };
+
+  it('plan mode with planEnforcement none tells the agent not to write, through the prompt itself', async () => {
+    const text = await sentText(mapper(), planWith({ mode: 'plan', prompt: 'make it' }));
+    expect(text).toContain('[System]\nSYS');
+    expect(text).toMatch(/Plan mode is NOT technically enforced for you/);
+    expect(text).toMatch(/shell|terminal/i);
+    expect(text).toContain('[User]\nmake it');
+    expect(text.endsWith('write the plan on the board.')).toBe(true);
+  });
+
+  it('adds nothing in apply mode or when plan mode is enforced', async () => {
+    expect(await sentText(mapper(), planWith({ mode: 'apply' }))).not.toMatch(/NOT technically enforced/);
+    const enforced = mapper({ ...KIMI, planEnforcement: 'permission-policy' });
+    expect(await sentText(enforced, planWith({ mode: 'plan' }))).not.toMatch(/NOT technically enforced/);
+  });
+
+  it('still tells the agent when there is no other system prompt', async () => {
+    const m = mapper();
+    const plan = planWith({ mode: 'plan', prompt: 'x' });
+    m.prepareRun(plan, '', m.resolveDelivery(plan));
+    const child = createFakeChild({ turns: [{ steps: [{ type: 'text', text: 'hi' }] }] });
+    m.openSession(child.io, plan);
+    await waitForTurn(child.events);
+    const prompt = child.record.prompts[0] as { prompt: { text: string }[] };
+    expect(prompt.prompt[0]?.text).toMatch(/NOT technically enforced/);
+  });
+});
