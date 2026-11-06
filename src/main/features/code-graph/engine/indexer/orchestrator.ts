@@ -19,7 +19,10 @@ export const EXTRACTION_VERSION = 1;
 export const GRAPH_DB_FILE = 'graph.db';
 export const BUILDING_DB_FILE = 'graph.db.building';
 
-const BATCH_SIZE = 100;
+const DEFAULT_BATCH_SIZE = 100;
+const SWAP_ATTEMPTS = 8;
+const SWAP_BASE_DELAY_MS = 100;
+const SWAP_MAX_DELAY_MS = 800;
 const GENERATED_HEAD_BYTES = 2048;
 
 export interface IndexResult {
@@ -37,6 +40,8 @@ export interface IndexProjectOptions {
   onProgress?: (p: IndexProgress) => void;
   signal?: AbortSignal;
   resolve?: (db: GraphQueries) => Promise<void>;
+  batchSize?: number;
+  renameFile?: (from: string, to: string) => void;
 }
 
 export class IndexBusyError extends Error {
@@ -45,6 +50,15 @@ export class IndexBusyError extends Error {
   constructor() {
     super('Another full index is already running for this project');
     this.name = 'IndexBusyError';
+  }
+}
+
+export class IndexSwapBusyError extends Error {
+  readonly code = 'INDEX_SWAP_BUSY';
+
+  constructor() {
+    super('graph.db stayed busy; the previous graph was kept');
+    this.name = 'IndexSwapBusyError';
   }
 }
 
@@ -171,10 +185,7 @@ function closeForPublish(db: GraphDb): void {
   db.close();
 }
 
-// Readers may still hold the old graph.db: fold its WAL back in first so that a stale
-// graph.db-wal is never replayed against the freshly renamed database.
-function retirePublished(dataDir: string): void {
-  const published = path.join(dataDir, GRAPH_DB_FILE);
+function checkpointPublished(published: string): void {
   if (!fs.existsSync(published)) return;
   try {
     const old = new DatabaseSync(published);
@@ -185,8 +196,11 @@ function retirePublished(dataDir: string): void {
       old.close();
     }
   } catch {
-    // not a usable database: it is replaced wholesale below
+    // not a usable database: it is replaced wholesale by the rename
   }
+}
+
+function removeSidecars(published: string): void {
   for (const suffix of ['-wal', '-shm']) {
     try {
       fs.rmSync(published + suffix, { force: true });
@@ -194,6 +208,33 @@ function retirePublished(dataDir: string): void {
       // still mapped by a reader on a platform that forbids unlinking open files
     }
   }
+}
+
+const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+// Contract with readers (MCP, UI): they open graph.db READONLY per request and close it
+// before returning, never holding it between requests. That keeps the window where the
+// old file is open short, so a busy rename (Windows) is retried rather than failed, and
+// the old -wal/-shm are dropped right before the rename so they are never replayed
+// against the new database.
+async function publish(
+  buildingPath: string,
+  published: string,
+  rename: (from: string, to: string) => void,
+): Promise<void> {
+  checkpointPublished(published);
+  for (let attempt = 0; attempt < SWAP_ATTEMPTS; attempt++) {
+    if (attempt > 0) await delay(Math.min(SWAP_MAX_DELAY_MS, SWAP_BASE_DELAY_MS * 2 ** (attempt - 1)));
+    removeSidecars(published);
+    try {
+      rename(buildingPath, published);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'EBUSY' && code !== 'EPERM' && code !== 'EACCES') throw err;
+    }
+  }
+  throw new IndexSwapBusyError();
 }
 
 export async function indexProject(opts: IndexProjectOptions): Promise<IndexResult> {
@@ -228,9 +269,10 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
     let indexed = 0;
     emit('parse');
 
-    for (let start = 0; start < discovered.files.length; start += BATCH_SIZE) {
+    const batchSize = Math.max(1, opts.batchSize ?? DEFAULT_BATCH_SIZE);
+    for (let start = 0; start < discovered.files.length; start += batchSize) {
       const batch: FileOutcome[] = [];
-      for (const file of discovered.files.slice(start, start + BATCH_SIZE)) {
+      for (const file of discovered.files.slice(start, start + batchSize)) {
         throwIfAborted(signal);
         batch.push(await processFile(file, pool));
       }
@@ -274,8 +316,7 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
     closeForPublish(db);
     db = undefined;
     throwIfAborted(signal);
-    retirePublished(dataDir);
-    fs.renameSync(buildingPath, path.join(dataDir, GRAPH_DB_FILE));
+    await publish(buildingPath, path.join(dataDir, GRAPH_DB_FILE), opts.renameFile ?? fs.renameSync);
     published = true;
 
     return {

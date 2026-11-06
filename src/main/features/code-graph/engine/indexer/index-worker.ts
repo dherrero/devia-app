@@ -5,6 +5,7 @@ import { indexProject, type IndexResult } from './orchestrator';
 export interface IndexWorkerData {
   root: string;
   dataDir: string;
+  batchSize?: number;
 }
 
 export type IndexWorkerInbound = { type: 'cancel' };
@@ -19,7 +20,7 @@ const PROGRESS_INTERVAL_MS = 100;
 function startWorker(): void {
   const port = parentPort;
   if (!port) return;
-  const { root, dataDir } = workerData as IndexWorkerData;
+  const { root, dataDir, batchSize } = workerData as IndexWorkerData;
   const controller = new AbortController();
   port.on('message', (msg: IndexWorkerInbound) => {
     if (msg.type === 'cancel') controller.abort();
@@ -33,6 +34,7 @@ function startWorker(): void {
     root,
     dataDir,
     signal: controller.signal,
+    ...(batchSize !== undefined ? { batchSize } : {}),
     onProgress: (progress) => {
       const now = Date.now();
       if (progress.phase === lastPhase && now - lastSent < PROGRESS_INTERVAL_MS) return;

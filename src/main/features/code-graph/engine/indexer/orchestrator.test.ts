@@ -149,23 +149,89 @@ describe('indexProject', () => {
   });
 
   it('abort mid-parse leaves no new graph.db, no .building and keeps the previous graph.db', async () => {
-    for (let i = 0; i < 20; i++) write(`src/f${i}.ts`, `export function f${i}(): number { return ${i}; }\n`);
+    for (let i = 0; i < 10; i++) write(`src/f${i}.ts`, `export function f${i}(): number { return ${i}; }\n`);
     fs.writeFileSync(path.join(dataDir, 'graph.db'), 'previous');
     const ac = new AbortController();
+    const parseProgress: number[] = [];
+    let buildingDuringParse = false;
     const run = indexProject({
       root,
       dataDir,
+      batchSize: 2,
       signal: ac.signal,
       onProgress: (p) => {
-        if (p.phase === 'parse' && p.filesDone >= 2) ac.abort();
+        if (p.phase !== 'parse') return;
+        parseProgress.push(p.filesDone);
+        if (p.filesDone >= 2 && !ac.signal.aborted) {
+          buildingDuringParse = fs.existsSync(path.join(dataDir, 'graph.db.building'));
+          ac.abort();
+        }
       },
     });
     await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    expect(parseProgress).toEqual([0, 2]);
+    expect(buildingDuringParse).toBe(true);
     expect(dataFiles()).toEqual(['graph.db']);
     expect(fs.readFileSync(path.join(dataDir, 'graph.db'), 'utf8')).toBe('previous');
 
     const again = await indexProject({ root, dataDir });
-    expect(again.files).toBe(20);
+    expect(again.files).toBe(10);
+  });
+
+  it('retries the swap while the target is busy and then publishes', async () => {
+    writeThreeFiles();
+    fs.writeFileSync(path.join(dataDir, 'graph.db'), 'previous');
+    let calls = 0;
+    const result = await indexProject({
+      root,
+      dataDir,
+      renameFile: (from, to) => {
+        calls++;
+        if (calls <= 2) throw Object.assign(new Error('busy'), { code: 'EBUSY' });
+        fs.renameSync(from, to);
+      },
+    });
+    expect(calls).toBe(3);
+    expect(result.files).toBe(3);
+    expect(dataFiles()).toEqual(['graph.db']);
+    expect(readFiles()).toHaveLength(3);
+  });
+
+  it('gives up the swap with INDEX_SWAP_BUSY, keeping the previous graph.db', async () => {
+    writeThreeFiles();
+    fs.writeFileSync(path.join(dataDir, 'graph.db'), 'previous');
+    let calls = 0;
+    const progress: IndexProgress[] = [];
+    const run = indexProject({
+      root,
+      dataDir,
+      onProgress: (p) => progress.push(p),
+      renameFile: () => {
+        calls++;
+        throw Object.assign(new Error('denied'), { code: 'EPERM' });
+      },
+    });
+    await expect(run).rejects.toMatchObject({ code: 'INDEX_SWAP_BUSY' });
+    expect(calls).toBe(8);
+    expect(progress.at(-1)?.phase).toBe('finalize');
+    expect(dataFiles()).toEqual(['graph.db']);
+    expect(fs.readFileSync(path.join(dataDir, 'graph.db'), 'utf8')).toBe('previous');
+  }, 10_000);
+
+  it('does not retry the swap on an unexpected rename error', async () => {
+    writeThreeFiles();
+    let calls = 0;
+    const run = indexProject({
+      root,
+      dataDir,
+      renameFile: () => {
+        calls++;
+        throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+      },
+    });
+    await expect(run).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(calls).toBe(1);
+    expect(dataFiles()).toEqual([]);
   });
 
   it('rejects a concurrent second run with INDEX_BUSY', async () => {

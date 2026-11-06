@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { IndexProgress } from '../../../../../shared/domain/code-graph';
-import { readWriterLock } from '../db/writer-lock';
+import { acquireWriterLock, readWriterLock } from '../db/writer-lock';
 import { runIndexInWorker } from './index-runner';
 
 const workerEntry = path.join(__dirname, '__fixtures__', 'ts-worker-shim.cjs');
@@ -42,30 +42,74 @@ describe('runIndexInWorker', () => {
     expect(fs.readdirSync(dataDir).sort()).toEqual(['graph.db']);
   }, 15_000);
 
-  it('cancel() terminates the worker quickly and keeps the previous graph.db', async () => {
-    for (let i = 0; i < 400; i++)
+  it('cancel() during parse stops the worker quickly and keeps the previous graph.db', async () => {
+    const total = 400;
+    for (let i = 0; i < total; i++)
       write(`src/m${i}.ts`, `export function f${i}(x: number): number {\n  return x + ${i};\n}\n`);
     fs.writeFileSync(path.join(dataDir, 'graph.db'), 'previous');
 
     let cancelledAt = 0;
+    let cancelledProgress: IndexProgress | undefined;
     const run = runIndexInWorker({
       root,
       dataDir,
       workerEntry,
-      onProgress: () => {
-        if (cancelledAt === 0) {
+      batchSize: 1,
+      onProgress: (p) => {
+        if (cancelledAt === 0 && p.phase === 'parse' && p.filesDone >= 2) {
           cancelledAt = Date.now();
+          cancelledProgress = p;
           run.cancel();
         }
       },
     });
 
     await expect(run.promise).rejects.toMatchObject({ name: 'AbortError' });
-    expect(cancelledAt).toBeGreaterThan(0);
+    expect(cancelledProgress?.filesDone).toBeLessThan(total);
     expect(Date.now() - cancelledAt).toBeLessThan(2000);
     expect(fs.readdirSync(dataDir).sort()).toEqual(['graph.db']);
     expect(fs.readFileSync(path.join(dataDir, 'graph.db'), 'utf8')).toBe('previous');
     expect(readWriterLock(dataDir)).toBeNull();
+
+    const again = runIndexInWorker({ root, dataDir, workerEntry, onProgress: () => undefined });
+    expect((await again.promise).files).toBe(total);
+  }, 15_000);
+
+  it.each([
+    ['process.exit', 'crash-exit-shim.cjs', {}],
+    ['an uncaught async throw', 'crash-throw-shim.cjs', {}],
+    ['running out of memory', 'crash-oom-shim.cjs', { resourceLimits: { maxOldGenerationSizeMb: 16 } }],
+  ])('a worker that dies by %s rejects and frees the lock and building files', async (_how, shim, extra) => {
+    fs.writeFileSync(path.join(dataDir, 'graph.db'), 'previous');
+    const run = runIndexInWorker({
+      root,
+      dataDir,
+      onProgress: () => undefined,
+      workerEntry: path.join(__dirname, '__fixtures__', shim),
+      ...extra,
+    });
+
+    await expect(run.promise).rejects.toMatchObject({ code: 'INDEX_WORKER_CRASHED' });
+    expect(fs.readdirSync(dataDir).sort()).toEqual(['graph.db']);
+    expect(fs.readFileSync(path.join(dataDir, 'graph.db'), 'utf8')).toBe('previous');
+    const lock = acquireWriterLock(dataDir, 'indexer');
+    expect(lock).not.toBeNull();
+    lock?.release();
+  }, 15_000);
+
+  it('leaves a lock held by another live index alone when its worker crashes', async () => {
+    const foreign = JSON.stringify({ pid: process.pid, owner: 'indexer', since: Date.now() - 60_000, token: 'other' });
+    const run = runIndexInWorker({
+      root,
+      dataDir,
+      onProgress: () => undefined,
+      workerEntry: path.join(__dirname, '__fixtures__', 'exit-only-shim.cjs'),
+    });
+    fs.writeFileSync(path.join(dataDir, 'writer.lock'), foreign);
+    fs.writeFileSync(path.join(dataDir, 'graph.db.building'), 'theirs');
+    await expect(run.promise).rejects.toMatchObject({ code: 'INDEX_WORKER_CRASHED' });
+    expect(fs.readFileSync(path.join(dataDir, 'writer.lock'), 'utf8')).toBe(foreign);
+    expect(fs.existsSync(path.join(dataDir, 'graph.db.building'))).toBe(true);
   }, 15_000);
 
   it('cancel() hard-terminates a worker that ignores it and frees the lock', async () => {
