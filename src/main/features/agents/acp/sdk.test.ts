@@ -32,12 +32,12 @@ describe('acp sdk entry point', () => {
       newSession: async () => ({ sessionId: 's1' }),
       authenticate: async () => ({}),
       prompt: async () => ({ stopReason: 'end_turn' }),
-      cancel: async () => {},
+      cancel: async () => undefined,
     };
     new AgentSideConnection(() => agent, agentStream);
     const client: Client = {
       requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),
-      sessionUpdate: async () => {},
+      sessionUpdate: async () => undefined,
     };
     const connection = new ClientSideConnection(() => client, clientStream);
 
