@@ -18,7 +18,7 @@ import { missingUiCapabilities } from '../../../../shared/domain/ui-tools-policy
  */
 const TOOL_LINES: Record<UiToolName, string> = {
   ask_user:
-    'You MAY use `devia_ask_user` to let the user pick between a few discrete options: pass one or more `questions`, each with its `options` (label plus an optional description), and `multiSelect` when several answers are valid. It blocks until the user picks, so wait for the answer instead of assuming one. For open-ended clarifications, just ask inline in your normal text response.',
+    'You MAY use `devia_ask_user` to let the user pick between a few discrete options: pass one or more `questions`, each with its `options` (label plus an optional description), and `multiSelect` when several answers are valid. It blocks until the user picks, so wait for the answer instead of assuming one. Use it for any choice or approval instead of asking by text. For open-ended clarifications, just ask inline in your normal text response.',
   todo: 'Use `devia_todo` to publish and keep updating your step list on any task with several steps, sending the COMPLETE list each time. It returns immediately and never asks anything.',
   plan_approve:
     'When your plan is ready and saved on the kanban, call `devia_plan_approve` instead of starting to edit files, listing its `steps` (reference the kanban ids), and wait: the user either keeps planning with a comment you must act on (update the board, then call it again), or accepts it — asking before each action, or without asking.',
@@ -64,6 +64,8 @@ const SEND_FILE_PLAN_LINE =
 const SEND_FILE_HEADER = '## Sending files to the user';
 
 const FALLBACK_HEADER = '## Reaching the user — no interactive UI in this run';
+/** `devia_ask_user` IS available: only some cards are missing, so do not say there is no UI. */
+const PARTIAL_FALLBACK_HEADER = '## Not available in this run';
 
 const FALLBACK_FOOTER = [
   '- The session is multi-turn and **persistent**: the user answers in their next message, in this same session, with the full context intact. You do not need to re-explain anything or start over.',
@@ -109,5 +111,10 @@ export function buildUiFallbackHint(
     // multi-turn footer would be false here.
     return fileLine ? [SEND_FILE_HEADER, '', fileLine].join('\n') : null;
   }
-  return [FALLBACK_HEADER, '', ...lines, ...(fileLine ? [fileLine] : []), FALLBACK_FOOTER].join('\n');
+  const body = [...lines, ...(fileLine ? [fileLine] : [])];
+  // S-43: the "no interactive UI" header and the multi-turn footer assume the
+  // plain-text protocol is the ONLY way to reach the user. With `ask_user` in
+  // the run that is false, and agents obeyed it by asking approvals as text.
+  if (advertised.includes('ask_user')) return [PARTIAL_FALLBACK_HEADER, '', ...body].join('\n');
+  return [FALLBACK_HEADER, '', ...body, FALLBACK_FOOTER].join('\n');
 }
