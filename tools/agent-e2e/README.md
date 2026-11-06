@@ -12,6 +12,7 @@ node tools/agent-e2e/run.cjs pi                       # one agent: claude | pi |
 node tools/agent-e2e/run.cjs all --update             # accept a new baseline
 node tools/agent-e2e/run.cjs opencode --record        # refresh wire fixtures
 node tools/agent-e2e/run.cjs claude --scenario apply  # one scenario
+node tools/agent-e2e/run.cjs kimi --record            # real ACP agents (kimi | hermes): need the CLI logged in
 node tools/agent-e2e/run.cjs acp-fake                 # free: the AcpMapper against a scripted ACP agent
 ```
 

@@ -49,6 +49,10 @@ const AGENTS = {
   // developer's real file.
   codex: {},
   gemini: {},
+  // S-41: real ACP agents through the AcpMapper (need the CLI installed and
+  // authenticated; the first run writes the snapshots, `--update` accepts a new one).
+  kimi: {},
+  hermes: {},
   // S-41: a scripted ACP agent (free, deterministic) that exercises the AcpMapper
   // through the real pipeline. Only for this harness, never in the catalog.
   'acp-fake': { fake: true, answer: 'Allow' },
