@@ -54,3 +54,40 @@ describe('StaticMapperRegistry', () => {
     expect(r.forDef(copy)).not.toBe(r.forDef(def('kimi')));
   });
 });
+
+describe('StaticMapperRegistry — user ACP defs', () => {
+  const userDef = (over: Partial<RuntimeAgentDef> = {}): RuntimeAgentDef => ({
+    ...def('kimi'),
+    id: 'my-agent',
+    bin: 'my-acp-agent',
+    acp: { args: ['acp'], continuity: 'replay', planEnforcement: 'none', modeIds: {} },
+    ...over,
+  });
+
+  it('gives a user ACP def with a valid acp block an AcpMapper', () => {
+    expect(registry().forDef(userDef())).toBeInstanceOf(AcpMapper);
+  });
+
+  it('a user def with an invalid acp block or another stream format stays on LegacyMapper', () => {
+    expect(registry().forDef(userDef({ acp: { args: [], continuity: 'replay', planEnforcement: 'none', modeIds: {} } }))).toBeInstanceOf(AcpMapper);
+    expect(registry().forDef(userDef({ streamFormat: 'plain' }))).toBeInstanceOf(LegacyMapper);
+    const broken = userDef({ acp: { args: 'acp' } as never });
+    expect(registry().forDef(broken)).toBeInstanceOf(LegacyMapper);
+  });
+
+  it('a user acp block cannot take over claude, pi or opencode', () => {
+    expect(registry().forDef({ ...def('claude'), acp: { args: ['x'], continuity: 'replay', planEnforcement: 'none', modeIds: {} } })).toBeInstanceOf(ClaudeMapper);
+    expect(registry().forDef({ ...def('pi'), acp: { args: ['x'], continuity: 'replay', planEnforcement: 'none', modeIds: {} } })).toBeInstanceOf(PiMapper);
+  });
+
+  it('a user def carrying a built-in ACP id still uses the built-in profile', () => {
+    const mapper = registry().forDef({ ...def('kimi'), acp: { args: ['--evil'], continuity: 'native', planEnforcement: 'agent-mode', modeIds: {} } });
+    expect(mapper).toBeInstanceOf(AcpMapper);
+    const prepared = (mapper as AcpMapper).prepareRun(
+      { runId: 'r', envOverrides: {}, model: null } as never,
+      '',
+      { mcpServerIds: [], skills: 'none', subagents: 'none', notices: [] },
+    );
+    expect(prepared.ok && prepared.run.args).toEqual(['acp']);
+  });
+});

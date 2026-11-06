@@ -103,6 +103,14 @@ export type RuntimeEventParser = 'codex' | 'gemini' | 'opencode' | 'cursor-agent
  */
 export type RuntimeContinuity = 'native' | 'replay';
 
+/** The sanitised `acp` block of a user-supplied def. */
+export interface UserAcpConfig {
+  readonly args: readonly string[];
+  readonly continuity: RuntimeContinuity;
+  readonly planEnforcement: 'agent-mode' | 'permission-policy' | 'none';
+  readonly modeIds: Readonly<Partial<Record<'plan' | 'apply' | 'apply-yolo', string>>>;
+}
+
 export interface RuntimeAgentDef {
   id: string;
   name: string;
@@ -115,6 +123,12 @@ export interface RuntimeAgentDef {
    * adapters and user-supplied defs keep working without migration.
    */
   providerType?: RuntimeProviderType;
+  /**
+   * S-41: how a USER-declared ACP agent (`streamFormat: 'acp-json-rpc'` in
+   * `agent-defs.json`) is launched. Always sanitised by `normaliseUserDef`;
+   * built-in ACP agents take theirs from their ACP profile instead.
+   */
+  acp?: UserAcpConfig;
   /**
    * Applicability tag — describes how well this provider is supported in
    * Devia today. Surfaced in the UI so users understand whether selecting

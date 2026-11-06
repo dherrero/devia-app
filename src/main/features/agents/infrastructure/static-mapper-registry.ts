@@ -1,7 +1,8 @@
 import type { RuntimeAgentDef } from '../../cli-adapters/domain/runtime-agent-def';
 import type { AgentMapper, MapperRegistry } from '../domain';
 import { AcpMapper } from '../acp/mapper';
-import { profileFor } from '../acp/profile';
+import { profileFor, type AcpAgentProfile } from '../acp/profile';
+import { profileFromUserDef } from '../acp/profiles/custom';
 import { ClaudeMapper } from '../claude/mapper';
 import { PiMapper } from '../pi/mapper';
 import { OpencodeMapper } from '../opencode/mapper';
@@ -41,9 +42,14 @@ export class StaticMapperRegistry implements MapperRegistry {
   }
 
   private fallbackFor(def: RuntimeAgentDef): AgentMapper {
-    const profile = profileFor(def.id);
-    return profile && def.streamFormat === 'acp-json-rpc'
+    const profile = def.streamFormat === 'acp-json-rpc' ? this.acpProfileFor(def) : undefined;
+    return profile
       ? new AcpMapper(def, profile, this.deps)
       : new LegacyMapper(def, this.deps);
+  }
+
+  /** A built-in profile wins: a user def can never re-point a built-in ACP id. */
+  private acpProfileFor(def: RuntimeAgentDef): AcpAgentProfile | undefined {
+    return profileFor(def.id) ?? profileFromUserDef(def) ?? undefined;
   }
 }
