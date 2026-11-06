@@ -1,0 +1,78 @@
+{
+  "agent": "hermes",
+  "scenario": "apply",
+  "wiring": {
+    "command": "hermes",
+    "argv": [
+      "acp",
+      "--accept-hooks"
+    ],
+    "stdin": {
+      "format": "jsonrpc",
+      "methods": [
+        "initialize",
+        "session/new",
+        "session/prompt"
+      ]
+    },
+    "mcpServers": [
+      "devia-kanban",
+      "devia-memory",
+      "devia-ui"
+    ],
+    "systemPrompt": {
+      "channel": "stdin-prepend",
+      "announcesUiTools": true,
+      "announcesMemory": true,
+      "mentionsKanban": false
+    },
+    "uiServer": null,
+    "acp": {
+      "methods": [
+        "initialize",
+        "session/new",
+        "session/prompt"
+      ],
+      "loadedSession": false,
+      "mcpServers": [
+        "devia-kanban",
+        "devia-memory",
+        "devia-ui"
+      ],
+      "mode": [],
+      "clientCapabilities": {
+        "fs": {
+          "readTextFile": false,
+          "writeTextFile": false
+        },
+        "terminal": false
+      },
+      "cwd": "<WS>/proj",
+      "systemPromptSeen": true
+    }
+  },
+  "behaviour": {
+    "exitCode": 0,
+    "eventTypes": [
+      "session_started",
+      "status",
+      "text_delta",
+      "thinking_delta",
+      "tool_result",
+      "tool_use",
+      "turn_end",
+      "usage"
+    ],
+    "sessionStarted": true,
+    "deviaTools": [
+      "mcp__devia-kanban__kanban_create_spec",
+      "mcp__devia-memory__mem_save",
+      "mcp__devia-ui__devia_ask_user",
+      "mcp__devia-ui__devia_todo"
+    ],
+    "uiCards": [
+      "ask_user",
+      "todo"
+    ]
+  }
+}
