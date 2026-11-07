@@ -109,6 +109,70 @@ interface UnresolvedRow {
   metadata: string | null;
 }
 
+export interface SearchFilter {
+  kinds?: NodeKind[];
+  language?: CodeGraphLanguage;
+  includeTests?: boolean;
+  includeGenerated?: boolean;
+}
+
+export interface SearchRow {
+  node: GraphNode;
+  fileIsTest: boolean;
+  fileGenerated: boolean;
+  bm25?: number;
+}
+
+interface SearchRowRaw extends NodeRow {
+  file_is_test: number | null;
+  file_generated: number | null;
+  bm25_score?: number;
+}
+
+const SEARCH_SELECT =
+  'SELECT n.*, f.is_test AS file_is_test, f.generated AS file_generated';
+const SEARCH_JOIN = 'LEFT JOIN files f ON f.path = n.file_path';
+
+function searchFilterSql(filter: SearchFilter): {
+  sql: string;
+  params: (string | number)[];
+} {
+  const clauses: string[] = [];
+  const params: (string | number)[] = [];
+  if (filter.kinds) {
+    if (filter.kinds.length === 0) clauses.push('0');
+    else {
+      clauses.push(`n.kind IN (${filter.kinds.map(() => '?').join(',')})`);
+      params.push(...filter.kinds);
+    }
+  }
+  if (filter.language) {
+    clauses.push('n.language = ?');
+    params.push(filter.language);
+  }
+  if (filter.includeTests === false)
+    clauses.push('n.is_test = 0 AND COALESCE(f.is_test, 0) = 0');
+  if (!filter.includeGenerated) clauses.push('COALESCE(f.generated, 0) = 0');
+  return {
+    sql: clauses.map((c) => ` AND ${c}`).join(''),
+    params,
+  };
+}
+
+function toSearchRow(r: SearchRowRaw): SearchRow {
+  const row: SearchRow = {
+    node: toNode(r),
+    fileIsTest: r.file_is_test === 1,
+    fileGenerated: r.file_generated === 1,
+  };
+  if (r.bm25_score !== undefined) row.bm25 = r.bm25_score;
+  return row;
+}
+
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 function toNode(r: NodeRow): GraphNode {
   const n: GraphNode = {
     id: r.id,
@@ -386,6 +450,43 @@ export class GraphQueries {
       'SELECT * FROM nodes WHERE name = ? ORDER BY file_path, start_line LIMIT ?',
     ).all(name, limit);
     return (rows as unknown as NodeRow[]).map(toNode);
+  }
+
+  searchFts(
+    matchExpr: string,
+    limit: number,
+    filter: SearchFilter = {},
+  ): SearchRow[] {
+    const f = searchFilterSql(filter);
+    const rows = this.stmt(
+      `${SEARCH_SELECT}, bm25(nodes_fts, 0, 10, 4, 1, 1) AS bm25_score
+       FROM nodes_fts JOIN nodes n ON n.rowid = nodes_fts.rowid ${SEARCH_JOIN}
+       WHERE nodes_fts MATCH ?${f.sql}
+       ORDER BY bm25_score, n.id LIMIT ?`,
+    ).all(matchExpr, ...f.params, limit);
+    return (rows as unknown as SearchRowRaw[]).map(toSearchRow);
+  }
+
+  searchSubstring(
+    patterns: string[],
+    limit: number,
+    filter: SearchFilter = {},
+  ): SearchRow[] {
+    if (patterns.length === 0) return [];
+    const f = searchFilterSql(filter);
+    const like = patterns
+      .map(() => "lower(n.name) LIKE ? ESCAPE '\\'")
+      .join(' AND ');
+    const rows = this.stmt(
+      `${SEARCH_SELECT} FROM nodes n ${SEARCH_JOIN}
+       WHERE ${like}${f.sql}
+       ORDER BY length(n.name), n.qualified_name, n.id LIMIT ?`,
+    ).all(
+      ...patterns.map((p) => `%${escapeLike(p.toLowerCase())}%`),
+      ...f.params,
+      limit,
+    );
+    return (rows as unknown as SearchRowRaw[]).map(toSearchRow);
   }
 
   filePaths(): string[] {

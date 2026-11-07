@@ -354,4 +354,62 @@ describe('GraphQueries', () => {
     const many = Array.from({ length: 1200 }, (_, i) => `x${i}`);
     expect(q.edgesFromMany([...many, 'b', 'b'], ['imports'])).toHaveLength(1);
   });
+  describe('search', () => {
+    function seedSearch(): void {
+      q.upsertFile(fileRow('a.ts'));
+      q.upsertFile({ ...fileRow('t.test.ts'), isTest: true });
+      q.upsertFile({ ...fileRow('gen.ts'), generated: true });
+      q.insertNodes([
+        node('1', 'getUser', 'a.ts', { docstring: 'loads a user' }),
+        node('2', 'getUserById', 'a.ts', { kind: 'method' }),
+        node('3', 'fetchUser', 't.test.ts'),
+        node('4', 'userDto', 'gen.ts'),
+        node('5', 'save_100%', 'a.ts'),
+        node('6', 'save1000', 'a.ts'),
+      ]);
+    }
+
+    it('searchFts matches prefix tokens, joins file flags and returns bm25', () => {
+      seedSearch();
+      const rows = q.searchFts('{name qualified_name} : ("getuser"*)', 10);
+      expect(rows.map((r) => r.node.id).sort()).toEqual(['1', '2']);
+      expect(rows.every((r) => typeof r.bm25 === 'number')).toBe(true);
+      const t = q.searchFts('"fetchuser"*', 10);
+      expect(t[0]?.fileIsTest).toBe(true);
+    });
+
+    it('filters by kind, language, tests and generated files', () => {
+      seedSearch();
+      const expr = '"getuser"* OR "fetchuser"* OR "userdto"*';
+      const ids = (f?: Parameters<typeof q.searchFts>[2]): string[] =>
+        q.searchFts(expr, 10, f).map((r) => r.node.id).sort();
+      expect(ids()).toEqual(['1', '2', '3']);
+      expect(ids({ includeGenerated: true })).toEqual(['1', '2', '3', '4']);
+      expect(ids({ includeTests: false })).toEqual(['1', '2']);
+      expect(ids({ kinds: ['method'] })).toEqual(['2']);
+      expect(ids({ language: 'python' })).toEqual([]);
+    });
+
+    it('searchFts honours limit', () => {
+      seedSearch();
+      expect(q.searchFts('"getuser"*', 1)).toHaveLength(1);
+    });
+
+    it('searchSubstring is case-insensitive, ANDs patterns and escapes LIKE wildcards', () => {
+      seedSearch();
+      const ids = (p: string[]): string[] =>
+        q.searchSubstring(p, 10).map((r) => r.node.id).sort();
+      expect(ids(['user', 'by'])).toEqual(['2']);
+      expect(ids(['user'])).toEqual(['1', '2', '3']);
+      expect(ids(['100%'])).toEqual(['5']);
+      expect(ids(['_100'])).toEqual(['5']);
+      expect(ids(['%'])).toEqual(['5']);
+      expect(ids(['\\'])).toEqual([]);
+    });
+
+    it('searchFts throws when nodes_fts is missing', () => {
+      db.exec('DROP TRIGGER nodes_ai; DROP TRIGGER nodes_ad; DROP TRIGGER nodes_au; DROP TABLE nodes_fts');
+      expect(() => q.searchFts('"a"*', 5)).toThrow();
+    });
+  });
 });
