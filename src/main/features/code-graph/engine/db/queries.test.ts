@@ -7,7 +7,7 @@ import type {
   GraphNode,
 } from '../../../../../shared/domain/code-graph';
 import { openGraphDb, type GraphDb } from './connection';
-import { GraphQueries, type FileRow } from './queries';
+import { FTS_COLUMNS, GraphQueries, type FileRow } from './queries';
 
 function node(
   id: string,
@@ -382,7 +382,10 @@ describe('GraphQueries', () => {
       seedSearch();
       const expr = '"getuser"* OR "fetchuser"* OR "userdto"*';
       const ids = (f?: Parameters<typeof q.searchFts>[2]): string[] =>
-        q.searchFts(expr, 10, f).map((r) => r.node.id).sort();
+        q
+          .searchFts(expr, 10, f)
+          .map((r) => r.node.id)
+          .sort();
       expect(ids()).toEqual(['1', '2', '3']);
       expect(ids({ includeGenerated: true })).toEqual(['1', '2', '3', '4']);
       expect(ids({ includeTests: false })).toEqual(['1', '2']);
@@ -398,7 +401,10 @@ describe('GraphQueries', () => {
     it('searchSubstring is case-insensitive, ANDs patterns and escapes LIKE wildcards', () => {
       seedSearch();
       const ids = (p: string[]): string[] =>
-        q.searchSubstring(p, 10).map((r) => r.node.id).sort();
+        q
+          .searchSubstring(p, 10)
+          .map((r) => r.node.id)
+          .sort();
       expect(ids(['user', 'by'])).toEqual(['2']);
       expect(ids(['user'])).toEqual(['1', '2', '3']);
       expect(ids(['100%'])).toEqual(['5']);
@@ -407,8 +413,41 @@ describe('GraphQueries', () => {
       expect(ids(['\\'])).toEqual([]);
     });
 
+    it('searchSubstring can scan docstring and signature with escaped LIKE', () => {
+      q.upsertFile(fileRow('a.ts'));
+      q.insertNodes([
+        node('1', 'a', 'a.ts', { docstring: 'Grows by 50% each year' }),
+        node('2', 'b', 'a.ts', { signature: 'b(my_arg: number)' }),
+        node('3', 'c', 'a.ts', { docstring: 'Grows by 500 each year' }),
+      ]);
+      const ids = (p: string[]): string[] =>
+        q
+          .searchSubstring(p, 10, {}, 'text')
+          .map((r) => r.node.id)
+          .sort();
+      expect(ids(['50%'])).toEqual(['1']);
+      expect(ids(['my_arg'])).toEqual(['2']);
+      expect(ids(['grows', 'year'])).toEqual(['1', '3']);
+      expect(ids(['a'])).toEqual(['1', '2', '3']);
+    });
+
+    it('searchSubstring never throws on over-limit pattern counts', () => {
+      seedSearch();
+      const many = Array.from({ length: 40000 }, (_, i) => `p${i}`);
+      expect(q.searchSubstring(many, 10)).toEqual([]);
+    });
+
+    it('bm25 column weights follow the nodes_fts column order', () => {
+      const cols = (
+        db.prepare('PRAGMA table_info(nodes_fts)').all() as { name: string }[]
+      ).map((c) => c.name);
+      expect(cols).toEqual([...FTS_COLUMNS]);
+    });
+
     it('searchFts throws when nodes_fts is missing', () => {
-      db.exec('DROP TRIGGER nodes_ai; DROP TRIGGER nodes_ad; DROP TRIGGER nodes_au; DROP TABLE nodes_fts');
+      db.exec(
+        'DROP TRIGGER nodes_ai; DROP TRIGGER nodes_ad; DROP TRIGGER nodes_au; DROP TABLE nodes_fts',
+      );
       expect(() => q.searchFts('"a"*', 5)).toThrow();
     });
   });

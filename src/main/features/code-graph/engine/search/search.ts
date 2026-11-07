@@ -3,12 +3,13 @@ import type {
   GraphNode,
   NodeKind,
 } from '../../../../../shared/domain/code-graph';
-import type {
-  GraphQueries,
-  SearchFilter,
-  SearchRow,
-} from '../db/queries';
-import { parseQuery, splitIdentifier, words, type ParsedQuery } from './query-parser';
+import type { GraphQueries, SearchFilter, SearchRow } from '../db/queries';
+import {
+  parseQuery,
+  splitIdentifier,
+  words,
+  type ParsedQuery,
+} from './query-parser';
 
 export interface SearchOptions {
   kinds?: NodeKind[];
@@ -32,34 +33,47 @@ export const SEARCH_WEIGHTS = {
   prefixName: 60,
   segmentName: 40,
   substringName: 30,
-  qualifiedName: 15,
-  docOrSignature: 8,
+  docOrSignatureOnly: 8,
+  docOrSignatureBonus: 3,
   exported: 5,
   testPenalty: -20,
   generatedPenalty: -20,
-  bm25Max: 4,
+  bm25Max: 1,
   candidateMultiplier: 5,
   candidateMin: 100,
   candidateMax: 1000,
+  maxTermsForSubstring: 3,
 } as const;
 
 const alnum = (s: string): string => s.replace(/[^\p{L}\p{N}]/gu, '');
 
-function ftsExpression(parsed: ParsedQuery): string | undefined {
+function ftsClauses(parsed: ParsedQuery): string[] {
   const clauses: string[] = [];
   for (const lit of parsed.literal) {
     for (const w of words(lit)) clauses.push(`"${w}"*`);
   }
+  return clauses;
+}
+
+function nameExpression(parsed: ParsedQuery): string | undefined {
+  const clauses = ftsClauses(parsed);
   if (parsed.phrase) clauses.push(`"${parsed.phrase}"`);
   if (clauses.length === 0) return undefined;
-  return `{name qualified_name} : (${clauses.join(' AND ')})`;
+  return `{name} : (${clauses.join(' AND ')})`;
+}
+
+function textExpression(parsed: ParsedQuery): string | undefined {
+  const clauses = ftsClauses(parsed);
+  if (clauses.length === 0) return undefined;
+  return `{docstring signature} : (${clauses.join(' AND ')})`;
 }
 
 function substringPatternSets(parsed: ParsedQuery): string[][] {
   if (parsed.literal.some((l) => l.includes('%'))) return [parsed.literal];
   const sets = [parsed.terms];
   const lit = parsed.literal;
-  if (lit.length > 0 && lit.join('\0') !== parsed.terms.join('\0')) sets.push(lit);
+  if (lit.length > 0 && lit.join('\0') !== parsed.terms.join('\0'))
+    sets.push(lit);
   return sets;
 }
 
@@ -77,14 +91,17 @@ function scoreRow(row: SearchRow, parsed: ParsedQuery): number {
     parsed.terms.every((t) => segs.some((s) => s.startsWith(t)))
   )
     score = w.segmentName;
-  else if (nameNorm.includes(qNorm)) score = w.substringName;
-  else {
-    const qn = node.qualifiedName.toLowerCase();
-    if (parsed.terms.length > 0 && parsed.terms.every((t) => qn.includes(t)))
-      score = w.qualifiedName;
-  }
+  else if (
+    nameNorm.includes(qNorm) ||
+    (parsed.terms.length > 0 && parsed.terms.every((t) => nameNorm.includes(t)))
+  )
+    score = w.substringName;
   const text = `${node.docstring ?? ''} ${node.signature ?? ''}`.toLowerCase();
-  if (parsed.terms.some((t) => text.includes(t))) score += w.docOrSignature;
+  const textMatch =
+    parsed.terms.length > 0 && parsed.terms.every((t) => text.includes(t));
+  if (score > 0) {
+    if (textMatch) score += w.docOrSignatureBonus;
+  } else if (textMatch) score = w.docOrSignatureOnly;
   if (node.isExported) score += w.exported;
   if (row.fileIsTest || node.isTest) score += w.testPenalty;
   if (row.fileGenerated) score += w.generatedPenalty;
@@ -99,10 +116,13 @@ function ftsCandidates(
   cap: number,
   filter: SearchFilter,
 ): SearchRow[] | undefined {
-  const expr = ftsExpression(parsed);
-  if (!expr) return [];
   try {
-    return db.searchFts(expr, cap, filter);
+    const out: SearchRow[] = [];
+    const name = nameExpression(parsed);
+    if (name) out.push(...db.searchFts(name, cap, filter));
+    const text = textExpression(parsed);
+    if (text) out.push(...db.searchFts(text, cap, filter));
+    return out;
   } catch {
     return undefined;
   }
@@ -138,10 +158,12 @@ export function searchSymbols(
   const fts =
     opts.useFts === false ? undefined : ftsCandidates(db, parsed, cap, filter);
   if (fts) add(fts);
-  // FTS tokenises whole identifiers, so camelCase segments need the substring scan.
-  if (!fts || fts.length < limit) {
+  // FTS tokenises whole identifiers, so camelCase segments need the substring
+  // scan; it always runs for short queries and whenever FTS is unavailable.
+  if (!fts || parsed.terms.length <= w.maxTermsForSubstring) {
     for (const patterns of substringPatternSets(parsed)) {
       add(db.searchSubstring(patterns, cap, filter));
+      add(db.searchSubstring(patterns, cap, filter, 'text'));
     }
   }
 

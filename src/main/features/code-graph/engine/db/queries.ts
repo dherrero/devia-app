@@ -129,6 +129,27 @@ interface SearchRowRaw extends NodeRow {
   bm25_score?: number;
 }
 
+// Must mirror the column order of nodes_fts in schema.sql (checked by a test).
+export const FTS_COLUMNS = [
+  'id',
+  'name',
+  'qualified_name',
+  'docstring',
+  'signature',
+] as const;
+
+export const FTS_BM25_WEIGHTS: Record<(typeof FTS_COLUMNS)[number], number> = {
+  id: 0,
+  name: 10,
+  qualified_name: 4,
+  docstring: 1,
+  signature: 1,
+};
+
+const BM25_ARGS = FTS_COLUMNS.map((c) => FTS_BM25_WEIGHTS[c]).join(', ');
+
+export type SubstringScope = 'name' | 'text';
+
 const SEARCH_SELECT =
   'SELECT n.*, f.is_test AS file_is_test, f.generated AS file_generated';
 const SEARCH_JOIN = 'LEFT JOIN files f ON f.path = n.file_path';
@@ -459,7 +480,7 @@ export class GraphQueries {
   ): SearchRow[] {
     const f = searchFilterSql(filter);
     const rows = this.stmt(
-      `${SEARCH_SELECT}, bm25(nodes_fts, 0, 10, 4, 1, 1) AS bm25_score
+      `${SEARCH_SELECT}, bm25(nodes_fts, ${BM25_ARGS}) AS bm25_score
        FROM nodes_fts JOIN nodes n ON n.rowid = nodes_fts.rowid ${SEARCH_JOIN}
        WHERE nodes_fts MATCH ?${f.sql}
        ORDER BY bm25_score, n.id LIMIT ?`,
@@ -471,22 +492,30 @@ export class GraphQueries {
     patterns: string[],
     limit: number,
     filter: SearchFilter = {},
+    scope: SubstringScope = 'name',
   ): SearchRow[] {
     if (patterns.length === 0) return [];
     const f = searchFilterSql(filter);
-    const like = patterns
-      .map(() => "lower(n.name) LIKE ? ESCAPE '\\'")
-      .join(' AND ');
-    const rows = this.stmt(
-      `${SEARCH_SELECT} FROM nodes n ${SEARCH_JOIN}
-       WHERE ${like}${f.sql}
-       ORDER BY length(n.name), n.qualified_name, n.id LIMIT ?`,
-    ).all(
-      ...patterns.map((p) => `%${escapeLike(p.toLowerCase())}%`),
-      ...f.params,
-      limit,
-    );
-    return (rows as unknown as SearchRowRaw[]).map(toSearchRow);
+    const one =
+      scope === 'name'
+        ? "lower(n.name) LIKE ? ESCAPE '\\'"
+        : "(lower(COALESCE(n.docstring, '')) LIKE ? ESCAPE '\\' OR lower(COALESCE(n.signature, '')) LIKE ? ESCAPE '\\')";
+    const per = scope === 'name' ? 1 : 2;
+    const like = patterns.map(() => one).join(' AND ');
+    const bound = patterns.flatMap((p) => {
+      const v = `%${escapeLike(p.toLowerCase())}%`;
+      return per === 1 ? [v] : [v, v];
+    });
+    try {
+      const rows = this.stmt(
+        `${SEARCH_SELECT} FROM nodes n ${SEARCH_JOIN}
+         WHERE ${like}${f.sql}
+         ORDER BY length(n.name), n.qualified_name, n.id LIMIT ?`,
+      ).all(...bound, ...f.params, limit);
+      return (rows as unknown as SearchRowRaw[]).map(toSearchRow);
+    } catch {
+      return [];
+    }
   }
 
   filePaths(): string[] {

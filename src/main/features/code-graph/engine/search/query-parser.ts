@@ -18,7 +18,13 @@ export function words(text: string): string[] {
   return text.toLowerCase().match(WORD) ?? [];
 }
 
-export function parseQuery(q: string): ParsedQuery {
+export const MAX_QUERY_CHARS = 200;
+export const MAX_QUERY_TERMS = 12;
+
+// Input beyond MAX_QUERY_CHARS characters, or beyond MAX_QUERY_TERMS terms or
+// tokens, is ignored so a hostile query cannot blow up SQL expression limits.
+export function parseQuery(input: string): ParsedQuery {
+  const q = input.slice(0, MAX_QUERY_CHARS);
   const result: ParsedQuery = { terms: [], literal: [] };
   const quoted = /"([^"]*)"/.exec(q);
   if (quoted) {
@@ -31,13 +37,12 @@ export function parseQuery(q: string): ParsedQuery {
     .filter((t) => t.length > 0 && !FTS_OPERATORS.has(t));
   const seen = new Set<string>();
   for (const token of tokens) {
-    const literal = token
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}_%.]/gu, '');
+    if (result.literal.length >= MAX_QUERY_TERMS) break;
+    const literal = token.toLowerCase().replace(/[^\p{L}\p{N}_%.]/gu, '');
     if (!/[\p{L}\p{N}%]/u.test(literal)) continue;
     result.literal.push(literal);
     for (const seg of splitIdentifier(token)) {
-      if (!seen.has(seg)) {
+      if (!seen.has(seg) && result.terms.length < MAX_QUERY_TERMS) {
         seen.add(seg);
         result.terms.push(seg);
       }

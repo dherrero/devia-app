@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { GraphNode } from '../../../../../shared/domain/code-graph';
 import { openGraphDb, type GraphDb } from '../db/connection';
 import { GraphQueries, type FileRow } from '../db/queries';
-import { createParser, grammarVariantForPath, languageForPath } from '../extraction/grammars';
+import {
+  createParser,
+  grammarVariantForPath,
+  languageForPath,
+} from '../extraction/grammars';
 import { extractorFor } from '../extraction/registry';
 import { searchSymbols } from './search';
 
@@ -66,7 +70,10 @@ describe('searchSymbols', () => {
       node('8', 'loader', 'src/user.ts'),
       node('9', 'ñandú', 'src/user.ts'),
       node('10', '日本語', 'src/user.ts'),
-      node('11', 'user.ts', 'src/user.ts', { kind: 'file', qualifiedName: 'src/user.ts' }),
+      node('11', 'user.ts', 'src/user.ts', {
+        kind: 'file',
+        qualifiedName: 'src/user.ts',
+      }),
     ]);
   });
   afterEach(() => {
@@ -74,8 +81,10 @@ describe('searchSymbols', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  const names = (query: string, opts?: Parameters<typeof searchSymbols>[2]): string[] =>
-    searchSymbols(q, query, opts).map((r) => r.node.name);
+  const names = (
+    query: string,
+    opts?: Parameters<typeof searchSymbols>[2],
+  ): string[] => searchSymbols(q, query, opts).map((r) => r.node.name);
 
   it('ranks exact name before longer prefix matches', () => {
     const r = names('getUser');
@@ -89,7 +98,7 @@ describe('searchSymbols', () => {
     expect(names('user by id')[0]).toBe('getUserById');
   });
 
-  it('matches docstrings as the lowest tier', () => {
+  it('boosts a name match whose docstring also matches', () => {
     q.insertNodes([
       node('d1', 'zorkB', 'src/user.ts', { docstring: 'about zork things' }),
       node('d2', 'zorkA', 'src/user.ts'),
@@ -97,8 +106,62 @@ describe('searchSymbols', () => {
     expect(names('zork')).toEqual(['zorkB', 'zorkA']);
   });
 
+  it('returns docstring-only and signature-only matches below name matches', () => {
+    q.insertNodes([
+      node('d3', 'renderPage', 'src/user.ts', {
+        docstring: 'Computes the quarterly revenue figures',
+      }),
+      node('d4', 'plainFn', 'src/user.ts', {
+        signature: 'plainFn(invoice: InvoiceRecord): void',
+      }),
+      node('d5', 'quarterlyTotal', 'src/user.ts', { isExported: false }),
+    ]);
+    for (const useFts of [true, false]) {
+      const doc = names('quarterly', { useFts });
+      expect(doc).toContain('renderPage');
+      expect(doc.indexOf('quarterlyTotal')).toBeLessThan(
+        doc.indexOf('renderPage'),
+      );
+      expect(names('invoicerecord', { useFts })).toEqual(['plainFn']);
+      expect(names('revenue', { useFts })).toEqual(['renderPage']);
+    }
+  });
+
+  it('does not let path tokens crowd out segment matches', () => {
+    const batch: GraphNode[] = [];
+    for (let i = 0; i < 150; i++)
+      batch.push(node(`p${i}`, `item${i}`, 'src/user/items.ts'));
+    q.insertNodes(batch);
+    for (const useFts of [true, false]) {
+      const r = names('user', { limit: 5, useFts });
+      expect(r).toContain('getUserById');
+      expect(r.some((n) => n.startsWith('item'))).toBe(false);
+    }
+  });
+
+  it('caps huge queries without throwing', () => {
+    const long = 'a'.repeat(50000);
+    const many = Array.from({ length: 5000 }, (_, i) => `tok${i}`).join(' ');
+    for (const useFts of [true, false]) {
+      expect(() => searchSymbols(q, long, { useFts })).not.toThrow();
+      expect(() => searchSymbols(q, many, { useFts })).not.toThrow();
+    }
+    expect(searchSymbols(q, 'getUser ' + many)).toBeDefined();
+  });
+
   it('never throws on hostile queries', () => {
-    for (const bad of ['foo"bar -x', '(((', 'AND OR NOT', '"', '*', 'a:b', '^x', 'NEAR(a b)', "it's", '{}']) {
+    for (const bad of [
+      'foo"bar -x',
+      '(((',
+      'AND OR NOT',
+      '"',
+      '*',
+      'a:b',
+      '^x',
+      'NEAR(a b)',
+      "it's",
+      '{}',
+    ]) {
       expect(() => searchSymbols(q, bad)).not.toThrow();
       expect(() => searchSymbols(q, bad, { useFts: false })).not.toThrow();
     }
@@ -115,7 +178,9 @@ describe('searchSymbols', () => {
 
   it('excludes generated files by default and includes them with the flag', () => {
     expect(names('GeneratedUserClient')).toEqual([]);
-    expect(names('GeneratedUserClient', { includeGenerated: true })).toEqual(['GeneratedUserClient']);
+    expect(names('GeneratedUserClient', { includeGenerated: true })).toEqual([
+      'GeneratedUserClient',
+    ]);
   });
 
   it('penalises tests below equivalent production symbols', () => {
@@ -132,13 +197,22 @@ describe('searchSymbols', () => {
   it('honours and clamps limit', () => {
     expect(searchSymbols(q, 'user', { limit: 2 })).toHaveLength(2);
     expect(searchSymbols(q, 'user', { limit: 0 }).length).toBeGreaterThan(0);
-    expect(searchSymbols(q, 'user', { limit: 100000 }).length).toBeLessThanOrEqual(200);
+    const batch: GraphNode[] = [];
+    for (let i = 0; i < 250; i++)
+      batch.push(node(`z${i}`, `zz${i}`, 'src/user.ts'));
+    q.insertNodes(batch);
+    expect(searchSymbols(q, 'zz', { limit: 100000 })).toHaveLength(200);
   });
 
   it('returns file nodes only when there are no symbol hits', () => {
-    expect(searchSymbols(q, 'user').some((r) => r.node.kind === 'file')).toBe(false);
+    expect(searchSymbols(q, 'user').some((r) => r.node.kind === 'file')).toBe(
+      false,
+    );
     q.insertNodes([
-      node('f2', 'config.json', 'config.json', { kind: 'file', qualifiedName: 'config.json' }),
+      node('f2', 'config.json', 'config.json', {
+        kind: 'file',
+        qualifiedName: 'config.json',
+      }),
     ]);
     expect(names('config')).toEqual(['config.json']);
   });
@@ -163,7 +237,9 @@ describe('searchSymbols', () => {
 
   it('falls back automatically when nodes_fts is missing', () => {
     const expected = names('getUser');
-    db.exec('DROP TRIGGER nodes_ai; DROP TRIGGER nodes_ad; DROP TRIGGER nodes_au; DROP TABLE nodes_fts');
+    db.exec(
+      'DROP TRIGGER nodes_ai; DROP TRIGGER nodes_ad; DROP TRIGGER nodes_au; DROP TABLE nodes_fts',
+    );
     expect(names('getUser')).toEqual(expected);
   });
 
@@ -195,23 +271,31 @@ describe('searchSymbols', () => {
     q.insertNodes(out.nodes);
     expect(names('order repository')[0]).toBe('OrderRepository');
     expect(names('findOrder')).toContain('findOrderById');
-    expect(names('order report', { useFts: false })[0]).toBe('buildOrderReport');
+    expect(names('order report', { useFts: false })[0]).toBe(
+      'buildOrderReport',
+    );
   });
 
-  it('answers a prefix query over 50k nodes in under 300 ms', () => {
+  it('answers prefix and segment (merged FTS + substring) queries over 50k nodes in under 300 ms', () => {
     q.upsertFile(fileRow('src/big.ts'));
     q.transaction(() => {
       const batch: GraphNode[] = [];
       for (let i = 0; i < 50000; i++) {
-        batch.push(node(`big${i}`, `symbol${i}Handler`, 'src/big.ts', { isExported: false }));
+        batch.push(
+          node(`big${i}`, `symbol${i}Handler`, 'src/big.ts', {
+            isExported: false,
+          }),
+        );
         if (batch.length === 1000) q.insertNodes(batch.splice(0));
       }
     });
-    searchSymbols(q, 'symbol4');
-    const t0 = performance.now();
-    const r = searchSymbols(q, 'symbol4');
-    const ms = performance.now() - t0;
-    expect(r.length).toBe(20);
-    expect(ms).toBeLessThan(300);
+    for (const query of ['symbol4', 'handler', 'symbol handler']) {
+      searchSymbols(q, query);
+      const t0 = performance.now();
+      const r = searchSymbols(q, query);
+      const ms = performance.now() - t0;
+      expect(r.length).toBe(20);
+      expect(ms).toBeLessThan(300);
+    }
   }, 60000);
 });
