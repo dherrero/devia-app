@@ -88,6 +88,15 @@ describe('CodeGraphStore.remove', () => {
     expect(store.loadDoc(other)).toEqual(fullDoc);
   });
 
+  it('accepts a project directory whose name merely starts with ..', () => {
+    fs.mkdirSync(path.join(deviaDir, 'code-graph', '..foo'), { recursive: true });
+    fs.writeFileSync(path.join(deviaDir, 'code-graph', '..foo', 'x'), '1');
+    const odd = new CodeGraphStore(() => deviaDir);
+    expect(odd.dataDir(path.join(path.sep, '..foo'))).toBe(path.join(deviaDir, 'code-graph', '..foo'));
+    odd.remove(path.join(path.sep, '..foo'));
+    expect(fs.existsSync(path.join(deviaDir, 'code-graph', '..foo'))).toBe(false);
+  });
+
   it('is a no-op when nothing exists', () => {
     expect(() => store.remove(project)).not.toThrow();
   });

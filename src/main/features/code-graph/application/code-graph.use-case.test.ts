@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { openGraphDb } from '../engine/db/connection';
+import { openGraphDb, type GraphDb } from '../engine/db/connection';
 import { GraphQueries } from '../engine/db/queries';
 import type { IndexResult } from '../engine/indexer/orchestrator';
 import type { IndexRun } from '../engine/indexer/index-runner';
@@ -152,7 +152,7 @@ describe('CodeGraphUseCase', () => {
   it('reset removes the graph and cancels a running job', async () => {
     const { uc } = makeUseCase();
     await uc.index(project, noProgress);
-    uc.reset(project);
+    await uc.reset(project);
     expect((await uc.status(project)).state).toBe('none');
     expect(fs.existsSync(store.dataDir(project))).toBe(false);
   });
@@ -256,15 +256,41 @@ describe('CodeGraphUseCase', () => {
     await s;
   });
 
-  it.skipIf(process.platform === 'win32')('status leaves no open DB handle', async () => {
-    const { uc } = makeUseCase();
+  it('status closes the DB handle on the success path', async () => {
+    const closes: number[] = [];
+    const { uc } = makeUseCase({
+      openDb: (file, o) => {
+        const db = openGraphDb(file, o);
+        const close = db.close.bind(db);
+        db.close = (): void => {
+          closes.push(1);
+          close();
+        };
+        return db;
+      },
+    });
     await uc.index(project, noProgress);
-    await uc.status(project);
-    const db = store.dbPath(project);
-    fs.renameSync(db, `${db}.moved`);
-    for (const ext of ['-wal', '-shm']) fs.rmSync(`${db}${ext}`, { force: true });
-    expect(fs.existsSync(db)).toBe(false);
-    expect((await uc.status(project)).state).toBe('none');
+    closes.length = 0;
+    expect((await uc.status(project)).state).toBe('ready');
+    expect(closes).toHaveLength(1);
+  });
+
+  it('status closes the DB handle on the error path', async () => {
+    const close = vi.fn();
+    const { uc } = makeUseCase({
+      openDb: () =>
+        ({
+          exec: () => undefined,
+          prepare: () => {
+            throw new Error('boom');
+          },
+          close,
+        }) as unknown as GraphDb,
+    });
+    await uc.index(project, noProgress);
+    close.mockClear();
+    expect((await uc.status(project)).state).toBe('error');
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it('reports unsupported for a graph with 0 files', async () => {
@@ -279,6 +305,161 @@ describe('CodeGraphUseCase', () => {
     await uc.index(project, noProgress);
     fs.writeFileSync(store.dbPath(project), 'this is not a database'.repeat(100));
     expect((await uc.status(project)).state).toBe('error');
+  });
+});
+
+describe('CodeGraphUseCase races and job lifecycle', () => {
+  const okSync = async (): Promise<SyncResult> => ({
+    added: 0,
+    modified: 0,
+    deleted: 0,
+    skippedBusy: false,
+    truncated: false,
+    fullIndexRequired: false,
+  });
+
+  it('index does not overwrite a toggle made during the HEAD lookup', async () => {
+    const g = gate();
+    let slow = false;
+    const { uc } = makeUseCase({
+      headCommit: async () => {
+        if (slow) await g.promise;
+        return 'aaa';
+      },
+    });
+    await uc.index(project, noProgress);
+    slow = true;
+    const second = uc.index(project, noProgress);
+    await new Promise((r) => setTimeout(r, 10));
+    uc.setAutoUpdate(project, false);
+    uc.setAgentAccess(project, false);
+    g.open();
+    await second;
+    expect(store.loadDoc(project)).toMatchObject({ autoUpdate: false, agentAccess: false });
+  });
+
+  it('markSynced does not overwrite a toggle made during the HEAD lookup', async () => {
+    const g = gate();
+    let slow = false;
+    const { uc } = makeUseCase({
+      sync: okSync,
+      headCommit: async () => {
+        if (slow) await g.promise;
+        return 'aaa';
+      },
+    });
+    await uc.index(project, noProgress);
+    slow = true;
+    const s = uc.syncNow(project);
+    await new Promise((r) => setTimeout(r, 10));
+    uc.setAutoUpdate(project, false);
+    g.open();
+    await s;
+    expect(store.loadDoc(project)?.autoUpdate).toBe(false);
+  });
+
+  it('reset while indexing waits for the job and leaves nothing behind', async () => {
+    const g = gate();
+    const { uc } = makeUseCase({
+      runIndex: (o) => ({
+        promise: g.promise.then(() => writeGraph(o.dataDir, 1)),
+        cancel: () => undefined,
+      }),
+    });
+    const idx = uc.index(project, noProgress);
+    const idxResult = idx.then(
+      () => 'ok',
+      (e: Error) => e.name,
+    );
+    let done = false;
+    const rst = uc.reset(project).then(() => {
+      done = true;
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(done).toBe(false);
+    g.open();
+    await rst;
+    expect(await idxResult).toBe('AbortError');
+    expect(fs.existsSync(store.dataDir(project))).toBe(false);
+    expect((await uc.status(project)).state).toBe('none');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fs.existsSync(store.dataDir(project))).toBe(false);
+  });
+
+  it('reset while syncing waits for the sync and does not recreate the doc', async () => {
+    const g = gate();
+    const { uc } = makeUseCase({
+      sync: async () => {
+        await g.promise;
+        return okSync();
+      },
+    });
+    await uc.index(project, noProgress);
+    const s = uc.syncNow(project);
+    let done = false;
+    const rst = uc.reset(project).then(() => {
+      done = true;
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(done).toBe(false);
+    g.open();
+    await rst;
+    await s;
+    expect(fs.existsSync(store.dataDir(project))).toBe(false);
+  });
+
+  it('markSynced refreshes commit and indexedAt only for complete full-tree syncs', async () => {
+    let t = 1000;
+    let head = 'aaa';
+    let result: SyncResult = {
+      added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false, fullIndexRequired: false,
+    };
+    const { uc } = makeUseCase({ sync: async () => result, headCommit: async () => head, now: () => t });
+    await uc.index(project, noProgress);
+
+    t = 2000;
+    head = 'bbb';
+    result = { ...result, truncated: true };
+    await uc.syncNow(project);
+    expect(store.loadDoc(project)).toMatchObject({ builtAtCommit: 'aaa', indexedAt: 1000 });
+
+    result = { ...result, truncated: false, skippedBusy: true };
+    await uc.syncNow(project);
+    expect(store.loadDoc(project)).toMatchObject({ builtAtCommit: 'aaa', indexedAt: 1000 });
+
+    result = { ...result, skippedBusy: false };
+    await uc.syncNow(project, { onlyPaths: ['src/f0.ts'] });
+    expect(store.loadDoc(project)).toMatchObject({ builtAtCommit: 'aaa', indexedAt: 1000 });
+
+    await uc.syncNow(project);
+    expect(store.loadDoc(project)).toMatchObject({ builtAtCommit: 'bbb', indexedAt: 2000 });
+  });
+
+  it('an active index makes syncNow return skippedBusy without calling sync', async () => {
+    const g = gate();
+    const { uc, calls } = makeUseCase({
+      runIndex: (o) => ({
+        promise: g.promise.then(() => writeGraph(o.dataDir, 1)),
+        cancel: () => undefined,
+      }),
+    });
+    const idx = uc.index(project, noProgress);
+    expect(await uc.syncNow(project)).toMatchObject({ skippedBusy: true });
+    expect(calls.sync).toBe(0);
+    g.open();
+    await idx;
+  });
+
+  it('forwards onProgress to runIndex', async () => {
+    const seen: unknown[] = [];
+    const { uc } = makeUseCase({
+      runIndex: (o) => {
+        o.onProgress({ phase: 'parse', filesDone: 1, filesTotal: 2, nodes: 0, edges: 0 });
+        return { promise: Promise.resolve(writeGraph(o.dataDir, 1)), cancel: () => undefined };
+      },
+    });
+    await uc.index(project, (p) => seen.push(p));
+    expect(seen).toEqual([{ phase: 'parse', filesDone: 1, filesTotal: 2, nodes: 0, edges: 0 }]);
   });
 });
 
