@@ -12,6 +12,10 @@ export interface AffectedResult {
   files: string[];
   tests: string[];
   unknown: string[];
+  /**
+   * The result is incomplete: `files` was cut at `limit`, dependents of some
+   * changed files were not explored, or an impact was capped at 300 nodes.
+   */
   truncated: boolean;
 }
 
@@ -44,6 +48,10 @@ function split(file: string): { dir: string; base: string; ext: string } {
 
 const join = (...parts: string[]): string => parts.filter(Boolean).join('/');
 
+/**
+ * Matching is case-sensitive on purpose: the index stores paths as written, and
+ * folding case could pair unrelated files on case-sensitive file systems.
+ */
 function siblingCandidates(file: string): string[] {
   const { dir, base, ext } = split(file);
   switch (ext) {
@@ -81,9 +89,17 @@ function siblingCandidates(file: string): string[] {
     case '.dart': {
       const name = `${base}_test.dart`;
       const out: string[] = [];
-      if (dir === 'lib') out.push(join('test', name));
-      else if (dir.startsWith('lib/'))
-        out.push(join('test', dir.slice(4), name));
+      const segs = dir.split('/');
+      const lib = segs.lastIndexOf('lib');
+      if (lib !== -1)
+        out.push(
+          join(
+            segs.slice(0, lib).join('/'),
+            'test',
+            segs.slice(lib + 1).join('/'),
+            name,
+          ),
+        );
       out.push(join(dir, name), join(dir, 'test', name));
       return out;
     }

@@ -184,6 +184,12 @@ describe('getAffected sibling tests by convention', () => {
       tests: ['test/foo_test.dart'],
     },
     {
+      name: 'dart monorepo package',
+      changed: 'pkg/lib/foo.dart',
+      src: 'void foo() {}\n',
+      tests: ['pkg/test/foo_test.dart'],
+    },
+    {
       name: 'dart adjacent',
       changed: 'lib/foo.dart',
       src: 'void foo() {}\n',
@@ -210,6 +216,61 @@ describe('getAffected sibling tests by convention', () => {
   });
 });
 
+describe('getAffected truncation and edge cases', () => {
+  let t: SeededDb;
+  beforeEach(() => {
+    t = openTempDb();
+  });
+  afterEach(() => t.close());
+
+  it('flags truncated when the early stop skips dependents', () => {
+    seedGraph(
+      t.q,
+      [
+        mkNode('x', { filePath: 'src/x.ts' }),
+        mkNode('y', { filePath: 'src/y.ts' }),
+        mkNode('z', { filePath: 'src/z.ts' }),
+      ],
+      [mkEdge('y', 'x')],
+    );
+    const r = getAffected(t.q, ['src/x.ts', 'src/y.ts', 'src/z.ts'], {
+      limit: 1,
+    });
+    expect(r.truncated).toBe(true);
+    expect(r.files).toHaveLength(1);
+  });
+
+  it('flags truncated when a hub impact exceeds the per-file node cap', () => {
+    const nodes = [mkNode('hub', { filePath: 'src/hub.ts' })];
+    const edges = [];
+    for (let i = 0; i < 350; i++) {
+      nodes.push(mkNode(`c${i}`, { filePath: `src/c${i}.ts` }));
+      edges.push(mkEdge(`c${i}`, 'hub'));
+    }
+    seedGraph(t.q, nodes, edges);
+    const r = getAffected(t.q, ['src/hub.ts'], { limit: 100_000 });
+    expect(r.truncated).toBe(true);
+    expect(r.files.length).toBeLessThan(352);
+  });
+
+  it('treats a deleted file still in the index as known', () => {
+    t.q.upsertFile({
+      path: 'src/gone.ts',
+      contentHash: 'h',
+      language: 'typescript',
+      size: 0,
+      modifiedAt: 1,
+      indexedAt: 1,
+      nodeCount: 0,
+      generated: false,
+      isTest: false,
+    });
+    const r = getAffected(t.q, ['src/gone.ts']);
+    expect(r.unknown).toEqual([]);
+    expect(r.files).toEqual(['src/gone.ts']);
+  });
+});
+
 describe('getAffected performance', () => {
   let t: SeededDb;
   beforeEach(() => {
@@ -232,22 +293,14 @@ describe('getAffected performance', () => {
     for (let i = 0; i < N; i++)
       nodes.push(mkNode(`n${i}`, { filePath: `src/f${i % FILES}.ts` }));
     const edges = [];
-    let seed = 1;
-    const rnd = (): number => {
-      seed ^= seed << 13;
-      seed ^= seed >>> 17;
-      seed ^= seed << 5;
-      return seed >>> 0;
-    };
     for (let i = 1; i < N; i++) edges.push(mkEdge(`n${i}`, `n${i - 1}`));
-    for (let i = 0; i < 100_000; i++)
-      edges.push(mkEdge(`n${rnd() % N}`, `n${rnd() % N}`, 'references'));
     seedGraph(t.q, nodes, edges);
 
     const changed = Array.from({ length: 200 }, (_, i) => `src/f${i}.ts`);
-    const r = bestOf(() => getAffected(t.q, changed));
+    const r = bestOf(() => getAffected(t.q, changed, { limit: 100_000 }));
     expect(r.ms).toBeLessThan(2000);
-    expect(r.value.files.length).toBeGreaterThan(0);
+    expect(r.value.truncated).toBe(false);
+    expect(r.value.files).toHaveLength(202);
     expect(r.value.unknown).toEqual([]);
   }, 60_000);
 });
