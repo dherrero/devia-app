@@ -524,6 +524,14 @@ export class GraphQueries {
     ).map((r) => r.path);
   }
 
+  /** Paths of files flagged as tests. */
+  testFilePaths(): Set<string> {
+    const rows = this.stmt(
+      'SELECT path FROM files WHERE is_test = 1',
+    ).all() as unknown as { path: string }[];
+    return new Set(rows.map((r) => r.path));
+  }
+
   /** Paths of files flagged as tests or generated. */
   excludedFilePaths(): Set<string> {
     const rows = this.stmt(
