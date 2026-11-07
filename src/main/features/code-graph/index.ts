@@ -5,6 +5,7 @@ import type { McpServerConfig } from '../../../shared/domain/mcp';
 import { CodeGraphStore } from './infrastructure/code-graph-store';
 import { CodeGraphUseCase } from './application/code-graph.use-case';
 import { createWorktreeGraph } from './application/worktree-graph';
+import { registerCodeGraphIpc } from './ipc/code-graph.ipc';
 
 export { createWorktreeGraph } from './application/worktree-graph';
 
@@ -34,8 +35,8 @@ export function buildCodeGraphFeature(deps: CodeGraphDeps): CodeGraphFeatureBuil
 
   const feature: Feature = {
     id: 'code-graph',
-    register() {
-      // IPC channels are registered here once they exist.
+    register(ctx) {
+      registerCodeGraphIpc(ctx, { config: deps.config, useCase });
     },
   };
 

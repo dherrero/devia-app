@@ -439,4 +439,21 @@ export class ElectronApiService {
   onUpdateStatus(cb: Parameters<typeof this.api.update.onStatus>[0]) {
     this.api.update.onStatus(cb);
   }
+
+  // Code graph (S-44). `project` is the workspace-relative key.
+  codeGraphStatus(project: string) { return this.api.codeGraphStatus(project); }
+  codeGraphIndex(project: string) { return this.api.codeGraphIndex(project); }
+  codeGraphCancel(project: string) { return this.api.codeGraphCancel(project); }
+  codeGraphReset(project: string) { return this.api.codeGraphReset(project); }
+  codeGraphSetAgentAccess(project: string, enabled: boolean) { return this.api.codeGraphSetAgentAccess(project, enabled); }
+  codeGraphSetAutoUpdate(project: string, enabled: boolean) { return this.api.codeGraphSetAutoUpdate(project, enabled); }
+  codeGraphUpdate(project: string) { return this.api.codeGraphUpdate(project); }
+  codeGraphWatch(project: string) { return this.api.codeGraphWatch(project); }
+  codeGraphUnwatch(project: string) { return this.api.codeGraphUnwatch(project); }
+  onCodeGraphProgress(cb: Parameters<DeviaBridge['onCodeGraphProgress']>[0]): () => void {
+    return this.api.onCodeGraphProgress(cb);
+  }
+  onCodeGraphStatusChanged(cb: Parameters<DeviaBridge['onCodeGraphStatusChanged']>[0]): () => void {
+    return this.api.onCodeGraphStatusChanged(cb);
+  }
 }
