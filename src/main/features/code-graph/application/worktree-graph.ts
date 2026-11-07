@@ -1,12 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { openGraphDb } from '../engine/db/connection';
-import { GraphQueries } from '../engine/db/queries';
 import { isFullIndexRunning } from '../engine/db/writer-lock';
+import { runSeedCopy } from './seed-copy';
 import { DEFAULT_AUTO_UPDATE, type CodeGraphUseCase } from './code-graph.use-case';
 import type { CodeGraphStore, ProjectDoc } from '../infrastructure/code-graph-store';
 
-export type SeedSkipReason = 'no-base-graph' | 'base-indexing' | 'already-has-graph' | 'copy-failed';
+export type SeedSkipReason = 'no-base-graph' | 'base-indexing' | 'already-has-graph' | 'copy-failed' | 'worktree-missing';
 export interface SeedResult {
   seeded: boolean;
   reason?: SeedSkipReason;
@@ -15,6 +14,8 @@ export interface SeedResult {
 export interface WorktreeGraphDeps {
   store: CodeGraphStore;
   useCase: CodeGraphUseCase;
+  /** Overrides the seed worker file (tests run the TypeScript source through a shim). */
+  workerEntry?: string;
 }
 
 const SEED_TMP = 'graph.db.seed.tmp';
@@ -35,48 +36,28 @@ export function createWorktreeGraph(deps: WorktreeGraphDeps): {
   const { store, useCase } = deps;
   const seeding = new Map<string, Promise<unknown>>();
 
-  const copyGraph = (baseProject: string, worktreePath: string): void => {
-    const dir = store.dataDir(worktreePath);
-    fs.mkdirSync(dir, { recursive: true });
-    const tmp = path.join(dir, SEED_TMP);
-    const cleanup = (): void => {
-      for (const suffix of ['', '-wal', '-shm', '-journal']) fs.rmSync(tmp + suffix, { force: true });
-    };
-    cleanup();
-    try {
-      // VACUUM INTO yields a consistent snapshot even with a live WAL reader/writer.
-      const src = openGraphDb(store.dbPath(baseProject), { readonly: true });
-      try {
-        src.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
-      } finally {
-        src.close();
-      }
-      const copy = openGraphDb(tmp);
-      try {
-        // The copied root is the base path; sync treats a different root as "full index required".
-        new GraphQueries(copy).setMeta('root', worktreePath);
-        copy.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-      } finally {
-        copy.close();
-      }
-      for (const suffix of ['-wal', '-shm']) fs.rmSync(tmp + suffix, { force: true });
-      if (store.exists(worktreePath)) {
-        cleanup();
-        return;
-      }
-      fs.renameSync(tmp, store.dbPath(worktreePath));
-    } catch (err) {
-      cleanup();
-      throw err;
-    }
-  };
+  const tmpFiles = (dir: string): string[] => ['', '-wal', '-shm', '-journal'].map((x) => path.join(dir, SEED_TMP) + x);
 
   const seed = async (baseProject: string, worktreePath: string): Promise<SeedResult> => {
-    if (store.exists(worktreePath)) return { seeded: false, reason: 'already-has-graph' };
-    if (!store.exists(baseProject)) return { seeded: false, reason: 'no-base-graph' };
-    if (isFullIndexRunning(store.dataDir(baseProject))) return { seeded: false, reason: 'base-indexing' };
+    const dir = store.dataDir(worktreePath);
     try {
-      copyGraph(baseProject, worktreePath);
+      if (!fs.existsSync(worktreePath)) return { seeded: false, reason: 'worktree-missing' };
+      if (store.exists(worktreePath)) return { seeded: false, reason: 'already-has-graph' };
+      if (!store.exists(baseProject)) return { seeded: false, reason: 'no-base-graph' };
+      if (isFullIndexRunning(store.dataDir(baseProject))) return { seeded: false, reason: 'base-indexing' };
+      fs.mkdirSync(dir, { recursive: true });
+      for (const f of tmpFiles(dir)) fs.rmSync(f, { force: true });
+      const tmp = path.join(dir, SEED_TMP);
+      await runSeedCopy({ src: store.dbPath(baseProject), tmp, root: worktreePath }, deps.workerEntry);
+      // The worktree may have been removed while the copy ran: never leave an orphan graph.
+      if (!fs.existsSync(worktreePath)) {
+        store.remove(worktreePath);
+        return { seeded: false, reason: 'worktree-missing' };
+      }
+      if (store.exists(worktreePath)) {
+        for (const f of tmpFiles(dir)) fs.rmSync(f, { force: true });
+        return { seeded: false, reason: 'already-has-graph' };
+      }
       const baseDoc = store.loadDoc(baseProject);
       const doc: ProjectDoc = {
         createdAt: Date.now(),
@@ -85,9 +66,17 @@ export function createWorktreeGraph(deps: WorktreeGraphDeps): {
       };
       if (baseDoc?.agentAccess === false) doc.agentAccess = false;
       if (baseDoc?.builtAtCommit !== undefined) doc.builtAtCommit = baseDoc.builtAtCommit;
+      // Doc first: a failure here must not leave a graph.db without its doc.
       store.saveDoc(worktreePath, doc);
+      fs.renameSync(tmp, store.dbPath(worktreePath));
     } catch (err) {
       warn('seed failed', err);
+      try {
+        for (const f of tmpFiles(dir)) fs.rmSync(f, { force: true });
+        if (!store.exists(worktreePath)) store.remove(worktreePath);
+      } catch {
+        // best-effort cleanup
+      }
       return { seeded: false, reason: 'copy-failed' };
     }
     useCase.syncNow(worktreePath).catch((err: unknown) => warn('background sync failed', err));

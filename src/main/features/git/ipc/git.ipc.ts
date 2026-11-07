@@ -96,7 +96,6 @@ export function registerGitIpc(ctx: FeatureContext, deps: GitIpcDeps): void {
     const ref = worktreeRefFor(deps.config.deviaDir(), resolveInsideWorkspace(deps.config, baseProject).abs, sessionId);
     try {
       await deps.worktreeManager.remove(ref);
-      notifyWorktreeHook(deps.worktreeHooks, 'onRemoved', { worktreePath: ref.worktreeDir });
     } catch (err) {
       const we = err as WorktreeError;
       if (we?.name === 'WorktreeError') {
@@ -105,6 +104,7 @@ export function registerGitIpc(ctx: FeatureContext, deps: GitIpcDeps): void {
       }
       throw err;
     }
+    notifyWorktreeHook(deps.worktreeHooks, 'onRemoved', { worktreePath: ref.worktreeDir });
   });
 
   // Pane closed with ZERO activity (S-3): tear down worktree AND session

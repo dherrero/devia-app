@@ -183,11 +183,13 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   const gitBuilt = buildGitFeature({
     config,
     worktreeHooks: {
-      // Deferred so the (synchronous) snapshot copy never delays opening the pane.
+      // The copy runs in a worker; registering synchronously lets a same-tick remove wait for it.
       onCreated: ({ baseProject, worktreePath }) => {
-        setImmediate(() => void codeGraphBuilt.seedWorktreeGraph({ baseProject, worktreePath }));
+        codeGraphBuilt.seedWorktreeGraph({ baseProject, worktreePath }).catch((err: unknown) => console.warn('[code-graph] worktree seed failed:', err));
       },
-      onRemoved: ({ worktreePath }) => void codeGraphBuilt.dropWorktreeGraph(worktreePath),
+      onRemoved: ({ worktreePath }) => {
+        codeGraphBuilt.dropWorktreeGraph(worktreePath).catch((err: unknown) => console.warn('[code-graph] worktree drop failed:', err));
+      },
     },
   });
 

@@ -42,12 +42,15 @@ async function buildBaseGraph(): Promise<void> {
   store.saveDoc(base, { createdAt: 10, indexedAt: 20, autoUpdate: false, agentAccess: false, builtAtCommit: 'abc' });
 }
 
+let workerShim = 'seed-worker-shim.cjs';
+
 function make(deps: ConstructorParameters<typeof CodeGraphUseCase>[0] extends infer D ? Partial<D> : never = {}) {
   useCase = new CodeGraphUseCase({ store, headCommit: async () => 'head1', ...deps });
-  return createWorktreeGraph({ store, useCase });
+  return createWorktreeGraph({ store, useCase, workerEntry: path.join(__dirname, '__fixtures__', workerShim) });
 }
 
 beforeEach(() => {
+  workerShim = 'seed-worker-shim.cjs';
   deviaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-wt-dev-'));
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-wt-work-'));
   base = path.join(work, 'base');
@@ -137,7 +140,83 @@ describe('seedWorktreeGraph', () => {
     const { seedWorktreeGraph } = make();
     expect(await seedWorktreeGraph({ baseProject: base, worktreePath: worktree })).toEqual({ seeded: false, reason: 'copy-failed' });
     expect(store.exists(worktree)).toBe(false);
-    expect(fs.readdirSync(store.dataDir(worktree))).toEqual([]);
+    expect(fs.existsSync(store.dataDir(worktree))).toBe(false);
+  });
+});
+
+describe('seed robustness', () => {
+  const noSync = { sync: async (): Promise<SyncResult> => ({ added: 0, modified: 0, deleted: 0, skippedBusy: true, truncated: false, fullIndexRequired: false }) };
+  const leftovers = (): string[] =>
+    fs.existsSync(store.dataDir(worktree)) ? fs.readdirSync(store.dataDir(worktree)) : [];
+
+  it('keeps the main thread ticking while a large base graph is copied', async () => {
+    await buildBaseGraph();
+    const db = openGraphDb(store.dbPath(base));
+    try {
+      db.exec('BEGIN');
+      const ins = db.prepare(
+        "INSERT INTO nodes (id, kind, name, qualified_name, file_path, language, start_line, end_line, is_exported, updated_at) VALUES (?, 'function', ?, ?, 'a.ts', 'typescript', 1, 2, 1, 1)",
+      );
+      for (let i = 0; i < 150_000; i++) ins.run(`big${i}`, `fn${i}`, `fn${i}_${'x'.repeat(600)}`);
+      db.exec('COMMIT');
+    } finally {
+      db.close();
+    }
+    const { seedWorktreeGraph } = make(noSync);
+    let last = Date.now();
+    let maxGap = 0;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+    }, 10);
+    const started = Date.now();
+    const res = await seedWorktreeGraph({ baseProject: base, worktreePath: worktree });
+    clearInterval(timer);
+    maxGap = Math.max(maxGap, Date.now() - last);
+    expect(res).toEqual({ seeded: true });
+    expect(Date.now() - started).toBeGreaterThan(50);
+    expect(maxGap).toBeLessThan(250);
+  }, 60_000);
+
+  it('a crashing worker yields copy-failed and leaves no temp files or graph', async () => {
+    await buildBaseGraph();
+    workerShim = 'seed-crash-shim.cjs';
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { seedWorktreeGraph } = make(noSync);
+    expect(await seedWorktreeGraph({ baseProject: base, worktreePath: worktree })).toEqual({ seeded: false, reason: 'copy-failed' });
+    expect(store.exists(worktree)).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+
+  it('a failing saveDoc never leaves graph.db without a doc', async () => {
+    await buildBaseGraph();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { seedWorktreeGraph } = make(noSync);
+    vi.spyOn(store, 'saveDoc').mockImplementation(() => {
+      throw new Error('disk full');
+    });
+    expect(await seedWorktreeGraph({ baseProject: base, worktreePath: worktree })).toEqual({ seeded: false, reason: 'copy-failed' });
+    expect(store.exists(worktree)).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+
+  it('a remove in the same tick as the create leaves no orphan graph', async () => {
+    await buildBaseGraph();
+    const { seedWorktreeGraph, dropWorktreeGraph } = make(noSync);
+    const seeded = seedWorktreeGraph({ baseProject: base, worktreePath: worktree });
+    fs.rmSync(worktree, { recursive: true, force: true });
+    await Promise.all([seeded, dropWorktreeGraph(worktree)]);
+    expect(fs.existsSync(store.dataDir(worktree))).toBe(false);
+    expect(store.exists(base)).toBe(true);
+  });
+
+  it('does not create anything for a worktree that is already gone', async () => {
+    await buildBaseGraph();
+    fs.rmSync(worktree, { recursive: true, force: true });
+    const { seedWorktreeGraph } = make(noSync);
+    expect(await seedWorktreeGraph({ baseProject: base, worktreePath: worktree })).toEqual({ seeded: false, reason: 'worktree-missing' });
+    expect(fs.existsSync(store.dataDir(worktree))).toBe(false);
   });
 });
 
