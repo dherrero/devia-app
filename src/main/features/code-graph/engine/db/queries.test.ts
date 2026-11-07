@@ -336,4 +336,22 @@ describe('GraphQueries', () => {
     const many = Array.from({ length: 2000 }, (_, i) => `t${i}`);
     expect(q.failedByNameTails([...many, 'y'])).toHaveLength(1);
   });
+
+  it('edgesFromMany / edgesToMany batch ids, filter kinds and chunk large lists', () => {
+    seed();
+    q.insertEdges([{ source: 'b', target: 'c', kind: 'imports' }]);
+    const from = q.edgesFromMany(['a', 'b']);
+    expect(from.map((e) => `${e.source}>${e.target}:${e.kind}`)).toEqual(
+      q
+        .edgesFrom('a')
+        .concat(q.edgesFrom('b'))
+        .map((e) => `${e.source}>${e.target}:${e.kind}`),
+    );
+    expect(q.edgesToMany(['c'], ['imports']).map((e) => e.source)).toEqual([
+      'b',
+    ]);
+    expect(q.edgesFromMany([])).toEqual([]);
+    const many = Array.from({ length: 1200 }, (_, i) => `x${i}`);
+    expect(q.edgesFromMany([...many, 'b', 'b'], ['imports'])).toHaveLength(1);
+  });
 });

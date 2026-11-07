@@ -449,6 +449,39 @@ export class GraphQueries {
     return this.edgesBy('target', id, kinds);
   }
 
+  edgesFromMany(ids: string[], kinds?: EdgeKind[]): GraphEdge[] {
+    return this.edgesByMany('source', ids, kinds);
+  }
+
+  edgesToMany(ids: string[], kinds?: EdgeKind[]): GraphEdge[] {
+    return this.edgesByMany('target', ids, kinds);
+  }
+
+  private edgesByMany(
+    column: 'source' | 'target',
+    ids: string[],
+    kinds?: EdgeKind[],
+  ): GraphEdge[] {
+    const unique = [...new Set(ids)];
+    const kindSql =
+      kinds && kinds.length > 0
+        ? ` AND kind IN (${kinds.map(() => '?').join(',')})`
+        : '';
+    const kindArgs = kinds && kinds.length > 0 ? kinds : [];
+    const rows: (EdgeRow & { id: number })[] = [];
+    for (let i = 0; i < unique.length; i += IN_CHUNK) {
+      const chunk = unique.slice(i, i + IN_CHUNK);
+      rows.push(
+        ...(this.stmt(
+          `SELECT id, source, target, kind, line, provenance FROM edges WHERE ${column} IN (${chunk.map(() => '?').join(',')})${kindSql}`,
+        ).all(...chunk, ...kindArgs) as unknown as (EdgeRow & {
+          id: number;
+        })[]),
+      );
+    }
+    return rows.sort((a, b) => a.id - b.id).map(toEdge);
+  }
+
   private edgesBy(
     column: 'source' | 'target',
     id: string,
