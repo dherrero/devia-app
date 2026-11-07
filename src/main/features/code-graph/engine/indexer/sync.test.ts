@@ -1,16 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { openGraphDb } from '../db/connection';
 import { GraphQueries } from '../db/queries';
-import { acquireWriterLock } from '../db/writer-lock';
+import { acquireWriterLock, readWriterLock } from '../db/writer-lock';
 import { discoverFiles } from '../discovery/discover';
-import { makeNodeId } from '../extraction/node-id';
 import { persistCommunities, readCommunities } from '../graph/communities';
 import { detectChanges } from './change-detection';
 import { isSupported } from './extract-file';
-import { GRAPH_DB_FILE } from './orchestrator';
+import { EXTRACTION_VERSION, GRAPH_DB_FILE } from './orchestrator';
 import { syncProject } from './sync';
 import { fullIndex, fullIndexSnapshot, snapshotGraph, TestProject } from './sync-test-support';
 
@@ -97,7 +96,7 @@ describe('syncProject', () => {
     await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
     project.write('c.ts', 'export function c(): number {\n  return 3;\n}\n');
     const result = await syncProject({ root: project.root, dataDir });
-    expect(result).toEqual({ added: 1, modified: 0, deleted: 0, skippedBusy: false, truncated: false });
+    expect(result).toEqual({ added: 1, modified: 0, deleted: 0, skippedBusy: false, truncated: false, fullIndexRequired: false });
     expect(sym('c.ts', 'function', 'c')).toBeDefined();
     await expectParity();
   });
@@ -238,7 +237,7 @@ describe('syncProject', () => {
     expect(lock).not.toBeNull();
     try {
       const result = await syncProject({ root: project.root, dataDir });
-      expect(result).toEqual({ added: 0, modified: 0, deleted: 0, skippedBusy: true, truncated: false });
+      expect(result).toEqual({ added: 0, modified: 0, deleted: 0, skippedBusy: true, truncated: false, fullIndexRequired: false });
       expect(snapshotGraph(dataDir)).toEqual(before);
     } finally {
       lock?.release();
@@ -259,16 +258,41 @@ describe('syncProject', () => {
     await expectParity();
   });
 
-  it('with deadlineMs 0 truncates and leaves the DB as it was, then catches up', async () => {
+  it('with deadlineMs 0 still applies the first changed file, reports truncated, then catches up', async () => {
     await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
     project.write('b.ts', 'export function z(): number {\n  return 9;\n}\n');
     project.write('c.ts', 'export const c = 1;\n');
-    project.touch('a.ts');
-    const before = snapshotGraph(dataDir);
-    const result = await syncProject({ root: project.root, dataDir, deadlineMs: 0 });
-    expect(result).toEqual({ added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: true });
-    expect(snapshotGraph(dataDir)).toEqual(before);
-    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ added: 1, modified: 1, truncated: false });
+    const first = await syncProject({ root: project.root, dataDir, deadlineMs: 0 });
+    expect(first).toEqual({ added: 0, modified: 1, deleted: 0, skippedBusy: false, truncated: true, fullIndexRequired: false });
+    expect(sym('b.ts', 'function', 'z')).toBeDefined();
+    expect(filesInDb()).toEqual(['a.ts', 'b.ts']);
+    expect(await syncProject({ root: project.root, dataDir, deadlineMs: 0 })).toMatchObject({ added: 1, truncated: false });
+    await expectParity();
+  });
+
+  it('with deadlineMs 0 on a clean tree reports nothing to do, not truncated', async () => {
+    await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
+    expect(await syncProject({ root: project.root, dataDir, deadlineMs: 0 })).toEqual({
+      added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false, fullIndexRequired: false,
+    });
+  });
+
+  it('makes progress on every call under a tiny deadline when many files share the stem of the edited one', async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 40; i++) {
+      files[`m${i}/index.ts`] = `export function f${i}(): number {\n  return ${i};\n}\n`;
+      files[`u${i}.ts`] = `import { f${i} } from './m${i}';\nexport const u${i} = f${i}();\n`;
+    }
+    await indexed(files);
+    for (const i of [0, 7, 13]) project.write(`m${i}/index.ts`, `export function f${i}(): number {\n  return ${i + 100};\n}\n`);
+    let calls = 0;
+    for (;;) {
+      const r = await syncProject({ root: project.root, dataDir, deadlineMs: 1 });
+      calls++;
+      expect(r.added + r.modified + r.deleted).toBeGreaterThan(0);
+      if (!r.truncated) break;
+      expect(calls).toBeLessThan(3);
+    }
     await expectParity();
   });
 
@@ -304,13 +328,87 @@ describe('syncProject', () => {
     await expectParity();
   });
 
+  it('with onlyPaths matches the indexed spelling case-insensitively and skips directories', async () => {
+    await indexed({ 'a.ts': A_TS, 'b.ts': B_TS, 'sub/c.ts': 'export const c = 1;\n' });
+    project.write('b.ts', 'export function b(): number {\n  return 2;\n}\n');
+    project.write('sub/c.ts', 'export const c = 2;\n');
+    expect(await syncProject({ root: project.root, dataDir, onlyPaths: ['sub'] })).toMatchObject({ added: 0, modified: 0, deleted: 0 });
+    expect(await syncProject({ root: project.root, dataDir, onlyPaths: ['B.TS'] })).toMatchObject({ added: 0, modified: 1, deleted: 0 });
+    expect(filesInDb()).toEqual(['a.ts', 'b.ts', 'sub/c.ts']);
+    expect(await syncProject({ root: project.root, dataDir, onlyPaths: ['SUB/C.ts'] })).toMatchObject({ modified: 1 });
+    await expectParity();
+  });
+
+  it('rolls back to the previous graph and releases the lock when the write phase throws', async () => {
+    await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
+    project.write('b.ts', 'export function z(): number {\n  return 9;\n}\n');
+    project.write('c.ts', 'export const c = 1;\n');
+    const before = snapshotGraph(dataDir);
+    const spy = vi.spyOn(GraphQueries.prototype, 'languageCounts').mockImplementationOnce(() => {
+      throw new Error('injected failure');
+    });
+    try {
+      await expect(syncProject({ root: project.root, dataDir })).rejects.toThrow('injected failure');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(snapshotGraph(dataDir)).toEqual(before);
+    expect(readWriterLock(dataDir)).toBeNull();
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ added: 1, modified: 1 });
+    await expectParity();
+  });
+
+  it('asks for a full index instead of syncing when a resolution config changed', async () => {
+    await indexed({ 'a.ts': A_TS, 'b.ts': B_TS, 'tsconfig.json': '{}\n', 'go.mod': 'module example.com/m\n' });
+    project.write('b.ts', 'export function z(): number {\n  return 9;\n}\n');
+    const before = snapshotGraph(dataDir);
+    const required = { added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false, fullIndexRequired: true };
+
+    project.write('tsconfig.json', '{ "compilerOptions": { "baseUrl": "." } }\n');
+    expect(await syncProject({ root: project.root, dataDir })).toEqual(required);
+    expect(await syncProject({ root: project.root, dataDir, onlyPaths: ['b.ts'] })).toEqual(required);
+    expect(snapshotGraph(dataDir)).toEqual(before);
+    project.write('tsconfig.json', '{}\n');
+
+    project.remove('go.mod');
+    expect(await syncProject({ root: project.root, dataDir })).toEqual(required);
+    project.write('go.mod', 'module example.com/m\n');
+
+    project.write('app/pubspec.yaml', 'name: app\n');
+    expect(await syncProject({ root: project.root, dataDir })).toEqual(required);
+    project.remove('app');
+
+    project.write('node_modules/x/tsconfig.json', '{ "x": 1 }\n');
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ modified: 1, fullIndexRequired: false });
+    await expectParity();
+  });
+
+  it('asks for a full index when the graph was built by another extraction version or root', async () => {
+    await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
+    const setMeta = (key: string, value: string): void => {
+      const rw = openGraphDb(path.join(dataDir, GRAPH_DB_FILE));
+      try {
+        new GraphQueries(rw).setMeta(key, value);
+      } finally {
+        rw.close();
+      }
+    };
+    const root = withDb((q) => q.getMeta('root') ?? '');
+    setMeta('extraction_version', '0');
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ fullIndexRequired: true });
+    setMeta('extraction_version', String(EXTRACTION_VERSION));
+    setMeta('root', '/somewhere/else');
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ fullIndexRequired: true });
+    setMeta('root', root);
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ fullIndexRequired: false });
+  });
+
   it('keeps the community metadata and refreshes indexed_at and languages', async () => {
     await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
-    const fileA = makeNodeId('a.ts', 'file', 'a.ts', 1);
     const rw = openGraphDb(path.join(dataDir, GRAPH_DB_FILE));
     try {
       const q = new GraphQueries(rw);
-      persistCommunities(q, new Map([[fileA, 7]]));
+      persistCommunities(q, new Map([['a.ts', 7]]));
       q.setMeta('indexed_at', '1');
     } finally {
       rw.close();
@@ -318,7 +416,7 @@ describe('syncProject', () => {
     project.write('p.py', 'def f():\n    return 1\n');
     await syncProject({ root: project.root, dataDir });
     withDb((q) => {
-      expect(readCommunities(q).get(fileA)).toBe(7);
+      expect(readCommunities(q).get('a.ts')).toBe(7);
       expect(Number(q.getMeta('indexed_at'))).toBeGreaterThan(1);
       expect(JSON.parse(q.getMeta('languages') ?? '{}')).toEqual({ typescript: 2, python: 1 });
     });
@@ -327,7 +425,7 @@ describe('syncProject', () => {
   it('syncs an empty project without changes', async () => {
     await fullIndex(project.root, dataDir);
     const result = await syncProject({ root: project.root, dataDir });
-    expect(result).toEqual({ added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false });
+    expect(result).toEqual({ added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false, fullIndexRequired: false });
     await expectParity();
   });
 

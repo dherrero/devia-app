@@ -751,6 +751,14 @@ export class GraphQueries {
     });
   }
 
+  /** Go structural `implements` edges are all derived globally by `inferGoImplements`. */
+  deleteGoInferredImplements(): void {
+    this.stmt(
+      `DELETE FROM edges WHERE kind = 'implements' AND provenance = 'heuristic'
+         AND source IN (SELECT id FROM nodes WHERE language = 'go')`,
+    ).run();
+  }
+
   deleteUnresolvedInFiles(paths: string[]): void {
     const unique = [...new Set(paths)];
     this.transaction(() => {

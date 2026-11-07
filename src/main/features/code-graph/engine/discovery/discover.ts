@@ -14,12 +14,17 @@ export type SkipReason =
 
 export interface DiscoverOptions {
   isSupported: (rel: string) => boolean;
+  /** Non-source files to collect in `configs` (same ignore and symlink rules, no size checks). */
+  isConfig?: (rel: string) => boolean;
+  /** True when this size+mtime is already indexed: the minified probe is skipped for it. */
+  isKnown?: (rel: string, size: number, mtimeMs: number) => boolean;
   maxFileBytes?: number;
   signal?: AbortSignal;
 }
 
 export interface DiscoverResult {
   files: DiscoveredFile[];
+  configs: DiscoveredFile[];
   skipped: { path: string; reason: SkipReason }[];
 }
 
@@ -63,7 +68,7 @@ function isInside(rootReal: string, dirReal: string): boolean {
 }
 
 type Entry =
-  | { kind: 'file'; file: DiscoveredFile }
+  | { kind: 'file' | 'config'; file: DiscoveredFile }
   | { kind: 'dir' }
   | { kind: 'skip'; reason: SkipReason }
   | { kind: 'none' };
@@ -72,7 +77,7 @@ async function classifyEntry(
   abs: string,
   rel: string,
   ignore: (rel: string, isDir: boolean) => boolean,
-  isSupported: (rel: string) => boolean,
+  opts: Omit<DiscoverOptions, 'signal'>,
   maxBytes: number,
 ): Promise<Entry> {
   let st;
@@ -86,14 +91,17 @@ async function classifyEntry(
   const isDir = st.isDirectory();
   if (ignore(rel, isDir)) return { kind: 'skip', reason: 'ignored' };
   if (isDir) return { kind: 'dir' };
-  if (!st.isFile() || !isSupported(rel)) return { kind: 'none' };
+  if (!st.isFile()) return { kind: 'none' };
+  const file: DiscoveredFile = { relPath: rel, absPath: abs, size: st.size, mtimeMs: st.mtimeMs };
+  if (!opts.isSupported(rel)) return opts.isConfig?.(rel) ? { kind: 'config', file } : { kind: 'none' };
   if (st.size > maxBytes) return { kind: 'skip', reason: 'too-large' };
+  if (opts.isKnown?.(rel, st.size, st.mtimeMs)) return { kind: 'file', file };
   try {
     if (await looksMinified(abs, st.size)) return { kind: 'skip', reason: 'minified' };
   } catch {
     return { kind: 'skip', reason: 'unreadable' };
   }
-  return { kind: 'file', file: { relPath: rel, absPath: abs, size: st.size, mtimeMs: st.mtimeMs } };
+  return { kind: 'file', file };
 }
 
 export async function discoverFiles(
@@ -102,6 +110,7 @@ export async function discoverFiles(
 ): Promise<DiscoverResult> {
   const maxBytes = opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const files: DiscoveredFile[] = [];
+  const configs: DiscoveredFile[] = [];
   const skipped: DiscoverResult['skipped'] = [];
   const ignore = createIgnore(root);
   const rootReal = await fs.realpath(root);
@@ -127,9 +136,10 @@ export async function discoverFiles(
     for (const name of names) {
       throwIfAborted(opts.signal);
       const rel = dirRel === '' ? name : `${dirRel}/${name}`;
-      const entry = await classifyEntry(path.join(dirAbs, name), rel, ignore, opts.isSupported, maxBytes);
+      const entry = await classifyEntry(path.join(dirAbs, name), rel, ignore, opts, maxBytes);
       if (entry.kind === 'dir') stack.push(rel);
       else if (entry.kind === 'file') files.push(entry.file);
+      else if (entry.kind === 'config') configs.push(entry.file);
       else if (entry.kind === 'skip') skipped.push({ path: rel, reason: entry.reason });
     }
   }
@@ -137,7 +147,7 @@ export async function discoverFiles(
   files.sort((a, b) =>
     a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0,
   );
-  return { files, skipped };
+  return { files, configs, skipped };
 }
 
 /** Normalises a project path to its stored form (relative, `/`), or undefined if it leaves the root. */
@@ -152,7 +162,7 @@ export function toProjectPath(root: string, p: string): string | undefined {
 /**
  * Applies the same rules as {@link discoverFiles} to just `paths`, without walking the tree:
  * every ancestor must be a real (non-symlink, non-ignored) directory inside the root.
- * Paths that no longer exist are simply absent from `files`.
+ * Paths that no longer exist, and directories (they are never expanded), are absent from `files`.
  */
 export async function discoverPaths(
   root: string,
@@ -163,6 +173,7 @@ export async function discoverPaths(
   const ignore = createIgnore(root);
   const rootReal = await fs.realpath(root);
   const files: DiscoveredFile[] = [];
+  const configs: DiscoveredFile[] = [];
   const skipped: DiscoverResult['skipped'] = [];
   const dirOk = new Map<string, boolean>();
 
@@ -171,7 +182,7 @@ export async function discoverPaths(
       const rel = segments.slice(0, i).join('/');
       let ok = dirOk.get(rel);
       if (ok === undefined) {
-        const entry = await classifyEntry(path.join(root, ...segments.slice(0, i)), rel, ignore, opts.isSupported, maxBytes);
+        const entry = await classifyEntry(path.join(root, ...segments.slice(0, i)), rel, ignore, opts, maxBytes);
         ok = entry.kind === 'dir';
         if (ok) {
           try {
@@ -200,10 +211,11 @@ export async function discoverPaths(
     } catch {
       continue;
     }
-    const entry = await classifyEntry(abs, rel, ignore, opts.isSupported, maxBytes);
+    const entry = await classifyEntry(abs, rel, ignore, opts, maxBytes);
     if (entry.kind === 'file') files.push(entry.file);
+    else if (entry.kind === 'config') configs.push(entry.file);
     else if (entry.kind === 'skip') skipped.push({ path: rel, reason: entry.reason });
   }
   files.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
-  return { files, skipped };
+  return { files, configs, skipped };
 }

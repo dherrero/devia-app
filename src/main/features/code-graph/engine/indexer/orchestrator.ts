@@ -8,6 +8,7 @@ import { acquireWriterLock } from '../db/writer-lock';
 import { discoverFiles } from '../discovery/discover';
 import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome } from './extract-file';
 import { postIndex } from './post-index';
+import { CONFIG_HASHES_KEY, hashConfigs, isResolutionConfig } from './resolution-config';
 
 export const EXTRACTION_VERSION = 1;
 export const GRAPH_DB_FILE = 'graph.db';
@@ -151,7 +152,8 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
       opts.onProgress?.({ phase, filesDone, filesTotal, nodes, edges });
 
     emit('discover');
-    const discovered = await discoverFiles(root, signal ? { isSupported, signal } : { isSupported });
+    const discoverOpts = { isSupported, isConfig: isResolutionConfig };
+    const discovered = await discoverFiles(root, signal ? { ...discoverOpts, signal } : discoverOpts);
     throwIfAborted(signal);
     filesTotal = discovered.files.length;
     let skipped = discovered.skipped.filter((s) => s.reason !== 'ignored').length;
@@ -205,6 +207,7 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
       q.setMeta('root', root);
       q.setMeta('extraction_version', String(EXTRACTION_VERSION));
       q.setMeta('languages', JSON.stringify(languages));
+      q.setMeta(CONFIG_HASHES_KEY, JSON.stringify(hashConfigs(discovered.configs)));
     });
     closeForPublish(db);
     db = undefined;

@@ -3,23 +3,40 @@ import * as path from 'node:path';
 import { openGraphDb, type GraphDb } from '../db/connection';
 import { GraphQueries, type FileRow } from '../db/queries';
 import { acquireWriterLock } from '../db/writer-lock';
-import { discoverFiles, discoverPaths, toProjectPath, type DiscoveredFile } from '../discovery/discover';
+import {
+  discoverFiles,
+  discoverPaths,
+  toProjectPath,
+  type DiscoveredFile,
+  type DiscoverOptions,
+  type DiscoverResult,
+} from '../discovery/discover';
 import { makeNodeId } from '../extraction/node-id';
-import { fileStem, resolveReferences } from '../resolution/resolver';
-import { detectChanges } from './change-detection';
+import { fileStem } from '../resolution/resolver';
+import { detectChanges, type ChangeSet } from './change-detection';
 import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome } from './extract-file';
-import { GRAPH_DB_FILE } from './orchestrator';
+import { EXTRACTION_VERSION, GRAPH_DB_FILE } from './orchestrator';
+import { resolveGraph } from './post-index';
+import { hashConfigs, isResolutionConfig, sameConfigHashes, storedConfigHashes } from './resolution-config';
 
 // Adapted from codegraph (MIT), src/sync/ and the `sync` entry point of src/index.ts.
 
 export interface SyncOptions {
   root: string;
   dataDir: string;
-  /** Changed files applied per call; the rest is picked up by the next sync. */
+  /** Changed files admitted per call; the rest is picked up by the next sync. */
   maxFiles?: number;
-  /** Time budget; when it runs out before the write phase nothing is written. */
+  /**
+   * Soft time budget. The first changed file (in path order) is always applied, with
+   * everything it drags along; further files are admitted only while time remains, so
+   * every call makes progress and a busy tree converges over a few calls.
+   */
   deadlineMs?: number;
-  /** Look only at these paths (relative to the root, or absolute inside it). */
+  /**
+   * Look only at these files (relative to the root, or absolute inside it). A path that is
+   * not indexed under that exact spelling but is under another casing uses the indexed one.
+   * Directories are skipped, never expanded.
+   */
   onlyPaths?: string[];
 }
 
@@ -29,6 +46,8 @@ export interface SyncResult {
   deleted: number;
   skippedBusy: boolean;
   truncated: boolean;
+  /** Nothing was applied: a resolution config, the extraction version or the root changed. */
+  fullIndexRequired: boolean;
 }
 
 export class GraphNotFoundError extends Error {
@@ -43,16 +62,21 @@ export class GraphNotFoundError extends Error {
 type ChangeKind = 'added' | 'modified' | 'deleted';
 type OkOutcome = FileOutcome & { kind: 'ok' };
 
-const EMPTY: SyncResult = { added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false };
-
-class DeadlineExceeded extends Error {}
+const EMPTY: SyncResult = {
+  added: 0,
+  modified: 0,
+  deleted: 0,
+  skippedBusy: false,
+  truncated: false,
+  fullIndexRequired: false,
+};
 
 /**
  * Brings graph.db up to date with the tree, giving exactly the graph a full reindex would.
  * Resolved refs are deleted from `unresolved_refs`, so every file whose resolution could
  * change ("dependents") is re-extracted and resolved again together with the changed files.
- * Reading and parsing happen first; all writes then go in one transaction, so a deadline,
- * a crash or an exception leaves the previous consistent graph.
+ * Reading and parsing happen first; all writes then go in one transaction, so a crash or an
+ * exception leaves the previous consistent graph.
  */
 export async function syncProject(opts: SyncOptions): Promise<SyncResult> {
   const { root, dataDir } = opts;
@@ -62,30 +86,43 @@ export async function syncProject(opts: SyncOptions): Promise<SyncResult> {
   if (!lock) return { ...EMPTY, skippedBusy: true };
 
   const started = Date.now();
-  const checkDeadline = (): void => {
-    if (opts.deadlineMs !== undefined && Date.now() - started >= opts.deadlineMs) throw new DeadlineExceeded();
-  };
+  const timeLeft = (): boolean => opts.deadlineMs === undefined || Date.now() - started < opts.deadlineMs;
   const pool = new ParserPool();
   let db: GraphDb | undefined;
   try {
     if (!fs.existsSync(dbPath)) throw new GraphNotFoundError(dataDir);
     db = openGraphDb(dbPath);
     const q = new GraphQueries(db);
-    const plan = await planSync(q, opts, pool, checkDeadline);
-    if (!plan) return EMPTY;
-    checkDeadline();
+    if (q.getMeta('extraction_version') !== String(EXTRACTION_VERSION) || !sameRoot(q.getMeta('root'), root))
+      return { ...EMPTY, fullIndexRequired: true };
+
+    const rows = new Map(q.fileRecords().map((r) => [r.path, r]));
+    const scope = opts.onlyPaths ? scopePaths(root, opts.onlyPaths, rows) : undefined;
+    const discoverOpts: Omit<DiscoverOptions, 'signal'> = {
+      isSupported,
+      isConfig: isResolutionConfig,
+      isKnown: (rel, size, mtimeMs) => {
+        const row = rows.get(rel);
+        return row !== undefined && row.size === size && row.modifiedAt === Math.round(mtimeMs);
+      },
+    };
+    const discovered = scope
+      ? await discoverPaths(root, [...scope], discoverOpts)
+      : await discoverFiles(root, discoverOpts);
+    if (!configsUnchanged(q, root, discovered, scope)) return { ...EMPTY, fullIndexRequired: true };
+
+    const changes = detectChanges(q, discovered.files, rows);
+    if (scope) changes.deleted = changes.deleted.filter((p) => scope.has(p));
+    const plan = await planSync(q, root, changes, discovered, rows, scope, opts.maxFiles, timeLeft, pool);
     applyPlan(db, q, root, plan);
     const count = (kind: ChangeKind): number => [...plan.changed.values()].filter((k) => k === kind).length;
     return {
+      ...EMPTY,
       added: count('added'),
       modified: count('modified'),
       deleted: count('deleted'),
-      skippedBusy: false,
-      truncated: plan.capped,
+      truncated: plan.truncated,
     };
-  } catch (err) {
-    if (err instanceof DeadlineExceeded) return { ...EMPTY, truncated: true };
-    throw err;
   } finally {
     await pool.dispose();
     db?.close();
@@ -93,87 +130,126 @@ export async function syncProject(opts: SyncOptions): Promise<SyncResult> {
   }
 }
 
+function sameRoot(stored: string | undefined, root: string): boolean {
+  return stored !== undefined && path.resolve(stored) === path.resolve(root);
+}
+
+function scopePaths(root: string, paths: string[], rows: ReadonlyMap<string, FileRow>): Set<string> {
+  const byLower = new Map<string, string>();
+  for (const p of rows.keys()) byLower.set(p.toLowerCase(), p);
+  const out = new Set<string>();
+  for (const p of paths) {
+    const rel = toProjectPath(root, p);
+    if (rel === undefined) continue;
+    out.add(rows.has(rel) ? rel : (byLower.get(rel.toLowerCase()) ?? rel));
+  }
+  return out;
+}
+
+/** With `onlyPaths` the tree is not walked: the indexed configs are re-hashed, and any config inside the scope must already be one of them. */
+function configsUnchanged(
+  q: GraphQueries,
+  root: string,
+  discovered: DiscoverResult,
+  scope: Set<string> | undefined,
+): boolean {
+  const stored = storedConfigHashes(q);
+  if (!stored) return false;
+  if (!scope) return sameConfigHashes(hashConfigs(discovered.configs), stored);
+  const known = Object.keys(stored).map((rel) => ({ relPath: rel, absPath: path.join(root, ...rel.split('/')) }));
+  return (
+    discovered.configs.every((c) => c.relPath in stored) && sameConfigHashes(hashConfigs(known), stored)
+  );
+}
+
 interface SyncPlan {
   changed: Map<string, ChangeKind>;
   outcomes: Map<string, FileOutcome>;
   dependents: Map<string, OkOutcome>;
-  touched: { path: string; modifiedAt: number }[];
-  capped: boolean;
+  touched: ChangeSet['touched'];
+  truncated: boolean;
 }
 
 async function planSync(
   q: GraphQueries,
-  opts: SyncOptions,
+  root: string,
+  changes: ChangeSet,
+  discovered: DiscoverResult,
+  rows: ReadonlyMap<string, FileRow>,
+  scope: Set<string> | undefined,
+  maxFiles: number | undefined,
+  timeLeft: () => boolean,
   pool: ParserPool,
-  checkDeadline: () => void,
-): Promise<SyncPlan | undefined> {
-  const { root } = opts;
-  const scope = opts.onlyPaths
-    ? new Set(opts.onlyPaths.map((p) => toProjectPath(root, p)).filter((p): p is string => p !== undefined))
-    : undefined;
-  const discovered = scope
-    ? await discoverPaths(root, [...scope], { isSupported })
-    : await discoverFiles(root, { isSupported });
-  const changes = detectChanges(q, discovered.files);
-  if (scope) changes.deleted = changes.deleted.filter((p) => scope.has(p));
-  checkDeadline();
-
+): Promise<SyncPlan> {
   const pending = new Map<string, ChangeKind>();
   for (const p of changes.deleted) pending.set(p, 'deleted');
   for (const p of changes.added) pending.set(p, 'added');
   for (const p of changes.modified) pending.set(p, 'modified');
-  if (pending.size === 0 && changes.touched.length === 0) return undefined;
-
-  const ordered = [...pending.keys()].sort();
-  const cap = opts.maxFiles === undefined ? ordered.length : Math.max(1, opts.maxFiles);
-  const changed = new Map<string, ChangeKind>();
-  for (const p of ordered.slice(0, cap)) changed.set(p, pending.get(p) ?? 'modified');
 
   const byPath = new Map(discovered.files.map((f) => [f.relPath, f]));
-  const rows = new Map(q.fileRecords().map((r) => [r.path, r]));
+  const changed = new Map<string, ChangeKind>();
   const outcomes = new Map<string, FileOutcome>();
   const dependents = new Map<string, OkOutcome>();
 
   const locate = async (rel: string): Promise<DiscoveredFile | undefined> =>
     byPath.get(rel) ?? (scope ? (await discoverPaths(root, [rel], { isSupported })).files[0] : undefined);
 
-  for (;;) {
-    for (const [p, kind] of changed) {
-      if (kind === 'deleted' || outcomes.has(p)) continue;
-      checkDeadline();
-      const file = await locate(p);
-      outcomes.set(p, file ? await extractFile(file, pool) : { kind: 'unreadable' });
+  // Re-extracts the changed files and their dependents until no dependent turns out to be
+  // changed itself; never stopped by the deadline, so whatever was admitted is consistent.
+  const close = async (): Promise<void> => {
+    for (;;) {
+      for (const [p, kind] of changed) {
+        if (kind === 'deleted' || outcomes.has(p)) continue;
+        const file = await locate(p);
+        outcomes.set(p, file ? await extractFile(file, pool) : { kind: 'unreadable' });
+      }
+      let grew = false;
+      for (const dep of findDependents(q, changed, outcomes, rows)) {
+        if (dependents.has(dep)) continue;
+        const kind = pending.get(dep);
+        if (kind !== undefined) {
+          changed.set(dep, kind);
+          grew = true;
+          continue;
+        }
+        const file = await locate(dep);
+        if (!file) {
+          changed.set(dep, 'deleted');
+          grew = true;
+          continue;
+        }
+        const outcome = await extractFile(file, pool);
+        if (outcome.kind !== 'ok' || outcome.row.contentHash !== rows.get(dep)?.contentHash) {
+          // Changed on disk but outside this call's scope: apply it now rather than resolve stale refs.
+          changed.set(dep, 'modified');
+          outcomes.set(dep, outcome);
+          grew = true;
+          continue;
+        }
+        dependents.set(dep, outcome);
+      }
+      if (!grew) return;
     }
-    let grew = false;
-    for (const dep of findDependents(q, changed, outcomes, rows)) {
-      if (dependents.has(dep)) continue;
-      const kind = pending.get(dep);
-      if (kind !== undefined) {
-        changed.set(dep, kind);
-        grew = true;
-        continue;
-      }
-      checkDeadline();
-      const file = await locate(dep);
-      if (!file) {
-        changed.set(dep, 'deleted');
-        grew = true;
-        continue;
-      }
-      const outcome = await extractFile(file, pool);
-      if (outcome.kind !== 'ok' || outcome.row.contentHash !== rows.get(dep)?.contentHash) {
-        // Changed on disk but outside this call's scope: apply it now rather than resolve stale refs.
-        changed.set(dep, 'modified');
-        outcomes.set(dep, outcome);
-        grew = true;
-        continue;
-      }
-      dependents.set(dep, outcome);
-    }
-    if (!grew) break;
+  };
+
+  const ordered = [...pending.keys()].sort();
+  const cap = maxFiles === undefined ? ordered.length : Math.max(1, maxFiles);
+  let admitted = 0;
+  for (const p of ordered) {
+    if (admitted >= cap || (admitted > 0 && !timeLeft())) break;
+    admitted++;
+    if (changed.has(p)) continue;
+    changed.set(p, pending.get(p) ?? 'modified');
+    await close();
   }
   for (const p of changed.keys()) dependents.delete(p);
-  return { changed, outcomes, dependents, touched: changes.touched, capped: ordered.length > cap };
+  return {
+    changed,
+    outcomes,
+    dependents,
+    touched: changes.touched,
+    truncated: ordered.some((p) => !changed.has(p)),
+  };
 }
 
 /**
@@ -181,14 +257,18 @@ async function planSync(
  * (1) owners of edges into the changed files' nodes; (2) files with failed refs whose name tail
  * is a name, stem or directory the changed files had or now have; (3) owners of edges into
  * same-named symbols elsewhere (or their members), whose uniqueness may have changed;
- * (4) importers of files that sit next to a changed path (same directory, `x/` for `x.ts`,
- * same stem), whose import resolution may now pick another file.
+ * (4) for ADDED or DELETED paths only, importers of files next to them. Which file an import
+ * spec lands on depends only on the set of indexed paths (and on the configs, which force a
+ * full index), so an edit in place never moves an import; an added or deleted path can, and
+ * the resolvers search beyond the directory: TS `x.ts` vs `x/index.ts`, Go/Java packages by
+ * directory, Java FQNs and Python roots by path suffix, tsconfig `paths` fallbacks to any
+ * folder. Hence same directory, the `x/` subtree, and the same stem anywhere.
  */
 function findDependents(
   q: GraphQueries,
   changed: Map<string, ChangeKind>,
   outcomes: Map<string, FileOutcome>,
-  rows: Map<string, FileRow>,
+  rows: ReadonlyMap<string, FileRow>,
 ): Set<string> {
   const paths = [...changed.keys()];
   const oldNodes = q.nodeRefsInFiles(paths.filter((p) => rows.has(p)));
@@ -205,10 +285,9 @@ function findDependents(
   const deps = q.referencingFiles(oldNodes.map((n) => n.id));
   for (const r of q.failedByNameTails([...names])) deps.add(r.filePath);
 
-  const isChanged = (p: string): boolean => changed.has(p);
   let frontier = q
     .nodeRefsByNames([...names])
-    .filter((n) => n.kind !== 'file' && !isChanged(n.filePath))
+    .filter((n) => n.kind !== 'file' && !changed.has(n.filePath))
     .map((n) => n.id);
   const members = new Set(frontier);
   while (frontier.length > 0) {
@@ -220,17 +299,20 @@ function findDependents(
   }
   for (const f of q.referencingFiles([...members])) deps.add(f);
 
-  const near = new Set<string>();
-  for (const p of paths) {
-    const dir = path.posix.dirname(p);
-    const stem = fileStem(p);
-    const nested = dir === '.' ? stem : `${dir}/${stem}`;
-    for (const f of rows.keys()) {
-      const fdir = path.posix.dirname(f);
-      if (fdir === dir || fdir === nested || fdir.startsWith(`${nested}/`) || fileStem(f) === stem) near.add(f);
+  const moved = paths.filter((p) => changed.get(p) !== 'modified');
+  if (moved.length > 0) {
+    const near = new Set<string>();
+    for (const p of moved) {
+      const dir = path.posix.dirname(p);
+      const stem = fileStem(p);
+      const nested = dir === '.' ? stem : `${dir}/${stem}`;
+      for (const f of rows.keys()) {
+        const fdir = path.posix.dirname(f);
+        if (fdir === dir || fdir === nested || fdir.startsWith(`${nested}/`) || fileStem(f) === stem) near.add(f);
+      }
     }
+    for (const f of q.referencingFiles([...near].map((f) => makeNodeId(f, 'file', f, 1)))) deps.add(f);
   }
-  for (const f of q.referencingFiles([...near].map((f) => makeNodeId(f, 'file', f, 1)))) deps.add(f);
 
   for (const p of paths) deps.delete(p);
   return deps;
@@ -238,8 +320,12 @@ function findDependents(
 
 function applyPlan(db: GraphDb, q: GraphQueries, root: string, plan: SyncPlan): void {
   const { changed, outcomes, dependents } = plan;
+  const touched = plan.touched.filter((t) => !changed.has(t.path));
+  if (changed.size === 0 && touched.length === 0) return;
   const depPaths = [...dependents.keys()];
   q.transaction(() => {
+    for (const t of touched) q.setFileModifiedAt(t.path, t.modifiedAt);
+    if (changed.size === 0) return;
     for (const p of changed.keys()) q.deleteFile(p);
     q.deleteEdgesOwnedBy(q.nodeRefsInFiles(depPaths).map((n) => n.id));
     q.deleteUnresolvedInFiles(depPaths);
@@ -253,10 +339,11 @@ function applyPlan(db: GraphDb, q: GraphQueries, root: string, plan: SyncPlan): 
       if (outcome.kind === 'ok') writeExtraction(db, q, outcome);
       else if (outcome.kind === 'failed') q.upsertFile(outcome.row);
     }
-    for (const t of plan.touched) if (!changed.has(t.path)) q.setFileModifiedAt(t.path, t.modifiedAt);
-    if (changed.size === 0) return;
+    // A struct's method set can span files, so a changed .go file may add or drop an edge
+    // between two untouched files; the whole inferred set is rebuilt (cap included).
+    if ([...changed.keys()].some((p) => p.endsWith('.go'))) q.deleteGoInferredImplements();
     const live = [...changed].filter(([, kind]) => kind !== 'deleted').map(([p]) => p);
-    resolveReferences(q, root, [...live, ...depPaths]);
+    resolveGraph(q, root, [...live, ...depPaths]);
     q.setMeta('indexed_at', String(Date.now()));
     q.setMeta('languages', JSON.stringify(q.languageCounts()));
   });

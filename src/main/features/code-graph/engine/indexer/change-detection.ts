@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import type { GraphQueries } from '../db/queries';
+import type { FileRow, GraphQueries } from '../db/queries';
 import type { DiscoveredFile } from '../discovery/discover';
 import { contentHash } from './hash';
 
@@ -16,8 +16,11 @@ export interface ChangeSet {
  * or size moved AND its content hash differs: an mtime change alone never re-extracts.
  * A file that can no longer be read counts as modified so the sync drops its stale nodes.
  */
-export function detectChanges(db: GraphQueries, discovered: DiscoveredFile[]): ChangeSet {
-  const rows = new Map(db.fileRecords().map((r) => [r.path, r]));
+export function detectChanges(
+  db: GraphQueries,
+  discovered: DiscoveredFile[],
+  rows: ReadonlyMap<string, FileRow> = new Map(db.fileRecords().map((r) => [r.path, r])),
+): ChangeSet {
   const out: ChangeSet = { added: [], modified: [], deleted: [], touched: [] };
   const seen = new Set<string>();
   for (const file of discovered) {

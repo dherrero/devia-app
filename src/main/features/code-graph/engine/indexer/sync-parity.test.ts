@@ -22,6 +22,7 @@ async function syncAndCompare(step: string): Promise<void> {
   const result = await syncProject({ root: project.root, dataDir });
   expect(result.skippedBusy, step).toBe(false);
   expect(result.truncated, step).toBe(false);
+  expect(result.fullIndexRequired, step).toBe(false);
   const synced = snapshotGraph(dataDir);
   const full = await fullIndexSnapshot(project.root);
   expect({ step, ...synced }).toEqual({ step, ...full });
@@ -46,6 +47,9 @@ const FIVE_LANGUAGES: Record<string, string> = {
   'go.mod': 'module example.com/m\n',
   'store/store.go': 'package store\n\nfunc New() int { return 1 }\n',
   'main.go': 'package main\n\nimport "example.com/m/store"\n\nfunc main() {\n\tstore.New()\n\tstore.Extra()\n}\n',
+  'shape/iface.go': 'package shape\n\ntype Reader interface {\n\tRead() int\n}\n',
+  'shape/s.go': 'package shape\n\ntype S struct{}\n',
+  'shape/s_read.go': 'package shape\n\nfunc (s *S) Read() int { return 1 }\n',
   'pubspec.yaml': 'name: app\n',
   'lib/models/user.dart': 'class User {\n  void hello() {}\n}\n',
   'lib/main.dart': "import 'package:app/models/user.dart';\n\nvoid main() {\n  User().hello();\n}\n",
@@ -55,7 +59,9 @@ describe('sync parity with a full reindex', () => {
   it('matches a fresh index after every step of a five-language edit sequence', async () => {
     project.writeAll(FIVE_LANGUAGES);
     await fullIndex(project.root, dataDir);
-    expect(snapshotGraph(dataDir)).toEqual(await fullIndexSnapshot(project.root));
+    const initial = snapshotGraph(dataDir);
+    expect(initial).toEqual(await fullIndexSnapshot(project.root));
+    expect(initial.edges.filter((e) => e.includes('"kind":"implements"') && e.includes('"provenance":"heuristic"'))).toHaveLength(1);
     const javaFoo = project.read('src/main/java/com/acme/Foo.java');
 
     project.write('ts/d.ts', "import { helper } from './b';\n\nexport function twice(): number {\n  return helper(helper(1));\n}\n");
@@ -101,9 +107,15 @@ describe('sync parity with a full reindex', () => {
 
     project.rename('ts/b.ts', 'ts/b/index.ts');
     await syncAndCompare('move a module into a directory index');
+
+    project.remove('shape/s_read.go');
+    await syncAndCompare('delete the file holding the method that made a Go struct implement an interface');
+
+    project.write('shape/s_read.go', 'package shape\n\nfunc (s *S) Read() int { return 2 }\n');
+    await syncAndCompare('bring the Go method back');
   });
 
-  it('matches a fresh index after each of 30 seeded random edits over TS and Python', async () => {
+  it('matches a fresh index after each of 30 seeded random edits over TS, Python and a Go package', async () => {
     const rand = mulberry32(0x5eed);
     const pick = <T>(items: readonly T[]): T => {
       const item = items[Math.floor(rand() * items.length)];
@@ -111,13 +123,30 @@ describe('sync parity with a full reindex', () => {
       return item;
     };
     const NAMES = ['alpha', 'beta', 'gamma', 'delta', 'omega'] as const;
-    const SLOTS = ['ts/m0.ts', 'ts/m1.ts', 'ts/m2.ts', 'ts/sub/m3.ts', 'py/p0.py', 'py/p1.py', 'py/p2.py', 'py/sub/p3.py'];
+    const SLOTS = [
+      'ts/m0.ts', 'ts/m1.ts', 'ts/m2.ts', 'ts/sub/m3.ts',
+      'py/p0.py', 'py/p1.py', 'py/p2.py', 'py/sub/p3.py',
+      'go/shape/iface.go', 'go/shape/s.go', 'go/shape/s_m.go', 'go/shape/t_m.go',
+    ];
+    const INITIAL = ['ts/m0.ts', 'ts/m1.ts', 'ts/m2.ts', 'py/p0.py', 'py/p1.py', 'py/p2.py', 'go/shape/iface.go', 'go/shape/s.go', 'go/shape/s_m.go'];
+    const up = (n: string): string => `${n.charAt(0).toUpperCase()}${n.slice(1)}`;
     const present = (): string[] => SLOTS.filter((s) => project.exists(s));
 
     const content = (slot: string): string => {
       const others = present().filter((s) => s !== slot && s.endsWith(slot.endsWith('.ts') ? '.ts' : '.py'));
       const defs = [...new Set([pick(NAMES), pick(NAMES)])];
       const calls = [pick(NAMES), pick(NAMES)];
+      if (slot.endsWith('.go')) {
+        const lines = ['package shape'];
+        if (slot.endsWith('iface.go') || rand() < 0.3)
+          lines.push(`type I${up(pick(NAMES))} interface {\n${defs.map((d) => `\t${up(d)}() int`).join('\n')}\n}`);
+        if (slot.endsWith('/s.go') || rand() < 0.3) lines.push(`type ${pick(['S', 'T'])} struct{}`);
+        if (slot.endsWith('_m.go') || rand() < 0.3) {
+          const recv = pick(['S', 'T']);
+          for (const d of defs) lines.push(`func (r *${recv}) ${up(d)}() int { return ${up(pick(calls))}() }`);
+        }
+        return `${lines.join('\n\n')}\n`;
+      }
       if (slot.endsWith('.ts')) {
         const lines: string[] = [];
         if (others.length > 0 && rand() < 0.7) {
@@ -138,8 +167,8 @@ describe('sync parity with a full reindex', () => {
       return `${lines.join('\n\n')}\n`;
     };
 
-    project.writeAll({ 'py/__init__.py': '', 'py/sub/__init__.py': '' });
-    for (const slot of SLOTS.slice(0, 6)) project.write(slot, content(slot));
+    project.writeAll({ 'py/__init__.py': '', 'py/sub/__init__.py': '', 'go.mod': 'module example.com/m\n' });
+    for (const slot of INITIAL) project.write(slot, content(slot));
     await fullIndex(project.root, dataDir);
 
     for (let step = 0; step < 30; step++) {
@@ -168,7 +197,8 @@ describe('sync parity with a full reindex', () => {
         }
       } else if (op === 'break') {
         const slot = pick(existing);
-        project.write(slot, `${project.read(slot)}${slot.endsWith('.ts') ? 'export function (' : 'def broken(:\n'}`);
+        const junk = slot.endsWith('.ts') ? 'export function (' : slot.endsWith('.go') ? 'func (' : 'def broken(:\n';
+        project.write(slot, `${project.read(slot)}${junk}`);
         label = `break ${slot}`;
       } else if (op === 'touch') {
         const slot = pick(existing);

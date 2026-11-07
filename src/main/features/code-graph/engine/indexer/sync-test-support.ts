@@ -2,7 +2,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { openGraphDb } from '../db/connection';
-import { resolveReferences } from '../resolution/resolver';
 import { GRAPH_DB_FILE, indexProject } from './orchestrator';
 
 /** Every persisted column that a reader can observe, minus autoincrement ids and timestamps. */
@@ -58,14 +57,9 @@ export async function fullIndexSnapshot(root: string): Promise<GraphSnapshot> {
   }
 }
 
+/** The default pipeline, exactly as the app runs it (resolution and communities in `postIndex`). */
 export async function fullIndex(root: string, dataDir: string): Promise<void> {
-  await indexProject({
-    root,
-    dataDir,
-    resolve: async (g) => {
-      resolveReferences(g, root);
-    },
-  });
+  await indexProject({ root, dataDir });
 }
 
 /**
