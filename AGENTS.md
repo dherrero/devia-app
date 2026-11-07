@@ -197,6 +197,36 @@ Write no comments by default. Only document non-obvious _why_: hidden constraint
 
 ---
 
+## Git workflow (binding for every human and every agent)
+
+| Branch | Role | How code gets in |
+| --- | --- | --- |
+| `main` | Release delivery branch. Only finished batches of fixes/features. | **Only** by a PR `dev` → `main`. Never a direct commit, never a feature branch straight into it. |
+| `dev` | Consolidation branch for finished features and fixes. | **Only** by PR (`feature/*`, `fix/*`, `docs/*`, … → `dev`). Never a direct commit. |
+| `feature/*`, `fix/*`, `docs/*`, … | Where ALL development happens, feature or fix alike. | Always created from the current `dev`, and merged back into `dev` by PR. |
+
+- **Never develop in a checkout where Devia is running.** The maintainer's checkout (`/Users/dherrero/repos/devia-app`) stays on `dev`, clean and compilable: it is the copy they build and run the app from. Work in a feature branch checked out in its own worktree (a sibling directory such as `devia-app-<feature>`), created by the user or by a Devia pane — an agent never creates, moves or removes worktrees or branches of the user's checkout on its own initiative.
+- **Never leave work in progress uncommitted in a tree the app builds from.** `tsconfig.main.json` compiles everything under `src/main`: an untracked, half-written file or a dirty `queries.ts` breaks `npm run build` and therefore the whole app. Partial work lives on a feature branch in its worktree, committed in coherent steps.
+- Commits are local until the user says to push. An agent never pushes, never opens or merges a PR and never touches `main`/`dev` without an explicit request.
+- Commit messages follow Conventional Commits (`release.yml` bumps the version from them).
+
+### Devia must keep working after every change (definition of done)
+
+A task is not done until, in the worktree of its branch, all of this passes with the real output read:
+
+```bash
+npm run typecheck   # both tsconfigs
+npm run build       # main (CJS) + renderer (compiles the Angular templates, which typecheck does not)
+npm test            # main + renderer + libs suites
+npm run lint
+```
+
+- Anything that ships in the packaged app (new runtime dependency, wasm/asset, worker or MCP entry file) additionally needs `npm run pack:dir` and a launch of the unpacked app once before its PR; assets are copied to `dist` by `scripts/copy-assets.cjs`.
+- Before a PR to `dev`: rebase or merge the latest `dev` into the branch, repeat the gate above, and start the app (`npm run dev` after `npm run build`) to confirm it opens and the touched feature works. Say plainly what was and was not verified.
+- If a change cannot be finished in one sitting, it stays on its branch; `dev` and `main` must never be left in a state that does not build.
+
+---
+
 ## Testing
 
 ```bash
