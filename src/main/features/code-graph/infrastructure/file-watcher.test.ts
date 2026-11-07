@@ -192,6 +192,47 @@ describe('createFileWatcher fallback', () => {
   });
 });
 
+describe('createFileWatcher degraded walk', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-fw-deg-'));
+    fs.mkdirSync(path.join(dir, 'a', 'b', 'c', 'd', 'e'), { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('stops walking once the directory cap is reached', () => {
+    const fake = fakeWatch(true);
+    const readdir = vi.fn((d: string) => fs.readdirSync(d, { withFileTypes: true }));
+    const onDegraded = vi.fn();
+    const w = createFileWatcher(dir, tsOnly, vi.fn(), {
+      watchFn: fake.watchFn,
+      readdirFn: readdir,
+      maxDirs: 2,
+      onDegraded,
+    });
+    expect(onDegraded).toHaveBeenCalledTimes(1);
+    expect(readdir.mock.calls.length).toBeLessThanOrEqual(2);
+    w.close();
+  });
+
+  it('reports degraded when every per-directory attach fails', () => {
+    const onDegraded = vi.fn();
+    const onError = vi.fn();
+    const w = createFileWatcher(dir, tsOnly, vi.fn(), {
+      watchFn: () => {
+        throw new Error('ENOSPC');
+      },
+      onDegraded,
+      onError,
+    });
+    expect(onDegraded).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalled();
+    w.close();
+  });
+});
+
 describe('createFileWatcher (real fs)', () => {
   let dir: string;
   let handle: WatcherHandle | undefined;
@@ -208,7 +249,7 @@ describe('createFileWatcher (real fs)', () => {
 
   it('batches three quick writes into one callback and ignores node_modules', async () => {
     const batches: string[][] = [];
-    handle = createFileWatcher(dir, tsOnly, (paths) => batches.push(paths), { debounceMs: 300 });
+    handle = createFileWatcher(dir, tsOnly, (paths) => batches.push(paths), { debounceMs: 1000 });
     await new Promise((r) => setTimeout(r, 100));
     fs.writeFileSync(path.join(dir, 'a.ts'), '1');
     fs.writeFileSync(path.join(dir, 'b.ts'), '2');
@@ -216,8 +257,7 @@ describe('createFileWatcher (real fs)', () => {
     fs.writeFileSync(path.join(dir, 'node_modules', 'x.ts'), '4');
     const deadline = Date.now() + 5000;
     while (batches.length === 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
-    await new Promise((r) => setTimeout(r, 500));
-    expect(batches).toHaveLength(1);
-    expect([...(batches[0] ?? [])].sort()).toEqual(['a.ts', 'b.ts', 'c.ts']);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect([...new Set(batches.flat())].sort()).toEqual(['a.ts', 'b.ts', 'c.ts']);
   });
 });

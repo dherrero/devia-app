@@ -25,6 +25,7 @@ export interface FileWatcherOptions {
   debounceMs?: number;
   maxDirs?: number;
   watchFn?: WatchFn;
+  readdirFn?: (dir: string) => fs.Dirent[];
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
   onError?: (err: unknown) => void;
@@ -48,6 +49,7 @@ export function createFileWatcher(
   const debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const maxDirs = opts.maxDirs ?? MAX_WATCHED_DIRS;
   const watchFn = opts.watchFn ?? defaultWatch;
+  const readdir = opts.readdirFn ?? ((dir: string) => fs.readdirSync(dir, { withFileTypes: true }));
   const setTimer = opts.setTimeoutFn ?? setTimeout;
   const clearTimer = opts.clearTimeoutFn ?? clearTimeout;
   const reportError = (err: unknown): void => {
@@ -138,14 +140,20 @@ export function createFileWatcher(
   };
 
   const walkIfDir = (abs: string): void => {
-    let entries: fs.Dirent[];
+    if (degraded || closed) return;
     try {
       if (!fs.statSync(abs).isDirectory()) return;
-      entries = fs.readdirSync(abs, { withFileTypes: true });
     } catch {
       return;
     }
     watchDir(abs);
+    if (degraded) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = readdir(abs);
+    } catch {
+      return;
+    }
     for (const e of entries) {
       if (!e.isDirectory()) continue;
       const child = path.join(abs, e.name);
@@ -161,7 +169,10 @@ export function createFileWatcher(
     });
   } catch {
     walkIfDir(root);
-    if (watchers.size === 0) reportError(new Error(`Could not watch ${root}`));
+    if (watchers.size === 0) {
+      reportError(new Error(`Could not watch ${root}`));
+      markDegraded();
+    }
   }
 
   return {

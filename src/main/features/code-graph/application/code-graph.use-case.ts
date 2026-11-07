@@ -22,10 +22,12 @@ export interface CodeGraphUseCaseDeps {
     root: string,
     isRelevant: (rel: string) => boolean,
     onChange: (rels: string[], overflow: boolean) => void,
-    opts?: { onError?: (err: unknown) => void },
+    opts?: { onError?: (err: unknown) => void; onDegraded?: () => void },
   ) => WatcherHandle;
   /** How often a watched project's HEAD commit is compared with the one the graph was built at. */
   pollIntervalMs?: number;
+  /** Delay before re-checking a project another process is indexing. */
+  busyRetryMs?: number;
 }
 
 export type SyncNowOptions = Pick<SyncOptions, 'maxFiles' | 'deadlineMs' | 'onlyPaths'>;
@@ -34,18 +36,23 @@ export type SyncNowResult = SyncResult | { fullIndexRequired: true } | { missing
 export const DEFAULT_AUTO_UPDATE = true;
 export const MAX_WATCHED_PROJECTS = 5;
 export const HEAD_POLL_MS = 20_000;
+const BUSY_RETRY_MS = 1000;
 
 interface WatchEntry {
   projectAbs: string;
   listeners: Set<(s: CodeGraphStatus) => void>;
   watcher: WatcherHandle;
   poll: ReturnType<typeof setInterval>;
+  retryTimer: ReturnType<typeof setTimeout> | undefined;
+  wake: (() => void) | undefined;
+  degraded: boolean;
   closed: boolean;
   pending: Set<string>;
   overflow: boolean;
   draining: boolean;
   polling: boolean;
-  dirty: number;
+  dirtyPaths: Set<string>;
+  dirtyOverflow: boolean;
   lastHeadHandled: string | undefined;
 }
 
@@ -76,6 +83,7 @@ export class CodeGraphUseCase {
   private readonly watches = new Map<string, WatchEntry>();
   private readonly createWatcher: NonNullable<CodeGraphUseCaseDeps['createWatcher']>;
   private readonly pollIntervalMs: number;
+  private readonly busyRetryMs: number;
 
   constructor(deps: CodeGraphUseCaseDeps) {
     this.store = deps.store;
@@ -86,6 +94,7 @@ export class CodeGraphUseCase {
     this.openDb = deps.openDb ?? openGraphDb;
     this.createWatcher = deps.createWatcher ?? createFileWatcher;
     this.pollIntervalMs = deps.pollIntervalMs ?? HEAD_POLL_MS;
+    this.busyRetryMs = deps.busyRetryMs ?? BUSY_RETRY_MS;
   }
 
   async status(projectAbs: string): Promise<CodeGraphStatus> {
@@ -101,6 +110,7 @@ export class CodeGraphUseCase {
     };
     if (doc?.builtAtCommit !== undefined) base.builtAtCommit = doc.builtAtCommit;
     if (doc !== undefined) base.indexedAt = doc.indexedAt;
+    if (this.watches.get(projectAbs)?.degraded) base.watchDegraded = true;
 
     const indexing = this.jobs.get(projectAbs)?.kind === 'index' || isFullIndexRunning(this.store.dataDir(projectAbs));
     if (!this.store.exists(projectAbs)) return indexing ? { ...base, state: 'indexing' } : base;
@@ -117,7 +127,7 @@ export class CodeGraphUseCase {
     const staleness = computeStaleness({
       builtAtCommit: builtAt,
       headCommit: head,
-      dirtyFiles: autoUpdate ? 0 : (this.watches.get(projectAbs)?.dirty ?? 0),
+      dirtyFiles: autoUpdate ? 0 : dirtyCount(this.watches.get(projectAbs)),
       configChanged: this.configStale.has(projectAbs),
     });
     if (staleness.stale && staleness.reason !== null) {
@@ -204,10 +214,19 @@ export class CodeGraphUseCase {
   setAutoUpdate(projectAbs: string, enabled: boolean): void {
     this.store.saveDoc(projectAbs, { ...this.requireDoc(projectAbs), autoUpdate: enabled });
     const watch = this.watches.get(projectAbs);
-    if (enabled && watch && watch.dirty > 0) {
-      watch.dirty = 0;
+    if (!enabled || !watch) return;
+    const wasDirty = dirtyCount(watch) > 0;
+    this.resetDirty(projectAbs);
+    if (wasDirty) {
       this.enqueue(watch, [], true);
+      return;
     }
+    void this.status(projectAbs).then(
+      (st) => {
+        if (st.state === 'stale' && st.staleReason !== 'config') this.enqueue(watch, [], true);
+      },
+      () => undefined,
+    );
   }
 
   /**
@@ -241,23 +260,37 @@ export class CodeGraphUseCase {
       projectAbs,
       listeners: new Set(),
       watcher: { close: () => undefined },
-      poll: undefined as unknown as ReturnType<typeof setInterval>,
+      poll: setInterval(() => void this.pollHead(entry), this.pollIntervalMs),
+      retryTimer: undefined,
+      wake: undefined,
+      degraded: false,
       closed: false,
       pending: new Set(),
       overflow: false,
       draining: false,
       polling: false,
-      dirty: 0,
+      dirtyPaths: new Set(),
+      dirtyOverflow: false,
       lastHeadHandled: undefined,
     };
-    entry.watcher = this.createWatcher(
-      projectAbs,
-      isRelevantPath,
-      (rels, overflow) => this.onChange(entry, rels, overflow),
-      { onError: () => undefined },
-    );
-    entry.poll = setInterval(() => void this.pollHead(entry), this.pollIntervalMs);
     entry.poll.unref();
+    const markDegraded = (): void => {
+      if (entry.closed || entry.degraded) return;
+      entry.degraded = true;
+      void this.status(projectAbs).then(
+        (s) => this.emit(entry, s),
+        () => undefined,
+      );
+    };
+    try {
+      entry.watcher = this.createWatcher(projectAbs, isRelevantPath, (rels, overflow) => this.onChange(entry, rels, overflow), {
+        onError: markDegraded,
+        onDegraded: markDegraded,
+      });
+    } catch (err) {
+      clearInterval(entry.poll);
+      throw err;
+    }
     this.watches.set(projectAbs, entry);
     return entry;
   }
@@ -266,6 +299,8 @@ export class CodeGraphUseCase {
     if (entry.closed) return;
     entry.closed = true;
     clearInterval(entry.poll);
+    if (entry.retryTimer !== undefined) clearTimeout(entry.retryTimer);
+    entry.wake?.();
     entry.watcher.close();
     entry.pending.clear();
     entry.listeners.clear();
@@ -288,14 +323,15 @@ export class CodeGraphUseCase {
   }
 
   private onChange(entry: WatchEntry, rels: string[], overflow: boolean): void {
-    if (entry.closed || this.isIndexing(entry.projectAbs)) return;
+    if (entry.closed || this.jobs.get(entry.projectAbs)?.kind === 'index') return;
     if (!this.store.exists(entry.projectAbs)) return;
     const doc = this.store.loadDoc(entry.projectAbs);
     if (doc?.autoUpdate ?? DEFAULT_AUTO_UPDATE) {
       this.enqueue(entry, rels, overflow);
       return;
     }
-    entry.dirty += overflow ? 1 : rels.length;
+    if (overflow) entry.dirtyOverflow = true;
+    for (const r of rels) entry.dirtyPaths.add(r);
     void this.status(entry.projectAbs).then(
       (s) => this.emit(entry, s),
       () => undefined,
@@ -318,11 +354,25 @@ export class CodeGraphUseCase {
         entry.pending.clear();
         entry.overflow = false;
         const p = entry.projectAbs;
-        if (this.configStale.has(p) || this.isIndexing(p) || !this.store.exists(p)) continue;
+        if (this.configStale.has(p) || !this.store.exists(p)) continue;
+        if (this.jobs.get(p)?.kind === 'index') continue;
+        const putBack = (): void => {
+          for (const r of paths) entry.pending.add(r);
+          if (full) entry.overflow = true;
+        };
+        if (this.jobs.has(p) || isFullIndexRunning(this.store.dataDir(p))) {
+          putBack();
+          await this.waitUnblocked(entry);
+          continue;
+        }
         let failed = false;
         try {
           const result = await this.syncNow(p, full ? {} : { onlyPaths: paths });
-          if ('skippedBusy' in result && result.skippedBusy) continue;
+          if ('skippedBusy' in result && result.skippedBusy) {
+            putBack();
+            await this.waitUnblocked(entry);
+            continue;
+          }
         } catch {
           failed = true;
         }
@@ -340,6 +390,21 @@ export class CodeGraphUseCase {
     } finally {
       entry.draining = false;
     }
+  }
+
+  private async waitUnblocked(entry: WatchEntry): Promise<void> {
+    const job = this.jobs.get(entry.projectAbs);
+    if (job) {
+      await job.settled;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      entry.wake = resolve;
+      entry.retryTimer = setTimeout(resolve, this.busyRetryMs);
+      entry.retryTimer.unref();
+    });
+    entry.wake = undefined;
+    entry.retryTimer = undefined;
   }
 
   private async pollHead(entry: WatchEntry): Promise<void> {
@@ -370,7 +435,9 @@ export class CodeGraphUseCase {
 
   private resetDirty(projectAbs: string): void {
     const entry = this.watches.get(projectAbs);
-    if (entry) entry.dirty = 0;
+    if (!entry) return;
+    entry.dirtyPaths.clear();
+    entry.dirtyOverflow = false;
   }
 
   async syncNow(projectAbs: string, opts: SyncNowOptions = {}): Promise<SyncNowResult> {
@@ -443,6 +510,10 @@ export class CodeGraphUseCase {
       }
     }
   }
+}
+
+function dirtyCount(entry: WatchEntry | undefined): number {
+  return entry ? entry.dirtyPaths.size + (entry.dirtyOverflow ? 1 : 0) : 0;
 }
 
 function parseLanguages(raw: string | undefined): Partial<Record<CodeGraphLanguage, number>> {

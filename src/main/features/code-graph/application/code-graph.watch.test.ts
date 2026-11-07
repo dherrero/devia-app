@@ -65,6 +65,7 @@ interface FakeWatcher {
   closed: number;
   onChange: (rels: string[], overflow: boolean) => void;
   isRelevant: (rel: string) => boolean;
+  opts: { onError?: (err: unknown) => void; onDegraded?: () => void } | undefined;
 }
 
 function setup(over: Partial<CodeGraphUseCaseDeps> = {}) {
@@ -91,8 +92,9 @@ function setup(over: Partial<CodeGraphUseCaseDeps> = {}) {
     headCommit: async () => state.head,
     now: () => 1000,
     pollIntervalMs: 20_000,
-    createWatcher: (root, isRelevant, onChange) => {
-      const w: FakeWatcher = { root, closed: 0, onChange, isRelevant };
+    busyRetryMs: 500,
+    createWatcher: (root, isRelevant, onChange, opts) => {
+      const w: FakeWatcher = { root, closed: 0, onChange, isRelevant, opts };
       watchers.push(w);
       return {
         close: () => {
@@ -333,5 +335,110 @@ describe('CodeGraphUseCase.watch', () => {
     await flush();
     expect(env.syncCalls).toHaveLength(0);
     h.stop();
+  });
+});
+
+describe('CodeGraphUseCase.watch fix round 1', () => {
+  it('syncs a batch that arrived while an external sync held the project, after it ends', async () => {
+    const g = gate();
+    let first = true;
+    const env = setup({
+      sync: async (o) => {
+        env.syncCalls.push(o);
+        env.state.running++;
+        env.state.maxRunning = Math.max(env.state.maxRunning, env.state.running);
+        if (first) {
+          first = false;
+          await g.promise;
+        }
+        env.state.running--;
+        return OK;
+      },
+    });
+    await indexed(env);
+    const h = env.uc.watch(project, env.listener);
+    const external = env.uc.syncNow(project);
+    await flush();
+    env.watchers[0]?.onChange(['src/a.ts'], false);
+    await flush();
+    expect(env.syncCalls).toHaveLength(1);
+    g.open();
+    await external;
+    await flush();
+    await flush();
+    expect(env.syncCalls).toHaveLength(2);
+    expect(env.syncCalls[1]?.onlyPaths).toEqual(['src/a.ts']);
+    expect(env.state.maxRunning).toBe(1);
+    h.stop();
+  });
+
+  it('retries after a short unref timer when sync reports skippedBusy, and closeWatch clears it', async () => {
+    let busy = true;
+    const env = setup({
+      sync: async (o) => {
+        env.syncCalls.push(o);
+        return busy ? { ...OK, skippedBusy: true } : OK;
+      },
+    });
+    await indexed(env);
+    const h = env.uc.watch(project, env.listener);
+    env.watchers[0]?.onChange(['a.ts'], false);
+    await flush();
+    expect(env.syncCalls).toHaveLength(1);
+    busy = false;
+    await vi.advanceTimersByTimeAsync(600);
+    expect(env.syncCalls).toHaveLength(2);
+    expect(env.syncCalls[1]?.onlyPaths).toEqual(['a.ts']);
+    h.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('full-syncs when autoUpdate is enabled while the graph is stale by commit', async () => {
+    const env = setup();
+    env.state.head = 'a'.repeat(40);
+    await indexed(env);
+    env.uc.setAutoUpdate(project, false);
+    const h = env.uc.watch(project, env.listener);
+    env.state.head = 'b'.repeat(40);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(env.syncCalls).toHaveLength(0);
+    env.uc.setAutoUpdate(project, true);
+    await flush();
+    await flush();
+    expect(env.syncCalls).toHaveLength(1);
+    expect(env.syncCalls[0]?.onlyPaths).toBeUndefined();
+    h.stop();
+  });
+
+  it('counts distinct dirty paths per window', async () => {
+    const env = setup();
+    await indexed(env);
+    env.uc.setAutoUpdate(project, false);
+    const h = env.uc.watch(project, env.listener);
+    env.watchers[0]?.onChange(['a.ts'], false);
+    env.watchers[0]?.onChange(['a.ts', 'b.ts'], false);
+    await flush();
+    const internal = env.uc as unknown as { watches: Map<string, { dirtyPaths: Set<string> }> };
+    expect(internal.watches.get(project)?.dirtyPaths.size).toBe(2);
+    h.stop();
+  });
+
+  it('exposes watcher health as watchDegraded and clears it on a fresh watch', async () => {
+    const env = setup();
+    await indexed(env);
+    const h = env.uc.watch(project, env.listener);
+    expect((await env.uc.status(project)).watchDegraded).toBeUndefined();
+    env.watchers[0]?.opts?.onDegraded?.();
+    await flush();
+    expect(env.statuses.at(-1)?.watchDegraded).toBe(true);
+    expect((await env.uc.status(project)).watchDegraded).toBe(true);
+    h.stop();
+    expect((await env.uc.status(project)).watchDegraded).toBeUndefined();
+    const h2 = env.uc.watch(project, env.listener);
+    expect((await env.uc.status(project)).watchDegraded).toBeUndefined();
+    env.watchers[1]?.opts?.onError?.(new Error('boom'));
+    await flush();
+    expect((await env.uc.status(project)).watchDegraded).toBe(true);
+    h2.stop();
   });
 });

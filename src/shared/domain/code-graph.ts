@@ -90,6 +90,8 @@ export interface CodeGraphStatus {
   autoUpdate: boolean;
   unsupported?: boolean;
   staleReason?: 'commit' | 'config' | 'dirty';
+  /** The file watcher could not cover the whole tree or reported an error; live updates may be missed. */
+  watchDegraded?: boolean;
 }
 
 export interface IndexProgress {
