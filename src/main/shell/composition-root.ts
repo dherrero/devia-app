@@ -55,6 +55,7 @@ import { buildSubAgentsFeature, SubAgentReader } from '../features/sub-agents';
 import { createHarnessCatalog } from '../features/claude-runner/infrastructure/harness-catalog';
 import { buildSddFeature } from '../features/sdd';
 import { buildMemoryFeature } from '../features/memory';
+import { buildCodeGraphFeature } from '../features/code-graph';
 import { buildStarterKitsFeature } from '../features/starter-kits';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
@@ -289,6 +290,9 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // (Phase 3b) the same way `sddBuilt.kanbanMcpServer` is.
   const memoryBuilt = buildMemoryFeature({ config });
 
+  // S-44: Code Graph (project knowledge graph); MCP server and IPC land in later tasks.
+  const codeGraphBuilt = buildCodeGraphFeature({ config });
+
   // S-39: bundled methodology kits (Devia Method). The packaged app carries them
   // in `<resources>/kits` (outside the asar: they hold executable scripts); in
   // development they are read from the repository's `resources/kits`.
@@ -500,6 +504,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     sddBuilt.feature,
     // S-1: Devia internal memory + engram integration.
     memoryBuilt.feature,
+    // S-44: Code Graph.
+    codeGraphBuilt.feature,
     // S-39: bundled starter kits (Devia Method).
     starterKitsBuilt.feature,
 

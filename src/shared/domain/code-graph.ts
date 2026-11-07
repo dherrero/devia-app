@@ -89,6 +89,7 @@ export interface CodeGraphStatus {
   agentAccess: boolean;
   autoUpdate: boolean;
   unsupported?: boolean;
+  staleReason?: 'commit' | 'config' | 'dirty';
 }
 
 export interface IndexProgress {
