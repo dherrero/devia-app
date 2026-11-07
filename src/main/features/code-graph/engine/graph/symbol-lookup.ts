@@ -13,6 +13,7 @@ export interface LookupOptions {
 }
 
 const CANDIDATE_LIMIT = 5000;
+const SOURCE_EXT = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs|py|pyw|java|go|dart)$/;
 
 function pathMatches(filePath: string, suffix: string): boolean {
   const p = filePath.replace(/\\/g, '/');
@@ -95,7 +96,7 @@ export function lookupSymbol(
     return rank(hits, name, opts.near);
   }
 
-  if (q.includes('/') || /\.[A-Za-z0-9]{1,8}$/.test(q)) {
+  if (q.includes('/') || SOURCE_EXT.test(q)) {
     const files = fileNodesForPath(db, q).filter(
       (n) =>
         (opts.kind === undefined || wantFiles) &&

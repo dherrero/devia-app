@@ -11,7 +11,10 @@ export interface TraversalOptions {
 }
 
 export interface CallOptions extends TraversalOptions {
-  /** Also treat overrides/implementations as callers and callees of their base. */
+  /**
+   * Follow dynamic dispatch: callers of the base methods a node overrides, and
+   * the overriders/implementers of each callee. Such hits carry `via: 'dispatch'`.
+   */
   includeInheritance?: boolean;
 }
 
@@ -19,6 +22,7 @@ export interface TraversalHit {
   node: GraphNode;
   edge: GraphEdge;
   depth: number;
+  via?: 'dispatch';
 }
 
 export interface ImpactResult {
@@ -55,6 +59,33 @@ const CONSTRUCTOR_NAMES = new Set(['constructor', '__init__', '<init>']);
 interface Candidate {
   id: string;
   edge: GraphEdge;
+  via?: 'dispatch';
+}
+
+/** Transitive closure over override/implement edges (`up`: bases, otherwise overriders). */
+function inheritanceClosure(
+  db: GraphQueries,
+  ids: string[],
+  up: boolean,
+): string[] {
+  const seen = new Set<string>(ids);
+  const found: string[] = [];
+  let level = ids;
+  while (level.length > 0) {
+    const edges = up
+      ? db.edgesFromMany(level, INHERIT_KINDS)
+      : db.edgesToMany(level, INHERIT_KINDS);
+    const next: string[] = [];
+    for (const e of edges) {
+      const id = up ? e.target : e.source;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      found.push(id);
+      next.push(id);
+    }
+    level = next;
+  }
+  return found;
 }
 
 class NodeCache {
@@ -107,14 +138,19 @@ function callerCandidates(
   frontier: string[],
   inheritance: boolean,
 ): Candidate[] {
-  const kinds = inheritance ? [...CALL_KINDS, ...INHERIT_KINDS] : CALL_KINDS;
-  const out = db
-    .edgesToMany(frontier, kinds)
+  const out: Candidate[] = db
+    .edgesToMany(frontier, CALL_KINDS)
     .map((e) => ({ id: e.source, edge: e }));
   const classIds = constructorClassIds(db, cache, frontier);
   if (classIds.length > 0)
     for (const e of db.edgesToMany(classIds, ['instantiates']))
       out.push({ id: e.source, edge: e });
+  if (inheritance) {
+    const bases = inheritanceClosure(db, frontier, true);
+    if (bases.length > 0)
+      for (const e of db.edgesToMany(bases, CALL_KINDS))
+        out.push({ id: e.source, edge: e, via: 'dispatch' });
+  }
   return out;
 }
 
@@ -123,12 +159,23 @@ function calleeCandidates(
   frontier: string[],
   inheritance: boolean,
 ): Candidate[] {
-  const out = db
-    .edgesFromMany(frontier, CALL_KINDS)
-    .map((e) => ({ id: e.target, edge: e }));
-  if (inheritance)
-    for (const e of db.edgesToMany(frontier, INHERIT_KINDS))
-      out.push({ id: e.source, edge: e });
+  const direct = db.edgesFromMany(frontier, CALL_KINDS);
+  const out: Candidate[] = direct.map((e) => ({ id: e.target, edge: e }));
+  if (inheritance && direct.length > 0) {
+    const callees = direct.map((e) => e.target);
+    const seen = new Set<string>(callees);
+    let level = callees;
+    while (level.length > 0) {
+      const next: string[] = [];
+      for (const e of db.edgesToMany(level, INHERIT_KINDS)) {
+        if (seen.has(e.source)) continue;
+        seen.add(e.source);
+        out.push({ id: e.source, edge: e, via: 'dispatch' });
+        next.push(e.source);
+      }
+      level = next;
+    }
+  }
   return out;
 }
 
@@ -151,7 +198,11 @@ function bfsCalls(
       const node = cache.get(c.id);
       if (!node) continue;
       visited.add(c.id);
-      hits.push({ node, edge: c.edge, depth });
+      hits.push(
+        c.via === undefined
+          ? { node, edge: c.edge, depth }
+          : { node, edge: c.edge, depth, via: c.via },
+      );
       if (hits.length >= limit) return hits;
       next.push(c.id);
     }
@@ -184,9 +235,9 @@ export function getImpact(
   db: GraphQueries,
   nodeId: string,
   opts: TraversalOptions = {},
-): ImpactResult {
+): ImpactResult | undefined {
   const root = db.nodeById(nodeId);
-  if (!root) throw new Error(`node not found: ${nodeId}`);
+  if (!root) return undefined;
   const maxDepth = opts.depth ?? 3;
   const limit = opts.limit ?? 200;
   const cache = new NodeCache(db);

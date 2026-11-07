@@ -134,6 +134,37 @@ describe('lookupSymbol', () => {
     expect(lookupSymbol(t.q, 'zzz.ts#run')).toEqual([]);
   });
 
+  it('does not scan file paths for dotted symbol queries', () => {
+    seedGraph(
+      t.q,
+      [
+        mkNode('f', {
+          kind: 'file',
+          name: 'a.ts',
+          qualifiedName: 'src/a.ts',
+          filePath: 'src/a.ts',
+        }),
+        mkNode('m', {
+          kind: 'method',
+          name: 'run',
+          qualifiedName: 'Foo.run',
+          filePath: 'src/a.ts',
+        }),
+      ],
+      [],
+    );
+    let calls = 0;
+    const original = t.q.filePaths.bind(t.q);
+    t.q.filePaths = () => {
+      calls++;
+      return original();
+    };
+    expect(ids(lookupSymbol(t.q, 'Foo.run'))).toEqual(['m']);
+    expect(calls).toBe(0);
+    expect(ids(lookupSymbol(t.q, 'src/a.ts'))).toEqual(['f']);
+    expect(calls).toBe(1);
+  });
+
   it('excludes file nodes unless the query is a path or kind is file', () => {
     seedGraph(
       t.q,

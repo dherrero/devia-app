@@ -11,6 +11,14 @@ import {
   type SeededDb,
 } from './test-graph';
 
+function impactOf(
+  ...args: Parameters<typeof getImpact>
+): NonNullable<ReturnType<typeof getImpact>> {
+  const r = getImpact(...args);
+  if (!r) throw new Error('impact root not found');
+  return r;
+}
+
 const names = (ns: { node: GraphNode }[]): string[] =>
   ns.map((n) => n.node.name).sort();
 
@@ -58,7 +66,7 @@ describe('traversal on real extractor + resolver output', () => {
 
   it('getImpact returns unique files, root file first, correct depths', () => {
     const c = h.sym('src/c.ts', 'c');
-    const r = getImpact(h.q, c.id, { depth: 2 });
+    const r = impactOf(h.q, c.id, { depth: 2 });
     expect(r.root.id).toBe(c.id);
     const fn = (d: number): string[] =>
       (r.byDepth.find((x) => x.depth === d)?.nodes ?? [])
@@ -79,7 +87,7 @@ describe('traversal on real extractor + resolver output', () => {
   });
 
   it('getImpact of a file root covers its symbols and importers', () => {
-    const r = getImpact(h.q, h.fileId('src/c.ts'), { depth: 3 });
+    const r = impactOf(h.q, h.fileId('src/c.ts'), { depth: 3 });
     expect(r.files[0]).toBe('src/c.ts');
     expect(r.files).toContain('src/b.ts');
     expect(r.files).toContain('src/a.ts');
@@ -91,7 +99,7 @@ describe('traversal on real extractor + resolver output', () => {
     const e = h.sym('src/ef.ts', 'e');
     const callers = getCallers(h.q, e.id, { depth: 10 });
     expect(callers.map((r) => r.node.name)).toEqual(['f']);
-    const impact = getImpact(h.q, e.id, { depth: 10 });
+    const impact = impactOf(h.q, e.id, { depth: 10 });
     const ids = impact.byDepth.flatMap((x) => x.nodes.map((n) => n.id));
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).not.toContain(e.id);
@@ -120,6 +128,13 @@ describe('traversal on hand-seeded graphs', () => {
   });
   afterEach(() => t.close());
 
+  it('getImpact returns undefined for unknown ids and vanished file roots', () => {
+    seedGraph(t.q, [mkNode('x')], []);
+    expect(getImpact(t.q, 'nope')).toBeUndefined();
+    expect(getImpact(t.q, 'file:gone')).toBeUndefined();
+    expect(getImpact(t.q, 'x')).toBeDefined();
+  });
+
   it('limit cuts the traversal and flags truncated', () => {
     const nodes = [mkNode('root', { isExported: false })];
     const edges = [];
@@ -128,10 +143,10 @@ describe('traversal on hand-seeded graphs', () => {
       edges.push(mkEdge(`n${i}`, 'root'));
     }
     seedGraph(t.q, nodes, edges);
-    const r = getImpact(t.q, 'root', { limit: 4 });
+    const r = impactOf(t.q, 'root', { limit: 4 });
     expect(r.truncated).toBe(true);
     expect(r.byDepth.flatMap((x) => x.nodes)).toHaveLength(4);
-    expect(getImpact(t.q, 'root', { limit: 10 }).truncated).toBe(false);
+    expect(impactOf(t.q, 'root', { limit: 10 }).truncated).toBe(false);
     expect(getCallers(t.q, 'root', { limit: 3 })).toHaveLength(3);
   });
 
@@ -166,7 +181,7 @@ describe('traversal on hand-seeded graphs', () => {
         mkEdge('no3', 't', 'returns'),
       ],
     );
-    const ids = getImpact(t.q, 't')
+    const ids = impactOf(t.q, 't')
       .byDepth.flatMap((x) => x.nodes.map((n) => n.id))
       .sort();
     expect(ids).toEqual(['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8']);
@@ -188,35 +203,50 @@ describe('traversal on hand-seeded graphs', () => {
         mkEdge('F:app', 'appFn', 'contains'),
       ],
     );
-    const r = getImpact(t.q, 'lib');
+    const r = impactOf(t.q, 'lib');
     expect(r.byDepth.map((x) => [x.depth, x.nodes.map((n) => n.id)])).toEqual([
       [1, ['F:app']],
       [2, ['F:main']],
     ]);
     expect(r.files).toEqual(['src/lib.ts', 'src/app.ts', 'src/main.ts']);
-    const fr = getImpact(t.q, 'F:lib');
+    const fr = impactOf(t.q, 'F:lib');
     expect(fr.files).toEqual(['src/lib.ts', 'src/app.ts', 'src/main.ts']);
   });
 
-  it('includeInheritance treats overrides/implementations as callers and callees of the base', () => {
+  it('includeInheritance follows dispatch: callers of bases, overriders of callees', () => {
     seedGraph(
       t.q,
       [
         mkNode('base', { kind: 'method' }),
         mkNode('sub', { kind: 'method' }),
+        mkNode('sub2', { kind: 'method' }),
         mkNode('user'),
+        mkNode('driver'),
       ],
-      [mkEdge('sub', 'base', 'overrides'), mkEdge('user', 'base', 'calls')],
+      [
+        mkEdge('sub', 'base', 'overrides'),
+        mkEdge('sub2', 'sub', 'implements'),
+        mkEdge('user', 'base', 'calls'),
+        mkEdge('driver', 'base', 'calls'),
+      ],
     );
-    expect(getCallers(t.q, 'base').map((r) => r.node.id)).toEqual(['user']);
-    expect(getCallees(t.q, 'base')).toEqual([]);
-    const callers = getCallers(t.q, 'base', { includeInheritance: true });
-    expect(callers.map((r) => r.node.id).sort()).toEqual(['sub', 'user']);
-    expect(
-      getCallees(t.q, 'base', { includeInheritance: true }).map(
-        (r) => r.node.id,
-      ),
-    ).toEqual(['sub']);
+    expect(getCallers(t.q, 'sub')).toEqual([]);
+    expect(getCallees(t.q, 'user').map((r) => r.node.id)).toEqual(['base']);
+
+    const callers = getCallers(t.q, 'sub2', { includeInheritance: true });
+    expect(callers.map((r) => r.node.id).sort()).toEqual(['driver', 'user']);
+    expect(callers.every((r) => r.via === 'dispatch' && r.depth === 1)).toBe(
+      true,
+    );
+
+    const callees = getCallees(t.q, 'user', { includeInheritance: true });
+    expect(callees.map((r) => [r.node.id, r.via])).toEqual([
+      ['base', undefined],
+      ['sub', 'dispatch'],
+      ['sub2', 'dispatch'],
+    ]);
+    expect('via' in (callees[0] ?? {})).toBe(false);
+    expect(getCallees(t.q, 'base', { includeInheritance: true })).toEqual([]);
   });
 
   it('constructor callers include instantiates of the class', () => {
@@ -265,7 +295,7 @@ describe('traversal performance', () => {
 
   it('handles 50k nodes / 150k edges within bounds', () => {
     const N = 50_000;
-    const nodes: GraphNode[] = [];
+    const nodes: GraphNode[] = [mkNode('iso')];
     for (let i = 0; i < N; i++)
       nodes.push(mkNode(`n${i}`, { filePath: `src/f${i % 500}.ts` }));
     const edges = [];
@@ -283,7 +313,7 @@ describe('traversal performance', () => {
     expect(t.q.counts().edges).toBeGreaterThan(140_000);
 
     let start = performance.now();
-    const r = getImpact(t.q, 'n0', { depth: 3, limit: 200 });
+    const r = impactOf(t.q, 'n0', { depth: 3, limit: 200 });
     expect(performance.now() - start).toBeLessThan(2000);
     expect(r.byDepth.flatMap((x) => x.nodes).length).toBeLessThanOrEqual(200);
 
@@ -293,5 +323,61 @@ describe('traversal performance', () => {
     });
     expect(performance.now() - start).toBeLessThan(2000);
     expect(p).not.toBeNull();
+
+    start = performance.now();
+    expect(findPath(t.q, `n${N - 1}`, 'iso', { maxDepth: 40 })).toBeNull();
+    expect(performance.now() - start).toBeLessThan(2000);
   }, 60_000);
+});
+
+describe('cross-file impact per language', () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = createHarness();
+  });
+  afterEach(() => h.close());
+
+  it('Go: an exported (capitalised) function reaches its importer', async () => {
+    await h.addFiles({
+      'go.mod': 'module example.com/app\n\ngo 1.21\n',
+      'util/util.go': 'package util\n\nfunc Helper() int {\n\treturn 1\n}\n',
+      'main.go':
+        'package main\n\nimport "example.com/app/util"\n\nfunc main() {\n\tutil.Helper()\n}\n',
+    });
+    await resolveReferences(h.q, h.root);
+    const helper = h.sym('util/util.go', 'Helper');
+    expect(helper.isExported).toBe(true);
+    const r = impactOf(h.q, helper.id);
+    expect(r.files).toContain('main.go');
+    expect(
+      r.byDepth
+        .flatMap((x) => x.nodes)
+        .some((n) => n.kind === 'file' && n.filePath === 'main.go'),
+    ).toBe(true);
+    expect(r.byDepth.flatMap((x) => x.nodes.map((n) => n.name))).toContain(
+      'main',
+    );
+  });
+
+  it('Python: a public module-level name reaches its importer', async () => {
+    await h.addFiles({
+      'pkg/__init__.py': '',
+      'pkg/lib.py': 'def helper():\n    return 1\n',
+      'pkg/app.py':
+        'from pkg.lib import helper\n\n\ndef run():\n    return helper()\n',
+    });
+    await resolveReferences(h.q, h.root);
+    const helper = h.sym('pkg/lib.py', 'helper');
+    expect(helper.isExported).toBe(true);
+    const r = impactOf(h.q, helper.id);
+    expect(r.files).toContain('pkg/app.py');
+    expect(
+      r.byDepth
+        .flatMap((x) => x.nodes)
+        .some((n) => n.kind === 'file' && n.filePath === 'pkg/app.py'),
+    ).toBe(true);
+    expect(r.byDepth.flatMap((x) => x.nodes.map((n) => n.name))).toContain(
+      'run',
+    );
+  });
 });
