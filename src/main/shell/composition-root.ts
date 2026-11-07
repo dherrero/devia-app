@@ -178,7 +178,18 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   });
 
   // ── Phase 3: build features with all infra in scope. ─────────────────────
-  const gitBuilt = buildGitFeature({ config });
+  // S-44: worktree graphs follow the worktree lifecycle. `codeGraphBuilt` is built
+  // later in this function; the hooks only run once the app is up.
+  const gitBuilt = buildGitFeature({
+    config,
+    worktreeHooks: {
+      // Deferred so the (synchronous) snapshot copy never delays opening the pane.
+      onCreated: ({ baseProject, worktreePath }) => {
+        setImmediate(() => void codeGraphBuilt.seedWorktreeGraph({ baseProject, worktreePath }));
+      },
+      onRemoved: ({ worktreePath }) => void codeGraphBuilt.dropWorktreeGraph(worktreePath),
+    },
+  });
 
   // S-2 F2.3: background LLM enrichment of the cross-agent handoff brief.
   // The runner's execute() is synchronous, so the summary is precomputed the

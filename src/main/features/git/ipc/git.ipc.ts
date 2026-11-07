@@ -1,8 +1,9 @@
 import type { FeatureContext } from '../../../shared/feature';
 import { IPC } from '../../../../shared/contracts/ipc-channels';
-import type { ConfigRepository, GitInspector } from '../../../shared/ports';
+import type { ConfigRepository, GitInspector, WorktreeLifecycleHooks } from '../../../shared/ports';
 import { resolveInsideWorkspace } from '../../../shared/workspace-paths';
 import type { GitBrancher, GitSyncer, GitWatcher, GitWorktreeManager, WorktreeError } from '../domain/ports';
+import { notifyWorktreeHook } from '../infrastructure/worktree-hooks';
 import { worktreeRefFor } from '../domain/worktree-ref';
 import type { WorktreeListItem, WorktreeView } from '../../../../shared/domain/worktree';
 import type { BranchCheckoutRef } from '../../../../shared/domain/git';
@@ -18,6 +19,7 @@ export interface GitIpcDeps {
   baseRefFor: (repoAbs: string) => string;
   /** S-3: full teardown (worktree + session branch), best-effort. */
   cleanup: (baseProject: string, sessionId: string) => unknown;
+  worktreeHooks?: WorktreeLifecycleHooks;
 }
 
 export function registerGitIpc(ctx: FeatureContext, deps: GitIpcDeps): void {
@@ -82,6 +84,11 @@ export function registerGitIpc(ctx: FeatureContext, deps: GitIpcDeps): void {
       }
       throw err;
     }
+    notifyWorktreeHook(deps.worktreeHooks, 'onCreated', {
+      baseProject: base,
+      worktreePath: ref.worktreeDir,
+      sessionId: ref.sessionId,
+    });
     return { sessionId: ref.sessionId, worktreeDir: ref.worktreeDir, branch: ref.branch };
   });
 
@@ -89,6 +96,7 @@ export function registerGitIpc(ctx: FeatureContext, deps: GitIpcDeps): void {
     const ref = worktreeRefFor(deps.config.deviaDir(), resolveInsideWorkspace(deps.config, baseProject).abs, sessionId);
     try {
       await deps.worktreeManager.remove(ref);
+      notifyWorktreeHook(deps.worktreeHooks, 'onRemoved', { worktreePath: ref.worktreeDir });
     } catch (err) {
       const we = err as WorktreeError;
       if (we?.name === 'WorktreeError') {

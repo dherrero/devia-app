@@ -180,4 +180,37 @@ describe('git worktree IPC handlers', () => {
       { worktreeDir: '/wt/b' },
     ]);
   });
+
+  describe('worktree lifecycle hooks', () => {
+    it('add notifies onCreated with absolute paths; a throwing hook does not change the result', async () => {
+      const onCreated = vi.fn(() => {
+        throw new Error('boom');
+      });
+      const { d, added } = deps();
+      const { ctx, handlers } = captureHandlers();
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      registerGitIpc(ctx, { ...d, worktreeHooks: { onCreated } });
+
+      const view = await handlers.get(IPC.gitWorktreeAdd)?.(null, 'myApp', SID);
+
+      expect(view).toEqual({ sessionId: SID, worktreeDir: added[0]?.worktreeDir, branch: added[0]?.branch });
+      expect(onCreated).toHaveBeenCalledWith({ baseProject: BASE, worktreePath: added[0]?.worktreeDir, sessionId: SID });
+    });
+
+    it('remove notifies onRemoved only on success', async () => {
+      const onRemoved = vi.fn();
+      const { d, removed } = deps();
+      const { ctx, handlers } = captureHandlers();
+      registerGitIpc(ctx, { ...d, worktreeHooks: { onRemoved } });
+      await handlers.get(IPC.gitWorktreeRemove)?.(null, 'myApp', SID);
+      expect(onRemoved).toHaveBeenCalledWith({ worktreePath: removed[0]?.worktreeDir });
+
+      const failing = deps({ remove: vi.fn(async () => { throw new Error('x'); }) });
+      const onRemoved2 = vi.fn();
+      const c2 = captureHandlers();
+      registerGitIpc(c2.ctx, { ...failing.d, worktreeHooks: { onRemoved: onRemoved2 } });
+      await expect(c2.handlers.get(IPC.gitWorktreeRemove)?.(null, 'myApp', SID)).rejects.toThrow();
+      expect(onRemoved2).not.toHaveBeenCalled();
+    });
+  });
 });
