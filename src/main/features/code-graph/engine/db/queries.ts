@@ -36,6 +36,36 @@ export interface UnresolvedRef {
   metadata?: RefMetadata;
 }
 
+export type NodeSummary = Pick<
+  GraphNode,
+  | 'id'
+  | 'kind'
+  | 'name'
+  | 'qualifiedName'
+  | 'filePath'
+  | 'language'
+  | 'startLine'
+  | 'endLine'
+  | 'isExported'
+  | 'metadata'
+>;
+
+interface SummaryRow {
+  id: string;
+  kind: string;
+  name: string;
+  qualified_name: string;
+  file_path: string;
+  language: string;
+  start_line: number;
+  end_line: number;
+  is_exported: number;
+  metadata: string | null;
+}
+
+// Keeps IN (...) lists well under SQLite's bound-parameter limit.
+const IN_CHUNK = 500;
+
 interface NodeRow {
   id: string;
   kind: string;
@@ -301,6 +331,46 @@ export class GraphQueries {
     }
   }
 
+  unresolvedByKinds(
+    status: 'pending' | 'failed',
+    kinds: EdgeKind[],
+  ): UnresolvedRef[] {
+    if (kinds.length === 0) return [];
+    const rows = this.stmt(
+      `SELECT * FROM unresolved_refs WHERE status = ? AND reference_kind IN (${kinds.map(() => '?').join(',')}) ORDER BY id`,
+    ).all(status, ...kinds);
+    return (rows as unknown as UnresolvedRow[]).map(toUnresolved);
+  }
+
+  unresolvedInFiles(
+    paths: string[],
+    status: 'pending' | 'failed',
+  ): UnresolvedRef[] {
+    return this.unresolvedIn('file_path', paths, status);
+  }
+
+  failedByNameTails(tails: string[]): UnresolvedRef[] {
+    return this.unresolvedIn('name_tail', tails, 'failed');
+  }
+
+  private unresolvedIn(
+    column: 'file_path' | 'name_tail',
+    values: string[],
+    status: 'pending' | 'failed',
+  ): UnresolvedRef[] {
+    const unique = [...new Set(values)];
+    const rows: UnresolvedRow[] = [];
+    for (let i = 0; i < unique.length; i += IN_CHUNK) {
+      const chunk = unique.slice(i, i + IN_CHUNK);
+      rows.push(
+        ...(this.stmt(
+          `SELECT * FROM unresolved_refs WHERE status = ? AND ${column} IN (${chunk.map(() => '?').join(',')})`,
+        ).all(status, ...chunk) as unknown as UnresolvedRow[]),
+      );
+    }
+    return rows.sort((a, b) => a.id - b.id).map(toUnresolved);
+  }
+
   deleteUnresolved(id: number): void {
     this.stmt('DELETE FROM unresolved_refs WHERE id = ?').run(id);
   }
@@ -316,6 +386,52 @@ export class GraphQueries {
       'SELECT * FROM nodes WHERE name = ? ORDER BY file_path, start_line LIMIT ?',
     ).all(name, limit);
     return (rows as unknown as NodeRow[]).map(toNode);
+  }
+
+  filePaths(): string[] {
+    return (
+      this.stmt('SELECT path FROM files').all() as unknown as { path: string }[]
+    ).map((r) => r.path);
+  }
+
+  /** Lean projection of every node (no docstring/signature) for building in-memory indexes. */
+  nodeSummaries(): NodeSummary[] {
+    const rows = this.stmt(
+      `SELECT id, kind, name, qualified_name, file_path, language, start_line, end_line, is_exported, metadata
+       FROM nodes ORDER BY file_path, start_line, id`,
+    ).all() as unknown as SummaryRow[];
+    return rows.map((r) => {
+      const n: NodeSummary = {
+        id: r.id,
+        kind: r.kind as NodeKind,
+        name: r.name,
+        qualifiedName: r.qualified_name,
+        filePath: r.file_path,
+        language: r.language as CodeGraphLanguage,
+        startLine: r.start_line,
+        endLine: r.end_line,
+        isExported: r.is_exported === 1,
+      };
+      if (r.metadata !== null)
+        n.metadata = JSON.parse(r.metadata) as RefMetadata;
+      return n;
+    });
+  }
+
+  edgesOfKinds(kinds: EdgeKind[]): GraphEdge[] {
+    if (kinds.length === 0) return [];
+    const rows = this.stmt(
+      `SELECT source, target, kind FROM edges WHERE kind IN (${kinds.map(() => '?').join(',')}) ORDER BY id`,
+    ).all(...kinds) as unknown as {
+      source: string;
+      target: string;
+      kind: string;
+    }[];
+    return rows.map((r) => ({
+      source: r.source,
+      target: r.target,
+      kind: r.kind as EdgeKind,
+    }));
   }
 
   nodesInFile(path: string): GraphNode[] {

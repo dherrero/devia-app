@@ -259,4 +259,81 @@ describe('GraphQueries', () => {
     expect(hit('oldname')).toEqual([]);
     expect(q.counts().nodes).toBe(2);
   });
+
+  it('serves the bulk reads reference resolution needs', () => {
+    seed();
+    q.insertNodes([
+      node('d', 'ctor', 'b.ts', {
+        kind: 'method',
+        metadata: { constructor: true },
+        docstring: 'x',
+      }),
+    ]);
+    q.insertEdges([{ source: 'c', target: 'd', kind: 'contains' }]);
+    const ref = (
+      fromNodeId: string,
+      referenceName: string,
+      filePath: string,
+      status: 'pending' | 'failed',
+    ) => ({
+      fromNodeId,
+      referenceName,
+      referenceKind: referenceName.startsWith('./')
+        ? ('imports' as const)
+        : ('calls' as const),
+      line: 1,
+      col: 0,
+      filePath,
+      language: 'typescript' as const,
+      status,
+      nameTail: referenceName.replace('./', ''),
+    });
+    q.insertUnresolved([
+      ref('a', './m', 'a.ts', 'pending'),
+      ref('a', 'x', 'a.ts', 'pending'),
+      ref('c', 'y', 'b.ts', 'failed'),
+      ref('c', './z', 'b.ts', 'failed'),
+    ]);
+
+    expect(q.filePaths().sort()).toEqual(['a.ts', 'b.ts']);
+    const summaries = q.nodeSummaries();
+    expect(summaries.map((n) => n.id).sort()).toEqual(['a', 'b', 'c', 'd']);
+    const d = summaries.find((n) => n.id === 'd');
+    expect(d).toEqual({
+      id: 'd',
+      kind: 'method',
+      name: 'ctor',
+      qualifiedName: 'b.ts::ctor',
+      filePath: 'b.ts',
+      language: 'typescript',
+      startLine: 1,
+      endLine: 3,
+      isExported: true,
+      metadata: { constructor: true },
+    });
+    expect(summaries.find((n) => n.id === 'a')).not.toHaveProperty('metadata');
+    expect(q.edgesOfKinds(['contains'])).toEqual([
+      { source: 'c', target: 'd', kind: 'contains' },
+    ]);
+    expect(q.edgesOfKinds(['calls', 'contains'])).toHaveLength(3);
+
+    expect(
+      q.unresolvedByKinds('pending', ['imports']).map((r) => r.referenceName),
+    ).toEqual(['./m']);
+    expect(
+      q
+        .unresolvedByKinds('failed', ['calls', 'imports'])
+        .map((r) => r.referenceName),
+    ).toEqual(['y', './z']);
+    expect(
+      q.unresolvedInFiles(['b.ts'], 'failed').map((r) => r.referenceName),
+    ).toEqual(['y', './z']);
+    expect(q.unresolvedInFiles(['a.ts', 'nope.ts'], 'pending')).toHaveLength(2);
+    expect(q.unresolvedInFiles([], 'pending')).toEqual([]);
+    expect(
+      q.failedByNameTails(['y', 'm', 'z']).map((r) => r.referenceName),
+    ).toEqual(['y', './z']);
+    const many = Array.from({ length: 2000 }, (_, i) => `t${i}`);
+    expect(q.failedByNameTails([...many, 'y'])).toHaveLength(1);
+  });
 });
