@@ -1,7 +1,8 @@
 import type { GraphNode } from '../../../../../shared/domain/code-graph';
 import type { GraphQueries } from '../db/queries';
 import { getExploreOutputBudget } from './explore-budget';
-import { readSourceRange } from './source-reader';
+import { fenced } from './fence';
+import { createSourceReader, type SourceReader } from './source-reader';
 import { lookupSymbol } from './symbol-lookup';
 import { findPath, getCallees, getCallers } from './traversal';
 
@@ -33,7 +34,9 @@ const PAIR_MATCH_CAP = 5;
 const MAX_BRIDGE_FANOUT = 25;
 const NEIGHBOUR_NODES_PER_SYMBOL = 3;
 const MAX_NAMED_NODES = 40;
-const SNIPPET_LINE_CAP = 400;
+const MIN_BODY_CHARS = 150;
+const MARKER_RESERVE = 90;
+const FILE_HEADER_RESERVE = 80;
 
 function fanOut(db: GraphQueries, id: string): number {
   return db.edgesFrom(id, ['calls', 'instantiates']).length;
@@ -81,18 +84,72 @@ function mergeFlows(paths: GraphNode[][]): GraphNode[][] {
   return merged;
 }
 
-function trimToLines(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  const lines = text.split('\n');
-  const kept: string[] = [];
+interface Entry {
+  node: GraphNode;
+  rank: number;
+}
+
+function truncationMarker(more: number): string {
+  return `… truncated (${more} more lines) — call graph_node for the full body`;
+}
+
+function linesWithin(lines: string[], maxChars: number): number {
   let used = 0;
+  let kept = 0;
   for (const line of lines) {
-    const cost = line.length + (kept.length > 0 ? 1 : 0);
-    if (used + cost > maxChars) break;
-    kept.push(line);
+    const cost = line.length + (kept > 0 ? 1 : 0);
+    if (kept > 0 && used + cost > maxChars) break;
     used += cost;
+    kept++;
   }
-  return kept.join('\n');
+  return kept;
+}
+
+function buildSnippets(
+  reader: SourceReader,
+  filePath: string,
+  entries: Entry[],
+  fileBudget: number,
+): ExploreSnippet[] {
+  const ordered = [...entries].sort(
+    (a, b) => a.rank - b.rank || a.node.startLine - b.node.startLine,
+  );
+  let remaining = fileBudget;
+  let namedLeft = ordered.filter((e) => e.rank === 0).length;
+  const shown: { start: number; end: number }[] = [];
+  const snippets: ExploreSnippet[] = [];
+  for (const { node, rank } of ordered) {
+    if (rank === 0) namedLeft--;
+    const r = reader.read(filePath, node.startLine, node.endLine);
+    if (!r.ok) {
+      const first = ordered[0]?.node.startLine ?? node.startLine;
+      return [{ startLine: first, endLine: first, text: r.note }];
+    }
+    if (shown.some((s) => r.startLine >= s.start && node.endLine <= s.end))
+      continue;
+    const allowance =
+      rank === 0
+        ? Math.max(MIN_BODY_CHARS, Math.floor(remaining / (namedLeft + 1)))
+        : remaining;
+    if (rank !== 0 && allowance < MIN_BODY_CHARS) continue;
+    const fullEnd = r.endLine + r.moreLines;
+    const lines = r.text.split('\n');
+    let kept = lines.length;
+    if (r.text.length > allowance || r.moreLines > 0) {
+      const budget = r.text.length > allowance ? allowance - MARKER_RESERVE : r.text.length;
+      kept = Math.min(lines.length, linesWithin(lines, Math.max(budget, 0)));
+    }
+    const endLine = r.startLine + kept - 1;
+    const body = lines.slice(0, kept).join('\n');
+    const text =
+      endLine < fullEnd
+        ? `${body}\n${truncationMarker(fullEnd - endLine)}`
+        : body;
+    snippets.push({ startLine: r.startLine, endLine, text });
+    shown.push({ start: r.startLine, end: endLine });
+    remaining = Math.max(0, remaining - text.length - 1);
+  }
+  return snippets.sort((a, b) => a.startLine - b.startLine);
 }
 
 function label(n: GraphNode): string {
@@ -151,16 +208,28 @@ export function exploreSymbols(
     for (const h of around) neighbourNodes.push(h.node);
   }
 
-  const byFile = new Map<string, Map<string, GraphNode>>();
-  for (const n of [...namedNodes, ...flowNodes, ...neighbourNodes]) {
-    let nodes = byFile.get(n.filePath);
-    if (!nodes) byFile.set(n.filePath, (nodes = new Map()));
-    nodes.set(n.id, n);
-  }
+  const byFile = new Map<string, Map<string, Entry>>();
+  const addAll = (nodes: GraphNode[], rank: number): void => {
+    for (const n of nodes) {
+      let m = byFile.get(n.filePath);
+      if (!m) byFile.set(n.filePath, (m = new Map()));
+      const prev = m.get(n.id);
+      if (!prev || prev.rank > rank) m.set(n.id, { node: n, rank });
+    }
+  };
+  addAll(namedNodes, 0);
+  addAll(flowNodes, 1);
+  addAll(neighbourNodes, 2);
 
   const budget = getExploreOutputBudget(db.counts().files);
   const maxFiles = opts.budgetFiles ?? budget.maxFiles;
-  const orderedPaths = [...byFile.keys()].slice(0, Math.max(1, maxFiles));
+  const allPaths = [...byFile.keys()];
+  const isNamedFile = (p: string): boolean =>
+    [...(byFile.get(p)?.values() ?? [])].some((e) => e.rank === 0);
+  const namedPaths = allPaths.filter(isNamedFile);
+  const extraPaths = allPaths.filter((p) => !isNamedFile(p));
+  const extraCap = Math.max(0, maxFiles - namedPaths.length);
+  const orderedPaths = [...namedPaths, ...extraPaths.slice(0, extraCap)];
 
   const headParts: string[] = [];
   if (flow.length > 0) {
@@ -174,57 +243,55 @@ export function exploreSymbols(
   headParts.push('## Sources');
   const reserve = 400;
   let remaining = budget.maxChars - headParts.join('\n').length - reserve;
+  const namedShare = Math.floor(
+    (remaining * 0.9) / Math.max(1, namedPaths.length) - FILE_HEADER_RESERVE,
+  );
+  const namedFileBudget = Math.min(
+    budget.maxCharsPerFile,
+    Math.max(MIN_BODY_CHARS, namedShare),
+  );
 
+  const reader = createSourceReader(root);
   const files: ExploreFile[] = [];
   const sourceParts: string[] = [];
   const omitted: string[] = [];
   for (const filePath of orderedPaths) {
-    const nodes = [...(byFile.get(filePath)?.values() ?? [])].sort(
-      (a, b) => a.startLine - b.startLine || b.endLine - a.endLine,
-    );
-    let fileBudget = Math.min(budget.maxCharsPerFile, remaining - 60);
-    if (fileBudget <= 0) {
+    const named = isNamedFile(filePath);
+    const fileBudget = named
+      ? namedFileBudget
+      : Math.min(budget.maxCharsPerFile, remaining - FILE_HEADER_RESERVE);
+    if (fileBudget < MIN_BODY_CHARS) {
       omitted.push(filePath);
       continue;
     }
-    const snippets: ExploreSnippet[] = [];
-    let covered = 0;
-    for (const n of nodes) {
-      if (n.endLine <= covered && n.startLine <= covered) continue;
-      const end = Math.min(n.endLine, n.startLine + SNIPPET_LINE_CAP - 1);
-      const raw = readSourceRange(root, filePath, n.startLine, end);
-      const text = trimToLines(raw, fileBudget);
-      if (text === '') continue;
-      const shown = text.split('\n').length;
-      const snippetEnd = text === raw ? n.endLine : n.startLine + shown - 1;
-      snippets.push({ startLine: n.startLine, endLine: snippetEnd, text });
-      fileBudget -= text.length + 1;
-      covered = Math.max(covered, snippetEnd);
-      if (text !== raw || fileBudget <= 0) break;
-    }
+    const snippets = buildSnippets(
+      reader,
+      filePath,
+      [...(byFile.get(filePath)?.values() ?? [])],
+      fileBudget,
+    );
     if (snippets.length === 0) continue;
     files.push({ path: filePath, snippets });
     const block = [
       `### ${filePath}`,
-      ...snippets.flatMap((s) => [
-        `lines ${s.startLine}-${s.endLine}`,
-        '```',
-        s.text,
-        '```',
-      ]),
+      ...snippets.flatMap((s) => [`lines ${s.startLine}-${s.endLine}`, fenced(s.text)]),
     ].join('\n');
     sourceParts.push(block);
     remaining -= block.length + 1;
   }
 
   const tail: string[] = [];
-  const dropped = byFile.size - orderedPaths.length;
-  if (omitted.length > 0 || dropped > 0) {
-    const names = [...omitted, ...[...byFile.keys()].slice(orderedPaths.length)];
+  const notShown = [...omitted, ...extraPaths.slice(extraCap)];
+  if (notShown.length > 0) {
     tail.push(
-      `More relevant files not shown: ${names.slice(0, 8).join(', ')}. Call \`graph_node\` on a symbol from them for its full body.`,
+      `More relevant files not shown: ${notShown.slice(0, 8).join(', ')}. Call \`graph_node\` on a symbol from them for its full body.`,
     );
   }
+  const droppedNamed = hits.flatMap((r) => r.nodes).length - namedNodes.length;
+  if (droppedNamed > 0)
+    tail.push(
+      `${droppedNamed} more matches for the named symbols were not expanded. Call \`graph_explore\` with a more specific name (\`Class.method\` or \`file.ts#name\`).`,
+    );
 
   const markdown = [...headParts, ...sourceParts, ...tail].join('\n');
   return { flow, files, unresolvedNames, markdown, found: hits.length };

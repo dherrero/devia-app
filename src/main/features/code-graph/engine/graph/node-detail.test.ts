@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveReferences } from '../resolution/resolver';
 import { createHarness, type Harness } from '../resolution/test-support';
 import { getNodeDetail } from './node-detail';
+import { mkNode, openTempDb, seedGraph } from './test-graph';
 
 const FILES: Record<string, string> = {
   'src/r1.ts': `export class Runner {
@@ -46,7 +47,7 @@ describe('getNodeDetail', () => {
     expect(d.found).toBe(true);
     expect(d.matches).toHaveLength(2);
     const bodies = d.matches.map((m) => m.body).join('\n');
-    expect(bodies).toContain("return 'runner'".replace("'runner'", 'helper()'));
+    expect(bodies).toContain('return helper();');
     expect(bodies).toContain("return 'task'");
     const runner = d.matches.find((m) => m.node.filePath === 'src/r1.ts');
     expect(runner?.signature).toBeDefined();
@@ -104,6 +105,38 @@ describe('getNodeDetail', () => {
     fs.rmSync(path.join(h.root, 'src/r2.ts'));
     const d = getNodeDetail(h.q, h.root, 'Task.run');
     expect(d.found).toBe(true);
-    expect(d.matches[0]?.body).toContain('run graph_status');
+    expect(d.matches[0]?.note).toContain('run graph_status');
+    expect(d.matches[0]?.body).toBe('');
+  });
+
+  it('expands at most 8 overloads and lists the rest', async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 10; i++)
+      files[`src/o${i}.ts`] = `export class O${i} {\n  go(): number {\n    return ${i};\n  }\n}\n`;
+    await h.addFiles(files);
+    const d = getNodeDetail(h.q, h.root, 'go');
+    expect(d.matches).toHaveLength(8);
+    expect(d.omitted).toHaveLength(2);
+    expect(d.omitted[0]?.location).toMatch(/^src\/o\d\.ts:2$/);
+    expect(d.markdown).toContain('2 more matches not expanded');
+  });
+
+  it('fences bodies containing triple backticks', async () => {
+    await h.addFiles({
+      'src/md.ts': 'export function md(): string {\n  return "```";\n}\n',
+    });
+    const d = getNodeDetail(h.q, h.root, 'md');
+    expect(d.markdown).toContain('````\nexport function md');
+  });
+
+  it('notes an escaping indexed path instead of throwing', () => {
+    const t = openTempDb();
+    try {
+      seedGraph(t.q, [mkNode('evil', { filePath: '../../etc/passwd' })], []);
+      const d = getNodeDetail(t.q, h.root, 'evil');
+      expect(d.matches[0]?.note).toBe('path outside the project root — skipped');
+    } finally {
+      t.close();
+    }
   });
 });

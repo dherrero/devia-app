@@ -3,11 +3,13 @@ import type {
   NodeKind,
 } from '../../../../../shared/domain/code-graph';
 import type { GraphQueries } from '../db/queries';
-import { readSourceRange } from './source-reader';
+import { fenced } from './fence';
+import { createSourceReader, type RangeRead, type SourceReader } from './source-reader';
 import { getCallees, getCallers, type TraversalHit } from './traversal';
 import { lookupSymbol } from './symbol-lookup';
 
 const TRAIL_LIMIT = 10;
+const MAX_EXPANDED = 8;
 
 export interface NodeMatch {
   node: GraphNode;
@@ -15,7 +17,9 @@ export interface NodeMatch {
   signature?: string;
   docstring?: string;
   isExported: boolean;
+  /** Full source, empty when `note` explains why it is unavailable. */
   body: string;
+  note?: string;
   callers: TraversalHit[];
   callees: TraversalHit[];
   members: { name: string; kind: NodeKind }[];
@@ -24,7 +28,18 @@ export interface NodeMatch {
 export interface NodeDetail {
   found: boolean;
   matches: NodeMatch[];
+  omitted: { qualifiedName: string; location: string }[];
   markdown: string;
+}
+
+function sourceText(
+  r: Extract<RangeRead, { ok: true }>,
+  node: GraphNode,
+): string {
+  const fullEnd = r.endLine + r.moreLines;
+  return r.moreLines > 0 && fullEnd === node.endLine
+    ? `${r.text}\n… truncated (${r.moreLines} more lines) — range capped at 400 lines`
+    : r.text;
 }
 
 function trail(hits: TraversalHit[]): string {
@@ -34,13 +49,20 @@ function trail(hits: TraversalHit[]): string {
     .join(', ');
 }
 
-function renderMatch(m: NodeMatch): string {
+function renderMatch(m: NodeMatch, notedFiles: Set<string>): string {
   const n = m.node;
   const out = [`### ${n.qualifiedName} (${n.kind}) — ${m.location}`];
   out.push(m.isExported ? 'exported' : 'not exported');
   if (m.signature) out.push(`Signature: \`${m.signature}\``);
   if (m.docstring) out.push(`Doc: ${m.docstring}`);
-  out.push('```', m.body, '```');
+  if (m.note !== undefined) {
+    out.push(
+      notedFiles.has(m.node.filePath)
+        ? '(source unavailable, see the note for this file above)'
+        : `Note: ${m.note}`,
+    );
+    notedFiles.add(m.node.filePath);
+  } else out.push(fenced(m.body));
   if (m.members.length > 0)
     out.push(
       `Members: ${m.members.map((x) => `${x.name} (${x.kind})`).join(', ')}`,
@@ -67,9 +89,21 @@ export function getNodeDetail(
   const byId = query === '' ? undefined : db.nodeById(query);
   const nodes = byId ? [byId] : lookupSymbol(db, query);
   if (nodes.length === 0)
-    return { found: false, matches: [], markdown: notFoundMarkdown(query) };
+    return {
+      found: false,
+      matches: [],
+      omitted: [],
+      markdown: notFoundMarkdown(query),
+    };
 
-  const matches = nodes.map((node): NodeMatch => {
+  const reader: SourceReader = createSourceReader(root);
+  const expanded = nodes.slice(0, MAX_EXPANDED);
+  const omitted = nodes.slice(MAX_EXPANDED).map((n) => ({
+    qualifiedName: n.qualifiedName,
+    location: `${n.filePath}:${n.startLine}`,
+  }));
+  const matches = expanded.map((node): NodeMatch => {
+    const r = reader.read(node.filePath, node.startLine, node.endLine);
     const members = db
       .edgesFrom(node.id, ['contains'])
       .flatMap((e) => db.nodeById(e.target) ?? [])
@@ -80,20 +114,26 @@ export function getNodeDetail(
       ...(node.signature !== undefined && { signature: node.signature }),
       ...(node.docstring !== undefined && { docstring: node.docstring }),
       isExported: node.isExported,
-      body: readSourceRange(root, node.filePath, node.startLine, node.endLine),
+      body: r.ok ? sourceText(r, node) : '',
+      ...(!r.ok && { note: r.note }),
       callers: getCallers(db, node.id, { depth: 1, limit: TRAIL_LIMIT }),
       callees: getCallees(db, node.id, { depth: 1, limit: TRAIL_LIMIT }),
       members,
     };
   });
 
-  const head =
-    matches.length > 1
-      ? `## ${query} — ${matches.length} matches\n\n`
-      : '';
+  const heading =
+    nodes.length > 1 ? `## ${query} — ${nodes.length} matches\n\n` : '';
+  const notedFiles = new Set<string>();
+  const parts = matches.map((m) => renderMatch(m, notedFiles));
+  if (omitted.length > 0)
+    parts.push(
+      `${omitted.length} more matches not expanded (use \`file.ts#name\` or \`Class.method\` to pick one): ${omitted.map((o) => o.location).join(', ')}`,
+    );
   return {
     found: true,
     matches,
-    markdown: head + matches.map(renderMatch).join('\n\n'),
+    omitted,
+    markdown: heading + parts.join('\n\n'),
   };
 }

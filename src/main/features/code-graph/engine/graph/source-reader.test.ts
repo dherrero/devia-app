@@ -2,7 +2,11 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PathRefusedError, readSourceRange } from './source-reader';
+import {
+  PathRefusedError,
+  createSourceReader,
+  readSourceRange,
+} from './source-reader';
 
 let root: string;
 let outside: string;
@@ -85,5 +89,38 @@ describe('readSourceRange', () => {
     expect(out).toContain('l400');
     expect(out).not.toContain('l401\n');
     expect(out).toContain('truncated');
+  });
+
+  it('strips a UTF-8 BOM', () => {
+    fs.writeFileSync(path.join(root, 'bom.ts'), '\uFEFFfirst\nsecond\n');
+    expect(readSourceRange(root, 'bom.ts', 1, 1)).toBe('first');
+  });
+});
+
+describe('createSourceReader', () => {
+  it('reads a file once and reports the lines actually shown', () => {
+    const reader = createSourceReader(root);
+    const first = reader.read('src/a.ts', 1, 2);
+    fs.writeFileSync(path.join(root, 'src', 'a.ts'), 'changed\n');
+    const second = reader.read('src/a.ts', 3, 4);
+    expect(first).toMatchObject({ ok: true, text: 'one\ntwo', endLine: 2 });
+    expect(second).toMatchObject({ ok: true, text: 'three\nfour' });
+  });
+
+  it('reports lines beyond the 400 cap and never throws on a refused path', () => {
+    fs.writeFileSync(
+      path.join(root, 'long.ts'),
+      Array.from({ length: 1000 }, (_, i) => `l${i + 1}`).join('\n'),
+    );
+    const reader = createSourceReader(root);
+    expect(reader.read('long.ts', 10, 900)).toMatchObject({
+      ok: true,
+      endLine: 409,
+      moreLines: 491,
+    });
+    expect(reader.read('../../etc/passwd', 1, 2)).toMatchObject({
+      ok: false,
+      note: 'path outside the project root — skipped',
+    });
   });
 });

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PathRefusedError } from './source-reader';
 import { resolveReferences } from '../resolution/resolver';
 import { createHarness, type Harness } from '../resolution/test-support';
 import { exploreSymbols } from './explore';
@@ -155,17 +155,42 @@ describe('exploreSymbols', () => {
     expect(r.markdown.length).toBeLessThanOrEqual(18_000);
   });
 
-  it('is not tricked by a path-escaping file path in the index', () => {
+  it('skips an escaping indexed path with a note and keeps the other sources', () => {
     const t = openTempDb();
     try {
-      seedGraph(t.q, [mkNode('evil', { filePath: '../../etc/passwd' })], []);
-      expect(() => exploreSymbols(t.q, h.root, 'evil')).toThrow(
-        PathRefusedError,
+      seedGraph(
+        t.q,
+        [
+          mkNode('evil', { filePath: '../../etc/passwd' }),
+          mkNode('fine', { filePath: 'src/lonely.ts', startLine: 1, endLine: 3 }),
+        ],
+        [],
       );
+      const r = exploreSymbols(t.q, h.root, 'evil fine');
+      expect(r.files.find((f) => f.path === 'src/lonely.ts')?.snippets[0]?.text).toContain('lonely');
+      expect(r.markdown).toContain('path outside the project root — skipped');
     } finally {
       t.close();
     }
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'skips a file replaced by a symlink outside the root after indexing',
+    () => {
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-out-'));
+      try {
+        fs.writeFileSync(path.join(outside, 'x.ts'), 'secret');
+        fs.rmSync(path.join(h.root, 'src/b.ts'));
+        fs.symlinkSync(path.join(outside, 'x.ts'), path.join(h.root, 'src/b.ts'));
+        const r = exploreSymbols(h.q, h.root, 'A.start B.finish');
+        expect(r.markdown).toContain('path outside the project root — skipped');
+        expect(r.markdown).not.toContain('secret');
+        expect(r.files.find((f) => f.path === 'src/a.ts')).toBeDefined();
+      } finally {
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('answers a 5-symbol query over a 50k-node graph in under 1 s', () => {
     const t = openTempDb();
@@ -186,4 +211,59 @@ describe('exploreSymbols', () => {
       t.close();
     }
   }, 30_000);
+
+  it('keeps a short named body when a long neighbour sits above it', async () => {
+    const pad = Array.from({ length: 200 }, (_, i) => `  total += ${i}; // padding line ${i}`).join('\n');
+    await h.addFiles({
+      'src/mix.ts': `export function bigHelper(): number {\n  let total = 0;\n${pad}\n  return total;\n}\n\nexport function target(): number {\n  return bigHelper() + 1;\n}\n`,
+    });
+    resolveReferences(h.q, h.root);
+    const r = exploreSymbols(h.q, h.root, 'target');
+    const file = r.files.find((f) => f.path === 'src/mix.ts');
+    const texts = file?.snippets.map((s) => s.text).join('\n') ?? '';
+    expect(texts).toContain('return bigHelper() + 1;');
+  });
+
+  it('truncates a long named body with an explicit marker and a true endLine', async () => {
+    const pad = Array.from({ length: 500 }, (_, i) => `  total += ${i};`).join('\n');
+    await h.addFiles({
+      'src/huge.ts': `export function huge(): number {\n  let total = 0;\n${pad}\n  return total;\n}\n`,
+    });
+    const r = exploreSymbols(h.q, h.root, 'huge');
+    const snip = r.files.find((f) => f.path === 'src/huge.ts')?.snippets[0];
+    expect(snip?.text).toMatch(/… truncated \(\d+ more lines\) — call graph_node for the full body/);
+    const shown = snip?.text.split('\n').filter((l) => !l.startsWith('…')).length ?? 0;
+    expect(snip?.endLine).toBe((snip?.startLine ?? 0) + shown - 1);
+    expect(snip?.endLine).toBeLessThan(504);
+    const more = Number(/\((\d+) more lines\)/.exec(snip?.text ?? '')?.[1]);
+    expect((snip?.endLine ?? 0) + more).toBe(504);
+  });
+
+  it('always shows every named file even past maxFiles', async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 6; i++)
+      files[`src/n${i}.ts`] = `export function named${i}(): number {\n  return ${i};\n}\n`;
+    await h.addFiles(files);
+    const r = exploreSymbols(h.q, h.root, 'named0 named1 named2 named3 named4 named5');
+    expect(r.files.map((f) => f.path).sort()).toEqual(
+      [0, 1, 2, 3, 4, 5].map((i) => `src/n${i}.ts`),
+    );
+    expect(r.markdown.length).toBeLessThanOrEqual(18_000);
+  });
+
+  it('fences code that itself contains triple backticks', async () => {
+    await h.addFiles({
+      'src/md.ts': 'export function md(): string {\n  return "```js\\nx\\n```";\n}\n',
+    });
+    const r = exploreSymbols(h.q, h.root, 'md');
+    expect(r.markdown).toContain('````\nexport function md');
+  });
+
+  it('emits one stale note per file', () => {
+    fs.rmSync(path.join(h.root, 'src/r1.ts'));
+    const r = exploreSymbols(h.q, h.root, 'Runner Runner.run');
+    const f = r.files.find((x) => x.path === 'src/r1.ts');
+    expect(f?.snippets).toHaveLength(1);
+    expect(r.markdown.split('run graph_status').length - 1).toBe(1);
+  });
 });
