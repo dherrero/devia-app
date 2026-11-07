@@ -524,6 +524,14 @@ export class GraphQueries {
     ).map((r) => r.path);
   }
 
+  /** Paths of files flagged as tests or generated. */
+  excludedFilePaths(): Set<string> {
+    const rows = this.stmt(
+      'SELECT path FROM files WHERE is_test = 1 OR generated = 1',
+    ).all() as unknown as { path: string }[];
+    return new Set(rows.map((r) => r.path));
+  }
+
   /** Lean projection of every node (no docstring/signature) for building in-memory indexes. */
   nodeSummaries(): NodeSummary[] {
     const rows = this.stmt(
