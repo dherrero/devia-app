@@ -677,7 +677,7 @@ function isDroppedBuiltin(ref: UnresolvedRef): boolean {
 
 const SOURCE_EXTENSION = /\.(d\.ts|[cm]?[jt]sx?|dart|pyi?|go|java)$/;
 
-function fileStem(file: string): string {
+export function fileStem(file: string): string {
   return path.posix.basename(file).replace(SOURCE_EXTENSION, '');
 }
 

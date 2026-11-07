@@ -645,6 +645,124 @@ export class GraphQueries {
     return (rows as unknown as EdgeRow[]).map(toEdge);
   }
 
+  fileRecords(): FileRow[] {
+    const rows = this.stmt('SELECT * FROM files ORDER BY path').all() as unknown as {
+      path: string;
+      content_hash: string;
+      language: string;
+      size: number;
+      modified_at: number;
+      indexed_at: number;
+      node_count: number;
+      errors: string | null;
+      generated: number;
+      is_test: number;
+    }[];
+    return rows.map((r) => {
+      const f: FileRow = {
+        path: r.path,
+        contentHash: r.content_hash,
+        language: r.language as CodeGraphLanguage,
+        size: r.size,
+        modifiedAt: r.modified_at,
+        indexedAt: r.indexed_at,
+        nodeCount: r.node_count,
+        generated: r.generated === 1,
+        isTest: r.is_test === 1,
+      };
+      if (r.errors !== null) f.errors = JSON.parse(r.errors) as string[];
+      return f;
+    });
+  }
+
+  setFileModifiedAt(path: string, modifiedAt: number): void {
+    this.stmt('UPDATE files SET modified_at = ? WHERE path = ?').run(modifiedAt, path);
+  }
+
+  /** Files with at least one node, per language (what a full index reports as `languages`). */
+  languageCounts(): Partial<Record<CodeGraphLanguage, number>> {
+    const rows = this.stmt(
+      'SELECT language, COUNT(*) AS c FROM files WHERE node_count > 0 GROUP BY language ORDER BY language',
+    ).all() as unknown as { language: string; c: number }[];
+    const out: Partial<Record<CodeGraphLanguage, number>> = {};
+    for (const r of rows) out[r.language as CodeGraphLanguage] = r.c;
+    return out;
+  }
+
+  nodeRefsInFiles(paths: string[]): { id: string; name: string; kind: NodeKind; filePath: string }[] {
+    return this.nodeRefsWhere('file_path', paths);
+  }
+
+  nodeRefsByNames(names: string[]): { id: string; name: string; kind: NodeKind; filePath: string }[] {
+    return this.nodeRefsWhere('name', names);
+  }
+
+  private nodeRefsWhere(
+    column: 'file_path' | 'name',
+    values: string[],
+  ): { id: string; name: string; kind: NodeKind; filePath: string }[] {
+    const unique = [...new Set(values)];
+    const out: { id: string; name: string; kind: NodeKind; filePath: string }[] = [];
+    for (let i = 0; i < unique.length; i += IN_CHUNK) {
+      const chunk = unique.slice(i, i + IN_CHUNK);
+      const rows = this.stmt(
+        `SELECT id, name, kind, file_path FROM nodes WHERE ${column} IN (${chunk.map(() => '?').join(',')}) ORDER BY id`,
+      ).all(...chunk) as unknown as { id: string; name: string; kind: string; file_path: string }[];
+      for (const r of rows)
+        out.push({ id: r.id, name: r.name, kind: r.kind as NodeKind, filePath: r.file_path });
+    }
+    return out;
+  }
+
+  /**
+   * Files owning a resolved edge that points at one of `ids` (the source file, or for
+   * `decorates` the decorated node's file, since that edge is stored decorator → decorated).
+   */
+  referencingFiles(ids: string[]): Set<string> {
+    const unique = [...new Set(ids)];
+    const out = new Set<string>();
+    for (let i = 0; i < unique.length; i += IN_CHUNK) {
+      const chunk = unique.slice(i, i + IN_CHUNK);
+      const marks = chunk.map(() => '?').join(',');
+      const rows = this.stmt(
+        `SELECT n.file_path AS path FROM edges e JOIN nodes n ON n.id = e.source
+           WHERE e.target IN (${marks}) AND e.kind NOT IN ('contains', 'decorates')
+         UNION
+         SELECT n.file_path AS path FROM edges e JOIN nodes n ON n.id = e.target
+           WHERE e.source IN (${marks}) AND e.kind = 'decorates'`,
+      ).all(...chunk, ...chunk) as unknown as { path: string }[];
+      for (const r of rows) out.add(r.path);
+    }
+    return out;
+  }
+
+  /** Drops every edge produced from the nodes' own file: extraction edges and resolved refs. */
+  deleteEdgesOwnedBy(ids: string[]): void {
+    const unique = [...new Set(ids)];
+    this.transaction(() => {
+      for (let i = 0; i < unique.length; i += IN_CHUNK) {
+        const chunk = unique.slice(i, i + IN_CHUNK);
+        const marks = chunk.map(() => '?').join(',');
+        this.stmt(
+          `DELETE FROM edges WHERE (source IN (${marks}) AND kind != 'decorates')
+             OR (target IN (${marks}) AND kind = 'decorates')`,
+        ).run(...chunk, ...chunk);
+      }
+    });
+  }
+
+  deleteUnresolvedInFiles(paths: string[]): void {
+    const unique = [...new Set(paths)];
+    this.transaction(() => {
+      for (let i = 0; i < unique.length; i += IN_CHUNK) {
+        const chunk = unique.slice(i, i + IN_CHUNK);
+        this.stmt(
+          `DELETE FROM unresolved_refs WHERE file_path IN (${chunk.map(() => '?').join(',')})`,
+        ).run(...chunk);
+      }
+    });
+  }
+
   getMeta(key: string): string | undefined {
     const r = this.stmt('SELECT value FROM project_metadata WHERE key = ?').get(
       key,
