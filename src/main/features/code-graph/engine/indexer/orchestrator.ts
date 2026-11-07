@@ -8,7 +8,7 @@ import { acquireWriterLock } from '../db/writer-lock';
 import { discoverFiles } from '../discovery/discover';
 import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome } from './extract-file';
 import { postIndex } from './post-index';
-import { CONFIG_HASHES_KEY, hashConfigs, isResolutionConfig } from './resolution-config';
+import { CONFIG_HASHES_KEY, isResolutionConfig, resolutionConfigHashes } from './resolution-config';
 
 export const EXTRACTION_VERSION = 1;
 export const GRAPH_DB_FILE = 'graph.db';
@@ -207,7 +207,16 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
       q.setMeta('root', root);
       q.setMeta('extraction_version', String(EXTRACTION_VERSION));
       q.setMeta('languages', JSON.stringify(languages));
-      q.setMeta(CONFIG_HASHES_KEY, JSON.stringify(hashConfigs(discovered.configs)));
+      q.setMeta(
+        CONFIG_HASHES_KEY,
+        JSON.stringify(
+          resolutionConfigHashes(
+            root,
+            discovered.files.map((f) => f.relPath),
+            discovered.configs.map((f) => f.relPath),
+          ),
+        ),
+      );
     });
     closeForPublish(db);
     db = undefined;

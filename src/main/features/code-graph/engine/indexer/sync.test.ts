@@ -277,7 +277,7 @@ describe('syncProject', () => {
     });
   });
 
-  it('makes progress on every call under a tiny deadline when many files share the stem of the edited one', async () => {
+  it('applies exactly one changed file (with its closure) per call under a zero deadline', async () => {
     const files: Record<string, string> = {};
     for (let i = 0; i < 40; i++) {
       files[`m${i}/index.ts`] = `export function f${i}(): number {\n  return ${i};\n}\n`;
@@ -285,14 +285,48 @@ describe('syncProject', () => {
     }
     await indexed(files);
     for (const i of [0, 7, 13]) project.write(`m${i}/index.ts`, `export function f${i}(): number {\n  return ${i + 100};\n}\n`);
-    let calls = 0;
-    for (;;) {
-      const r = await syncProject({ root: project.root, dataDir, deadlineMs: 1 });
-      calls++;
-      expect(r.added + r.modified + r.deleted).toBeGreaterThan(0);
-      if (!r.truncated) break;
-      expect(calls).toBeLessThan(3);
+    const results = [];
+    for (let call = 0; call < 3; call++) results.push(await syncProject({ root: project.root, dataDir, deadlineMs: 0 }));
+    expect(results.map((r) => [r.modified, r.truncated])).toEqual([[1, true], [1, true], [1, false]]);
+    await expectParity();
+  });
+
+  it('re-extracts only the edited file and its own importers when many files share its stem', async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 40; i++) {
+      files[`m${i}/index.ts`] = `export function f${i}(): number {\n  return ${i};\n}\n`;
+      files[`u${i}.ts`] = `import { f${i} } from './m${i}';\nexport const u${i} = f${i}();\n`;
     }
+    await indexed(files);
+    project.write('m0/index.ts', 'export function f0(): number {\n  return 100;\n}\n');
+    const read = vi.spyOn(fs.promises, 'readFile');
+    try {
+      expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ modified: 1, truncated: false });
+      const extracted = read.mock.calls.map(([p]) => path.relative(project.root, String(p)).split(path.sep).join('/'));
+      expect(extracted.sort()).toEqual(['m0/index.ts', 'u0.ts']);
+    } finally {
+      read.mockRestore();
+    }
+    await expectParity();
+  });
+
+  it('treats a modified file that cannot be read at extraction time as deleted, importers included', async () => {
+    await indexed({ 'x/index.ts': 'export function g(): number {\n  return 1;\n}\n', 'use.ts': "import './x';\nexport const u = 1;\n" });
+    project.write('x/index.ts', 'export function g(): number {\n  return 2;\n}\n');
+    const original = fs.promises.readFile.bind(fs.promises);
+    const read = vi.spyOn(fs.promises, 'readFile').mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (String(p).endsWith(`x${path.sep}index.ts`)) {
+        fs.rmSync(project.abs('x'), { recursive: true, force: true });
+        return Promise.reject(Object.assign(new Error('gone'), { code: 'ENOENT' }));
+      }
+      return (original as (...a: unknown[]) => Promise<Buffer>)(p, ...rest);
+    }) as typeof fs.promises.readFile);
+    try {
+      expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ modified: 0, deleted: 1 });
+    } finally {
+      read.mockRestore();
+    }
+    expect(filesInDb()).toEqual(['use.ts']);
     await expectParity();
   });
 
@@ -381,6 +415,53 @@ describe('syncProject', () => {
     project.write('node_modules/x/tsconfig.json', '{ "x": 1 }\n');
     expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ modified: 1, fullIndexRequired: false });
     await expectParity();
+  });
+
+  it('asks for a full index when a tsconfig reached through extends or references changes, and only then', async () => {
+    await indexed({
+      'a.ts': A_TS,
+      'b.ts': B_TS,
+      'tsconfig.json': '{ "extends": "./tsconfig.base.json", "references": [{ "path": "./tsconfig.app.json" }, { "path": "./pkg" }] }\n',
+      'tsconfig.base.json': '{ "compilerOptions": { "baseUrl": ".", "paths": { "@b": ["b.ts"] } } }\n',
+      'tsconfig.app.json': '{ "extends": "./configs/shared" }\n',
+      'configs/shared.json': '{}\n',
+      'pkg/tsconfig.json': '{}\n',
+      'data.json': '{ "x": 1 }\n',
+    });
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ fullIndexRequired: false });
+    project.write('b.ts', 'export function z(): number {\n  return 9;\n}\n');
+    const before = snapshotGraph(dataDir);
+    const required = { added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false, fullIndexRequired: true };
+    const restore = (rel: string): (() => void) => {
+      const text = project.read(rel);
+      return () => project.write(rel, text);
+    };
+    for (const rel of ['tsconfig.base.json', 'tsconfig.app.json', 'configs/shared.json', 'pkg/tsconfig.json']) {
+      const undo = restore(rel);
+      project.write(rel, '{ "compilerOptions": { "baseUrl": "src" } }\n');
+      expect(await syncProject({ root: project.root, dataDir }), rel).toEqual(required);
+      expect(await syncProject({ root: project.root, dataDir, onlyPaths: ['b.ts'] }), rel).toEqual(required);
+      expect(snapshotGraph(dataDir), rel).toEqual(before);
+      undo();
+    }
+    project.write('data.json', '{ "x": 2 }\n');
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ modified: 1, fullIndexRequired: false });
+    await expectParity();
+  });
+
+  it.skipIf(process.platform === 'win32')('tracks a symlinked tsconfig the loader follows', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-sync-cfg-'));
+    try {
+      fs.writeFileSync(path.join(outside, 'tsconfig.json'), '{}\n');
+      project.writeAll({ 'a.ts': A_TS, 'b.ts': B_TS });
+      fs.symlinkSync(path.join(outside, 'tsconfig.json'), project.abs('tsconfig.json'));
+      await fullIndex(project.root, dataDir);
+      expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ fullIndexRequired: false });
+      fs.writeFileSync(path.join(outside, 'tsconfig.json'), '{ "compilerOptions": { "baseUrl": "." } }\n');
+      expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ fullIndexRequired: true });
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('asks for a full index when the graph was built by another extraction version or root', async () => {

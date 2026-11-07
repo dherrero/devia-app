@@ -126,7 +126,7 @@ describe('indexProject', () => {
       const b = q.nodesInFile('src/b.ts').find((n) => n.kind === 'function' && n.name === 'b');
       expect(a && q.edgesFrom(a.id, ['calls']).map((e) => e.target)).toEqual([b?.id]);
       expect(readCommunities(q).has('src/a.ts')).toBe(true);
-      expect(JSON.parse(q.getMeta('config_hashes') ?? 'null')).toEqual({
+      expect(JSON.parse(q.getMeta('resolution_config_hashes') ?? 'null')).toEqual({
         'tsconfig.json': contentHash(Buffer.from('{}\n')),
       });
     } finally {

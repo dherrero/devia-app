@@ -164,14 +164,8 @@ export class PathConfigCache {
 
   private fromReferences(rel: string): Resolved | undefined {
     const raw = this.read(rel);
-    if (!raw || !Array.isArray(raw.references)) return undefined;
-    const dir = path.posix.dirname(rel);
-    for (const ref of raw.references as unknown[]) {
-      const refPath = (ref as { path?: unknown } | null)?.path;
-      if (typeof refPath !== 'string') continue;
-      let target = joinInRoot(dir === '.' ? '' : dir, refPath);
-      if (target === undefined) continue;
-      if (!target.endsWith('.json')) target = `${target}/tsconfig.json`;
+    if (!raw) return undefined;
+    for (const target of referenceTargets(raw, rel)) {
       const resolved = this.resolve(target, new Set([rel]), 1);
       if (resolved?.paths || resolved?.baseUrl !== undefined) return resolved;
     }
@@ -187,21 +181,10 @@ export class PathConfigCache {
     seen.add(rel);
     const raw = this.read(rel);
     if (!raw) return undefined;
-    const dirOf = path.posix.dirname(rel);
-    const dir = dirOf === '.' ? '' : dirOf;
+    const dir = dirOfConfig(rel);
 
     const result: Resolved = {};
-    const parents =
-      typeof raw.extends === 'string'
-        ? [raw.extends]
-        : Array.isArray(raw.extends)
-          ? raw.extends
-          : [];
-    for (const parent of parents) {
-      if (typeof parent !== 'string' || !/^\.\.?(\/|$)/.test(parent)) continue;
-      let target = joinInRoot(dir, parent);
-      if (target === undefined) continue;
-      if (!target.endsWith('.json')) target = `${target}.json`;
+    for (const target of extendsTargets(raw, rel)) {
       const inherited = this.resolve(target, seen, depth + 1);
       if (inherited?.baseUrl !== undefined) result.baseUrl = inherited.baseUrl;
       if (inherited?.paths) result.paths = inherited.paths;
@@ -225,25 +208,108 @@ export class PathConfigCache {
   }
 
   private read(rel: string): RawConfig | undefined {
-    try {
-      const parsed = parseJsonc(
-        fs.readFileSync(path.join(this.root, rel), 'utf8'),
-      );
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (parsed as RawConfig)
-        : undefined;
-    } catch {
-      return undefined;
-    }
+    return readRawConfig(this.root, rel);
   }
 
   private exists(rel: string): boolean {
-    try {
-      return fs.statSync(path.join(this.root, rel)).isFile();
-    } catch {
-      return false;
-    }
+    return configExists(this.root, rel);
   }
+}
+
+function dirOfConfig(rel: string): string {
+  const dir = path.posix.dirname(rel);
+  return dir === '.' ? '' : dir;
+}
+
+function readRawConfig(root: string, rel: string): RawConfig | undefined {
+  try {
+    const parsed = parseJsonc(fs.readFileSync(path.join(root, rel), 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as RawConfig)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function configExists(root: string, rel: string): boolean {
+  try {
+    return fs.statSync(path.join(root, rel)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Relative `extends` targets, root-relative (`.json` appended when missing). */
+function extendsTargets(raw: RawConfig, rel: string): string[] {
+  const dir = dirOfConfig(rel);
+  const parents =
+    typeof raw.extends === 'string' ? [raw.extends] : Array.isArray(raw.extends) ? raw.extends : [];
+  const out: string[] = [];
+  for (const parent of parents) {
+    if (typeof parent !== 'string' || !/^\.\.?(\/|$)/.test(parent)) continue;
+    const target = joinInRoot(dir, parent);
+    if (target !== undefined) out.push(target.endsWith('.json') ? target : `${target}.json`);
+  }
+  return out;
+}
+
+/** `references[].path` targets, root-relative (a directory means its tsconfig.json). */
+function referenceTargets(raw: RawConfig, rel: string): string[] {
+  if (!Array.isArray(raw.references)) return [];
+  const dir = dirOfConfig(rel);
+  const out: string[] = [];
+  for (const ref of raw.references as unknown[]) {
+    const refPath = (ref as { path?: unknown } | null)?.path;
+    if (typeof refPath !== 'string') continue;
+    const target = joinInRoot(dir, refPath);
+    if (target !== undefined) out.push(target.endsWith('.json') ? target : `${target}/tsconfig.json`);
+  }
+  return out;
+}
+
+/**
+ * Every config file {@link PathConfigCache} may read for imports made from `fromFiles`: the
+ * nearest tsconfig.json/jsconfig.json of each file's directory, then everything reachable
+ * through relative `extends` and `references` (whether or not it exists, so creating one is
+ * noticed too). Same lookup, same targets and `statSync`/`readFileSync` (symlinks followed) as
+ * the loader; `references` are always followed although the loader only needs them when the
+ * entry has no `paths`/`baseUrl`, a harmless superset. Root-relative, sorted.
+ */
+export function pathConfigFiles(root: string, fromFiles: string[]): string[] {
+  const nearest = new Map<string, string | undefined>();
+  const forDir = (dir: string): string | undefined => {
+    if (nearest.has(dir)) return nearest.get(dir);
+    let found: string | undefined;
+    for (const name of CONFIG_NAMES) {
+      const rel = dir ? `${dir}/${name}` : name;
+      if (configExists(root, rel)) {
+        found = rel;
+        break;
+      }
+    }
+    if (found === undefined && dir !== '') found = forDir(dirOfConfig(dir));
+    nearest.set(dir, found);
+    return found;
+  };
+
+  const out = new Set<string>();
+  const visited = new Set<string>();
+  const walk = (rel: string, followReferences: boolean): void => {
+    const key = `${rel}\0${followReferences}`;
+    if (visited.has(key)) return;
+    visited.add(key);
+    out.add(rel);
+    const raw = readRawConfig(root, rel);
+    if (!raw) return;
+    for (const t of extendsTargets(raw, rel)) walk(t, false);
+    if (followReferences) for (const t of referenceTargets(raw, rel)) walk(t, false);
+  };
+  for (const file of fromFiles) {
+    const entry = forDir(dirOfConfig(file));
+    if (entry !== undefined) walk(entry, true);
+  }
+  return [...out].sort();
 }
 
 function toPathConfig(r: Resolved): PathConfig {

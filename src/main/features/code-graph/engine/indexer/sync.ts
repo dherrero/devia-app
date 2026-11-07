@@ -17,7 +17,7 @@ import { detectChanges, type ChangeSet } from './change-detection';
 import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome } from './extract-file';
 import { EXTRACTION_VERSION, GRAPH_DB_FILE } from './orchestrator';
 import { resolveGraph } from './post-index';
-import { hashConfigs, isResolutionConfig, sameConfigHashes, storedConfigHashes } from './resolution-config';
+import { isResolutionConfig, resolutionConfigHashes, sameConfigHashes, storedConfigHashes } from './resolution-config';
 
 // Adapted from codegraph (MIT), src/sync/ and the `sync` entry point of src/index.ts.
 
@@ -109,7 +109,7 @@ export async function syncProject(opts: SyncOptions): Promise<SyncResult> {
     const discovered = scope
       ? await discoverPaths(root, [...scope], discoverOpts)
       : await discoverFiles(root, discoverOpts);
-    if (!configsUnchanged(q, root, discovered, scope)) return { ...EMPTY, fullIndexRequired: true };
+    if (!configsUnchanged(q, root, discovered, rows, scope)) return { ...EMPTY, fullIndexRequired: true };
 
     const changes = detectChanges(q, discovered.files, rows);
     if (scope) changes.deleted = changes.deleted.filter((p) => scope.has(p));
@@ -146,20 +146,26 @@ function scopePaths(root: string, paths: string[], rows: ReadonlyMap<string, Fil
   return out;
 }
 
-/** With `onlyPaths` the tree is not walked: the indexed configs are re-hashed, and any config inside the scope must already be one of them. */
+/**
+ * With `onlyPaths` the tree is not walked: the indexed files stand in for the tree, so the
+ * stored Go/Dart manifests are re-hashed and the tsconfig closure is recomputed from them.
+ */
 function configsUnchanged(
   q: GraphQueries,
   root: string,
   discovered: DiscoverResult,
+  rows: ReadonlyMap<string, FileRow>,
   scope: Set<string> | undefined,
 ): boolean {
   const stored = storedConfigHashes(q);
   if (!stored) return false;
-  if (!scope) return sameConfigHashes(hashConfigs(discovered.configs), stored);
-  const known = Object.keys(stored).map((rel) => ({ relPath: rel, absPath: path.join(root, ...rel.split('/')) }));
-  return (
-    discovered.configs.every((c) => c.relPath in stored) && sameConfigHashes(hashConfigs(known), stored)
-  );
+  const sources = discovered.files.map((f) => f.relPath);
+  const manifests = discovered.configs.map((f) => f.relPath);
+  if (scope) {
+    sources.push(...rows.keys());
+    manifests.push(...Object.keys(stored).filter(isResolutionConfig));
+  }
+  return sameConfigHashes(resolutionConfigHashes(root, sources, manifests), stored);
 }
 
 interface SyncPlan {
@@ -201,7 +207,11 @@ async function planSync(
       for (const [p, kind] of changed) {
         if (kind === 'deleted' || outcomes.has(p)) continue;
         const file = await locate(p);
-        outcomes.set(p, file ? await extractFile(file, pool) : { kind: 'unreadable' });
+        const outcome: FileOutcome = file ? await extractFile(file, pool) : { kind: 'unreadable' };
+        outcomes.set(p, outcome);
+        // Gone or unreadable since detection: its row is dropped like a deletion, so rule 4
+        // (importers of neighbouring paths) must see it as one.
+        if (outcome.kind === 'unreadable' && kind === 'modified') changed.set(p, 'deleted');
       }
       let grew = false;
       for (const dep of findDependents(q, changed, outcomes, rows)) {
@@ -221,7 +231,7 @@ async function planSync(
         const outcome = await extractFile(file, pool);
         if (outcome.kind !== 'ok' || outcome.row.contentHash !== rows.get(dep)?.contentHash) {
           // Changed on disk but outside this call's scope: apply it now rather than resolve stale refs.
-          changed.set(dep, 'modified');
+          changed.set(dep, outcome.kind === 'unreadable' ? 'deleted' : 'modified');
           outcomes.set(dep, outcome);
           grew = true;
           continue;

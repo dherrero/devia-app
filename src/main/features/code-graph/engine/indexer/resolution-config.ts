@@ -1,28 +1,49 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GraphQueries } from '../db/queries';
+import { languageForPath } from '../extraction/grammars';
+import { pathConfigFiles } from '../resolution/path-aliases';
 import { contentHash } from './hash';
 
-export const CONFIG_HASHES_KEY = 'config_hashes';
+// Renamed when the tracked set grew to the tsconfig extends/references closure: graphs stored
+// under an older key ask for one full index.
+export const CONFIG_HASHES_KEY = 'resolution_config_hashes';
 
-// Files the resolvers read besides the sources (TS path aliases, Go modules, Dart packages).
-// When one changes, every import may resolve differently, which only a full index redoes.
-const CONFIG_NAMES: ReadonlySet<string> = new Set(['tsconfig.json', 'jsconfig.json', 'go.mod', 'pubspec.yaml']);
+const MISSING = 'missing';
+
+// Go modules and Dart packages, found by discovery; tsconfig/jsconfig files are instead
+// derived from the TS path-alias loader so that its `extends`/`references` are covered.
+const MODULE_CONFIG_NAMES: ReadonlySet<string> = new Set(['go.mod', 'pubspec.yaml']);
 
 export function isResolutionConfig(rel: string): boolean {
-  return CONFIG_NAMES.has(path.posix.basename(rel));
+  return MODULE_CONFIG_NAMES.has(path.posix.basename(rel));
 }
 
-/** Content hash per config path, keys sorted; unreadable files are left out (as if absent). */
-export function hashConfigs(files: { relPath: string; absPath: string }[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const f of [...files].sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0))) {
-    try {
-      out[f.relPath] = contentHash(fs.readFileSync(f.absPath));
-    } catch {
-      // vanished between discovery and hashing
-    }
+function hashFile(abs: string): string {
+  try {
+    return contentHash(fs.readFileSync(abs));
+  } catch {
+    return MISSING;
   }
+}
+
+/**
+ * Hashes of every non-source file the resolvers read: the given Go/Dart manifests plus every
+ * tsconfig/jsconfig the path-alias loader may read for the TS/JS files among `sourceFiles`.
+ * When any of them changes, imports may resolve differently and only a full index redoes it.
+ */
+export function resolutionConfigHashes(
+  root: string,
+  sourceFiles: string[],
+  moduleConfigs: string[],
+): Record<string, string> {
+  const tsFiles = sourceFiles.filter((f) => {
+    const lang = languageForPath(f);
+    return lang === 'typescript' || lang === 'javascript';
+  });
+  const rels = new Set([...moduleConfigs, ...pathConfigFiles(root, tsFiles)]);
+  const out: Record<string, string> = {};
+  for (const rel of [...rels].sort()) out[rel] = hashFile(path.join(root, ...rel.split('/')));
   return out;
 }
 
