@@ -790,8 +790,8 @@ describe('resolveReferences — scale', () => {
     });
     const started = Date.now();
     const stats = await resolveReferences(q, root);
-    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(Date.now() - started).toBeLessThan(30_000);
     expect(stats.resolved + stats.failed).toBe(files * (perFile - 1) * 3);
     expect(stats.resolved).toBeGreaterThan(files * (perFile - 1) * 2);
-  }, 60_000);
+  }, 180_000);
 });

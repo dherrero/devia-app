@@ -75,3 +75,15 @@ export function seedGraph(
   q.insertNodes(nodes);
   q.insertEdges(edges);
 }
+
+/** Warm-up run plus the fastest of `runs` timed runs, so a busy machine does not fail a perf bound. */
+export function bestOf<T>(fn: () => T, runs = 3): { ms: number; value: T } {
+  let value = fn();
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const start = performance.now();
+    value = fn();
+    best = Math.min(best, performance.now() - start);
+  }
+  return { ms: best, value };
+}
