@@ -1,7 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ResolveContext } from '../language-resolvers';
 import { resolveReferences } from '../resolver';
+import { goResolver } from './go';
 import { createHarness, type Harness } from '../test-support';
 
 let h: Harness;
@@ -121,5 +123,30 @@ describe('go import resolution', () => {
     expect(() => resolveReferences(h.q, h.root)).not.toThrow();
     expect(h.targets(h.fileId('main.go'), 'imports')).toEqual([]);
     expect(h.failedRefs().length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('indexes package files once instead of scanning per import', () => {
+    const files: string[] = [];
+    for (let i = 0; i < 200; i++) files.push(`pkg${i}/p.go`);
+    let listCalls = 0;
+    const ctx: ResolveContext = {
+      root: '/r',
+      fileExists: (rel) => files.includes(rel),
+      listFiles: () => {
+        listCalls++;
+        return files;
+      },
+      readText: (rel) => (rel === 'go.mod' ? 'module ex.com/m\n' : undefined),
+    };
+    for (let i = 0; i < 200; i++)
+      expect(
+        goResolver.resolveImportAll?.(
+          'main.go',
+          `ex.com/m/pkg${i}`,
+          ctx,
+          false,
+        ),
+      ).toEqual([`pkg${i}/p.go`]);
+    expect(listCalls).toBeLessThanOrEqual(1);
   });
 });

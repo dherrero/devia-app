@@ -25,6 +25,8 @@ import {
 export interface ResolveStats {
   resolved: number;
   failed: number;
+  /** Go interfaces not linked to their structs because too many structs satisfied them. */
+  skippedImplements: number;
 }
 
 const BATCH_SIZE = 500;
@@ -135,7 +137,11 @@ class ResolutionRun {
     string,
     { name: string; type: NodeSummary } | null
   >();
-  private readonly stats: ResolveStats = { resolved: 0, failed: 0 };
+  private readonly stats: ResolveStats = {
+    resolved: 0,
+    failed: 0,
+    skippedImplements: 0,
+  };
 
   constructor(
     private readonly db: GraphQueries,
@@ -171,7 +177,10 @@ class ResolutionRun {
       for (const kinds of PHASES)
         this.processAll(refs.filter((r) => kinds.includes(r.referenceKind)));
     }
-    if (this.index.hasLanguage('go')) inferGoImplements(this.db);
+    if (this.index.hasLanguage('go'))
+      this.stats.skippedImplements += inferGoImplements(
+        this.db,
+      ).skippedInterfaces;
     return this.stats;
   }
 
@@ -339,15 +348,27 @@ class ResolutionRun {
       fail(imported ?? bindingName);
       return;
     }
-    this.bind(ref.filePath, bindingName, binding);
-    // `import a.b` binds `a`, but the code says `a.b.f()`: keep the dotted form too.
-    if (
+    const dottedImport =
       ref.language === 'python' &&
       imported === undefined &&
       meta['alias'] === undefined &&
-      ref.referenceName.includes('.')
-    )
+      ref.referenceName.includes('.');
+    if (dottedImport) {
+      // `import a.b` binds `a` to the package itself, never to the submodule `a/b.py`; the
+      // dotted form is kept so `a.b.f()` still reaches `b.py`.
+      const head = ref.referenceName.split('.')[0] ?? bindingName;
+      const pkg = resolver.resolveImport(ref.filePath, head, this.ctx);
+      this.bind(
+        ref.filePath,
+        bindingName,
+        pkg !== undefined && this.index.fileNodes.has(pkg)
+          ? { kind: 'namespace', files: [pkg] }
+          : { kind: 'blocked' },
+      );
       this.bind(ref.filePath, ref.referenceName, binding);
+    } else {
+      this.bind(ref.filePath, bindingName, binding);
+    }
     writes.deletes.push(id);
     this.stats.resolved++;
   }

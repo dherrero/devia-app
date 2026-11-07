@@ -30,6 +30,15 @@ export function ancestorDirs(dir: string): string[] {
   }
 }
 
+const fileLists = new WeakMap<ResolveContext, string[]>();
+
+/** `ctx.listFiles()` once per resolution run (it may copy a large list). */
+export function indexedFiles(ctx: ResolveContext): string[] {
+  let files = fileLists.get(ctx);
+  if (!files) fileLists.set(ctx, (files = ctx.listFiles()));
+  return files;
+}
+
 const cache = new WeakMap<ResolveContext, Map<string, Map<string, string>>>();
 
 /**
@@ -47,7 +56,7 @@ export function manifestsByDir(
   const hit = perCtx.get(manifest);
   if (hit) return hit;
   const dirs = new Set<string>();
-  for (const f of ctx.listFiles())
+  for (const f of indexedFiles(ctx))
     if (extensions.some((e) => f.endsWith(e)))
       for (const d of ancestorDirs(dirOf(f))) {
         if (dirs.has(d)) break;

@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import type { LanguageResolver, ResolveContext } from '../language-resolvers';
-import { dirOf, normalizeRel } from './manifests';
+import { dirOf, indexedFiles, normalizeRel } from './manifests';
 
 // Maven/Gradle layouts and the bare project root: a class's file ends with `<fqn path>.java`
 // under any of them, so matching on the path suffix covers every module of a multi-module build.
@@ -9,18 +9,24 @@ interface JavaIndex {
   byDir: Map<string, string[]>;
 }
 
+function pushTo(map: Map<string, string[]>, key: string, value: string): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+
 const indexes = new WeakMap<ResolveContext, JavaIndex>();
 
 function indexFor(ctx: ResolveContext): JavaIndex {
   let index = indexes.get(ctx);
   if (index) return index;
   index = { byBase: new Map(), byDir: new Map() };
-  for (const f of ctx.listFiles()) {
+  for (const f of indexedFiles(ctx)) {
     if (!f.endsWith('.java')) continue;
     const base = path.posix.basename(f);
-    index.byBase.set(base, [...(index.byBase.get(base) ?? []), f]);
+    pushTo(index.byBase, base, f);
     const dir = dirOf(f);
-    index.byDir.set(dir, [...(index.byDir.get(dir) ?? []), f]);
+    pushTo(index.byDir, dir, f);
   }
   indexes.set(ctx, index);
   return index;

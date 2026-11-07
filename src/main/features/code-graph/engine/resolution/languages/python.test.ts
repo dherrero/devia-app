@@ -98,4 +98,67 @@ describe('python import resolution', () => {
     expect(h.targets(h.fileId('main.py'), 'imports')).toEqual([]);
     expect(h.failedRefs().length).toBeGreaterThanOrEqual(3);
   });
+
+  it('resolves a.b.f() but not a.x() into a submodule after `import a.b`', async () => {
+    await h.addFiles({
+      'a/__init__.py': '',
+      'a/b.py': 'def f():\n    pass\n\ndef x():\n    pass\n',
+      'main.py': 'import a.b\n\ndef m():\n    a.b.f()\n    a.x()\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.sym('main.py', 'm').id, 'calls')).toEqual([
+      h.sym('a/b.py', 'f').id,
+    ]);
+  });
+
+  it('does not bind the bare name to a submodule without an __init__', async () => {
+    await h.addFiles({
+      'a/b.py': 'def x():\n    pass\n',
+      'main.py': 'import a.b\n\ndef m():\n    a.x()\n    a.b.x()\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.sym('main.py', 'm').id, 'calls')).toEqual([
+      h.sym('a/b.py', 'x').id,
+    ]);
+  });
+
+  it('keeps two dotted imports of the same package from clobbering each other', async () => {
+    await h.addFiles({
+      'a/__init__.py': 'def run():\n    pass\n',
+      'a/b.py': 'def run():\n    pass\n',
+      'a/c.py': 'def run():\n    pass\n',
+      'main.py':
+        'import a.b\nimport a.c\n\ndef m():\n    a.run()\n    a.b.run()\n    a.c.run()\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.sym('main.py', 'm').id, 'calls').sort()).toEqual(
+      [
+        h.sym('a/__init__.py', 'run').id,
+        h.sym('a/b.py', 'run').id,
+        h.sym('a/c.py', 'run').id,
+      ].sort(),
+    );
+  });
+
+  it('binds an alias of a dotted import to the submodule', async () => {
+    await h.addFiles({
+      'a/__init__.py': '',
+      'a/b.py': 'def f():\n    pass\n',
+      'main.py': 'import a.b as c\n\ndef m():\n    c.f()\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.sym('main.py', 'm').id, 'calls')).toEqual([
+      h.sym('a/b.py', 'f').id,
+    ]);
+  });
+
+  it('tries only __init__.py for a bare `.` import, not a sibling pkg.py', async () => {
+    await h.addFiles({
+      'pkg.py': 'def y():\n    pass\n',
+      'pkg/b.py': 'from . import y\n\ndef f():\n    y()\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.fileId('pkg/b.py'), 'imports')).toEqual([]);
+    expect(h.targets(h.sym('pkg/b.py', 'f').id, 'calls')).toEqual([]);
+  });
 });

@@ -14,7 +14,7 @@ describe('inferGoImplements', () => {
       'io.go':
         'package p\n\ntype RW interface {\n\tRead()\n\tClose()\n}\n\ntype Writer interface {\n\tWrite()\n}\n\ntype Empty interface{}\n\ntype File struct{}\n\nfunc (f *File) Read() {}\n\nfunc (f File) Close() {}\n\ntype Half struct{}\n\nfunc (h Half) Read() {}\n',
     });
-    expect(inferGoImplements(h.q)).toBe(1);
+    expect(inferGoImplements(h.q).created).toBe(1);
     const edges = h.q.edgesFrom(h.sym('io.go', 'File').id, ['implements']);
     expect(edges.map((e) => e.target)).toEqual([h.sym('io.go', 'RW').id]);
     expect(h.targets(h.sym('io.go', 'Half').id, 'implements')).toEqual([]);
@@ -26,7 +26,7 @@ describe('inferGoImplements', () => {
         'package p\n\ntype S struct{}\n\ntype I interface {\n\tRun()\n}\n',
       'b.go': 'package p\n\nfunc (s *S) Run() {}\n',
     });
-    expect(inferGoImplements(h.q)).toBe(1);
+    expect(inferGoImplements(h.q).created).toBe(1);
   });
 
   it('is idempotent', async () => {
@@ -34,8 +34,8 @@ describe('inferGoImplements', () => {
       'a.go':
         'package p\n\ntype S struct{}\n\nfunc (s S) Run() {}\n\ntype I interface {\n\tRun()\n}\n',
     });
-    expect(inferGoImplements(h.q)).toBe(1);
-    expect(inferGoImplements(h.q)).toBe(0);
+    expect(inferGoImplements(h.q).created).toBe(1);
+    expect(inferGoImplements(h.q).created).toBe(0);
   });
 
   it('skips an interface that would link to more than 50 structs', async () => {
@@ -45,7 +45,10 @@ describe('inferGoImplements', () => {
     for (let i = 0; i < 51; i++)
       src.push(`type T${i} struct{}\n\nfunc (t T${i}) String() {}\n`);
     await h.addFiles({ 'a.go': src.join('\n') });
-    expect(inferGoImplements(h.q)).toBe(0);
+    expect(inferGoImplements(h.q)).toEqual({
+      created: 0,
+      skippedInterfaces: 1,
+    });
     expect(h.q.edgesFrom(h.sym('a.go', 'T0').id, ['implements'])).toEqual([]);
   });
 
@@ -53,6 +56,6 @@ describe('inferGoImplements', () => {
     await h.addFiles({
       'A.java': 'class A { void run() {} }\ninterface I { void run(); }\n',
     });
-    expect(inferGoImplements(h.q)).toBe(0);
+    expect(inferGoImplements(h.q).created).toBe(0);
   });
 });

@@ -10,6 +10,12 @@ export function pythonModuleCandidates(base: string): string[] {
   );
 }
 
+/** The package itself (`from . import y`): only its `__init__`, never a sibling `<dir>.py`. */
+function initOnly(dir: string, ctx: ResolveContext): string | undefined {
+  const init = dir ? `${dir}/__init__` : '__init__';
+  return [`${init}.py`, `${init}.pyi`].find((c) => ctx.fileExists(c));
+}
+
 function firstExisting(base: string, ctx: ResolveContext): string | undefined {
   return pythonModuleCandidates(base).find((c) => ctx.fileExists(c));
 }
@@ -51,7 +57,8 @@ function resolvePython(
   if (spec.startsWith('.')) {
     const rel = relativeBase(from, spec);
     if (!rel) return undefined;
-    const base = rel.rest ? joinRel(rel.dir, rel.rest) : rel.dir;
+    if (!rel.rest) return initOnly(rel.dir, ctx);
+    const base = joinRel(rel.dir, rel.rest);
     return base === undefined ? undefined : firstExisting(base, ctx);
   }
   const parts = spec.split('.');

@@ -445,7 +445,7 @@ describe('resolveReferences — run modes', () => {
     expect((await resolveReferences(q, root)).resolved).toBe(3);
     const edges = edgeCount();
     const second = await resolveReferences(q, root);
-    expect(second).toEqual({ resolved: 0, failed: 0 });
+    expect(second).toEqual({ resolved: 0, failed: 0, skippedImplements: 0 });
     expect(edgeCount()).toBe(edges);
   });
 
@@ -463,7 +463,7 @@ describe('resolveReferences — run modes', () => {
         "import { a } from './a';\nexport function d(): void { a(); }\n",
     });
     const stats = await resolveReferences(q, root, ['src/c.ts']);
-    expect(stats).toEqual({ resolved: 2, failed: 0 });
+    expect(stats).toEqual({ resolved: 2, failed: 0, skippedImplements: 0 });
     expect(targets(sym('src/c.ts', 'c').id, 'calls')).toEqual([
       sym('src/a.ts', 'a').id,
     ]);
@@ -484,7 +484,7 @@ describe('resolveReferences — run modes', () => {
       'src/c.ts': 'export function other(): void {}\n',
     });
     const first = await resolveReferences(q, root);
-    expect(first).toEqual({ resolved: 0, failed: 4 });
+    expect(first).toEqual({ resolved: 0, failed: 4, skippedImplements: 0 });
     expect(targets(fileId('src/a.ts'), 'imports')).toEqual([
       fileId('src/c.ts'),
     ]);

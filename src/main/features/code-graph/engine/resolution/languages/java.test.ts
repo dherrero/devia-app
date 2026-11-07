@@ -35,7 +35,7 @@ describe('java import resolution', () => {
       'src/main/java/com/acme/Bar.java':
         'package com.acme;\npublic class Bar {}\n',
       'src/main/java/com/app/Main.java':
-        'package com.app;\nimport com.acme.*;\npublic class Main {\n  void run() { new Bar(); }\n}\n',
+        'package com.app;\nimport com.acme.*;\npublic class Main {\n  void run() { new Bar(); }\n  void two() { new Foo(); }\n}\n',
     });
     resolveReferences(h.q, h.root);
     expect(
@@ -52,6 +52,12 @@ describe('java import resolution', () => {
         'instantiates',
       ),
     ).toEqual([h.sym('src/main/java/com/acme/Bar.java', 'Bar').id]);
+    expect(
+      h.targets(
+        h.sym('src/main/java/com/app/Main.java', 'Main.two').id,
+        'instantiates',
+      ),
+    ).toEqual([h.sym('src/main/java/com/acme/Foo.java', 'Foo').id]);
   });
 
   it('resolves a static import to the class file and its member', async () => {

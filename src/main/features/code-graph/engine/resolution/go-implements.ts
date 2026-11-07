@@ -5,21 +5,27 @@ import type { GraphQueries, NodeSummary } from '../db/queries';
 /** An interface satisfied by more structs than this is too generic to link (`String()`, `Close()`). */
 export const MAX_IMPLEMENTERS_PER_INTERFACE = 50;
 
+export interface GoImplementsResult {
+  created: number;
+  /** Interfaces skipped for exceeding the implementer cap. */
+  skippedInterfaces: number;
+}
+
 /**
  * Go satisfies interfaces structurally, so the extractor cannot emit `implements`. This links a
  * struct to every interface whose method NAMES it covers (pointer and value receivers both
  * count). Signatures are not compared, so a same-named method with other parameters still
  * matches: edges carry `heuristic` provenance. Interfaces with no methods are ignored, and an
  * interface that would link more than {@link MAX_IMPLEMENTERS_PER_INTERFACE} structs is skipped
- * entirely. Embedded interfaces are not expanded. Returns the number of edges created; running
- * it again creates none.
+ * entirely and counted in `skippedInterfaces`. Embedded interfaces are not expanded. Running it
+ * again creates no edges.
  */
-export function inferGoImplements(db: GraphQueries): number {
+export function inferGoImplements(db: GraphQueries): GoImplementsResult {
   const nodes = db.nodeSummaries().filter((n) => n.language === 'go');
   const types = nodes.filter(
     (n) => n.kind === 'class' || n.kind === 'interface',
   );
-  if (types.length === 0) return 0;
+  if (types.length === 0) return { created: 0, skippedInterfaces: 0 };
   const typeIds = new Set(types.map((t) => t.id));
   const parent = new Map<string, string>();
   for (const e of db.edgesOfKinds(['contains']))
@@ -57,6 +63,7 @@ export function inferGoImplements(db: GraphQueries): number {
   );
   const structs = types.filter((t) => t.kind === 'class');
   const edges: GraphEdge[] = [];
+  let skippedInterfaces = 0;
   for (const iface of types) {
     if (iface.kind !== 'interface') continue;
     const wanted = methodSets.get(iface.id);
@@ -65,7 +72,10 @@ export function inferGoImplements(db: GraphQueries): number {
       const have = methodSets.get(s.id);
       return have !== undefined && [...wanted].every((m) => have.has(m));
     });
-    if (implementers.length > MAX_IMPLEMENTERS_PER_INTERFACE) continue;
+    if (implementers.length > MAX_IMPLEMENTERS_PER_INTERFACE) {
+      skippedInterfaces++;
+      continue;
+    }
     for (const s of implementers)
       if (!existing.has(`${s.id}\0${iface.id}`))
         edges.push({
@@ -76,5 +86,5 @@ export function inferGoImplements(db: GraphQueries): number {
         });
   }
   if (edges.length > 0) db.insertEdges(edges);
-  return edges.length;
+  return { created: edges.length, skippedInterfaces };
 }
