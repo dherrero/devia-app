@@ -127,6 +127,12 @@ export class SymbolIndex {
     return this.byFile.get(file) ?? [];
   }
 
+  hasLanguage(lang: CodeGraphLanguage): boolean {
+    for (const n of this.fileNodes.values())
+      if (n.language === lang) return true;
+    return false;
+  }
+
   filesInDir(dir: string): string[] {
     return this.byDir.get(dir) ?? [];
   }

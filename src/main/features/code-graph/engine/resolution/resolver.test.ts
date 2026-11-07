@@ -545,7 +545,7 @@ describe('resolveReferences — run modes', () => {
 });
 
 describe('resolveReferences — other languages, same file', () => {
-  it('Python: calls, self-members, bases and decorators; imports fail without a resolver', async () => {
+  it('Python: calls, self-members, bases and decorators; relative imports resolve', async () => {
     await addFiles({
       'pkg/app.py': [
         'from .utils import tool',
@@ -584,7 +584,9 @@ describe('resolveReferences — other languages, same file', () => {
     expect(targets(sym('pkg/app.py', 'pkg.app.deco').id, 'decorates')).toEqual([
       run.id,
     ]);
-    expect(refsNamed('.utils')[0]?.status).toBe('failed');
+    expect(targets(fileId('pkg/app.py'), 'imports')).toEqual([
+      fileId('pkg/utils.py'),
+    ]);
   });
 
   it('Go: same-file calls, receiver methods, composite literals; builtins are dropped', async () => {
@@ -777,13 +779,11 @@ describe('resolveReferences — scale', () => {
         }
         q.insertNodes(nodes);
         q.insertEdges(
-          nodes
-            .slice(1)
-            .map((n) => ({
-              source: file.id,
-              target: n.id,
-              kind: 'contains' as const,
-            })),
+          nodes.slice(1).map((n) => ({
+            source: file.id,
+            target: n.id,
+            kind: 'contains' as const,
+          })),
         );
         q.insertUnresolved(refs);
       }

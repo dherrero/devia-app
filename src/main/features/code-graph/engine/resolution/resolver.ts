@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   EDGE_KINDS,
@@ -6,6 +7,7 @@ import {
   type GraphEdge,
 } from '../../../../../shared/domain/code-graph';
 import type { GraphQueries, NodeSummary, UnresolvedRef } from '../db/queries';
+import { inferGoImplements } from './go-implements';
 import { resolverFor, type ResolveContext } from './language-resolvers';
 import {
   collapseOverloads,
@@ -145,6 +147,13 @@ class ResolutionRun {
       root,
       fileExists: (rel) => fileSet.has(rel),
       listFiles: () => files,
+      readText: (rel) => {
+        try {
+          return fs.readFileSync(path.join(root, rel), 'utf8');
+        } catch {
+          return undefined;
+        }
+      },
     };
     this.index = new SymbolIndex(
       db.nodeSummaries(),
@@ -162,6 +171,7 @@ class ResolutionRun {
       for (const kinds of PHASES)
         this.processAll(refs.filter((r) => kinds.includes(r.referenceKind)));
     }
+    if (this.index.hasLanguage('go')) inferGoImplements(this.db);
     return this.stats;
   }
 
@@ -256,21 +266,47 @@ class ResolutionRun {
       fail(importStem(ref.referenceName));
       return;
     }
-    const target = resolver.resolveImport(
-      ref.filePath,
-      ref.referenceName,
-      this.ctx,
-    );
-    const targetFile =
-      target === undefined ? undefined : this.index.fileNodes.get(target);
+    const star = meta['star'] === true;
+    const imported =
+      typeof meta['imported'] === 'string' ? meta['imported'] : undefined;
+    const submodule =
+      imported !== undefined && !star
+        ? resolver.resolveSubmodule?.(
+            ref.filePath,
+            ref.referenceName,
+            imported,
+            this.ctx,
+          )
+        : undefined;
+    let candidates: string[];
+    if (submodule !== undefined) candidates = [submodule];
+    else if (resolver.resolveImportAll)
+      candidates = resolver.resolveImportAll(
+        ref.filePath,
+        ref.referenceName,
+        this.ctx,
+        star,
+      );
+    else {
+      const one = resolver.resolveImport(
+        ref.filePath,
+        ref.referenceName,
+        this.ctx,
+      );
+      candidates = one === undefined ? [] : [one];
+    }
+    const targets = candidates.filter((t) => this.index.fileNodes.has(t));
+    const target = targets[0];
     const sourceFile = this.index.fileNodes.get(ref.filePath);
-    if (target === undefined || !targetFile || !sourceFile) {
+    if (target === undefined || !sourceFile) {
       if (bindingName)
         this.bind(ref.filePath, bindingName, { kind: 'blocked' });
       fail(importStem(ref.referenceName));
       return;
     }
-    if (target !== ref.filePath) {
+    for (const t of targets) {
+      const targetFile = this.index.fileNodes.get(t);
+      if (t === ref.filePath || !targetFile) continue;
       writes.edges.push({
         source: sourceFile.id,
         target: targetFile.id,
@@ -278,23 +314,22 @@ class ResolutionRun {
         provenance: 'static',
       });
       if (ref.referenceKind === 'imports')
-        this.index.addImport(ref.filePath, target);
+        this.index.addImport(ref.filePath, t);
     }
     if (!bindingName) {
       writes.deletes.push(id);
       this.stats.resolved++;
       return;
     }
-    const imported =
-      typeof meta['imported'] === 'string' ? meta['imported'] : undefined;
     let binding: Binding | undefined;
     if (
-      meta['star'] === true ||
+      star ||
+      submodule !== undefined ||
       (imported === undefined && ref.language !== 'java')
     ) {
       binding = {
         kind: 'namespace',
-        files: this.namespaceFiles(target, ref.language),
+        files: ref.language === 'go' ? targets : [target],
       };
     } else {
       binding = this.findExport(target, imported ?? bindingName, 0, new Set());
@@ -305,6 +340,14 @@ class ResolutionRun {
       return;
     }
     this.bind(ref.filePath, bindingName, binding);
+    // `import a.b` binds `a`, but the code says `a.b.f()`: keep the dotted form too.
+    if (
+      ref.language === 'python' &&
+      imported === undefined &&
+      meta['alias'] === undefined &&
+      ref.referenceName.includes('.')
+    )
+      this.bind(ref.filePath, ref.referenceName, binding);
     writes.deletes.push(id);
     this.stats.resolved++;
   }
@@ -313,13 +356,6 @@ class ResolutionRun {
     let map = this.bindings.get(file);
     if (!map) this.bindings.set(file, (map = new Map()));
     map.set(name, binding);
-  }
-
-  /** A Go package is its directory; everywhere else a namespace import is one file. */
-  private namespaceFiles(target: string, lang: CodeGraphLanguage): string[] {
-    if (lang !== 'go') return [target];
-    const dir = path.posix.dirname(target);
-    return this.index.filesInDir(dir === '.' ? '' : dir);
   }
 
   /** What `name` exported from `file` is: TS export nodes (local, re-export, `*`), `default`, or a top-level symbol. */
@@ -374,6 +410,21 @@ class ResolutionRun {
     const hits = collapseOverloads(exported.length > 0 ? exported : named);
     if (hits.length === 1 && hits[0]) return { kind: 'symbol', node: hits[0] };
     if (hits.length > 1) return undefined;
+    if (file.endsWith('.java')) {
+      // Nested types and static members: `import a.Outer.Inner`, `import static a.C.m`.
+      const nested = collapseOverloads(
+        nodes.filter(
+          (n) =>
+            n.name === name &&
+            !NON_TARGETS.has(n.kind) &&
+            !isConstructor(n) &&
+            !this.index.isTopLevel(n) &&
+            (isClassLike(n) || n.kind === 'method' || n.kind === 'field'),
+        ),
+      );
+      const [only] = nested;
+      if (nested.length === 1 && only) return { kind: 'symbol', node: only };
+    }
 
     const found = new Map<string, ExportTarget>();
     for (const e of nodes) {
@@ -453,7 +504,17 @@ class ResolutionRun {
     } else {
       const receiver =
         from.language === 'go' ? this.goReceiver(from) : undefined;
-      const binding = this.bindings.get(from.filePath)?.get(head);
+      const fileBindings = this.bindings.get(from.filePath);
+      let binding = fileBindings?.get(head);
+      if (from.language === 'python' && fileBindings) {
+        for (let n = segs.length - 1; n >= 2; n--) {
+          const dotted = fileBindings.get(segs.slice(0, n).join('.'));
+          if (!dotted) continue;
+          binding = dotted;
+          rest.splice(0, n - 1);
+          break;
+        }
+      }
       if (receiver && receiver.name === head) {
         current = [receiver.type];
       } else if (binding) {
