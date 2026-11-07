@@ -160,7 +160,9 @@ export function searchSymbols(
   if (fts) add(fts);
   // FTS tokenises whole identifiers, so camelCase segments need the substring
   // scan; it always runs for short queries and whenever FTS is unavailable.
-  if (!fts || parsed.terms.length <= w.maxTermsForSubstring) {
+  const scan =
+    !fts || parsed.terms.length <= w.maxTermsForSubstring || fts.length < limit;
+  if (scan) {
     for (const patterns of substringPatternSets(parsed)) {
       add(db.searchSubstring(patterns, cap, filter));
       add(db.searchSubstring(patterns, cap, filter, 'text'));

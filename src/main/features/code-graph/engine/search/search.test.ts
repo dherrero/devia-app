@@ -128,14 +128,26 @@ describe('searchSymbols', () => {
   });
 
   it('does not let path tokens crowd out segment matches', () => {
-    const batch: GraphNode[] = [];
+    q.upsertFile(fileRow('src/other.ts'));
+    q.upsertFile(fileRow('src/user/items.ts'));
+    const batch: GraphNode[] = [
+      node('seg', 'getAccountByUser', 'src/other.ts', { isExported: false }),
+    ];
     for (let i = 0; i < 150; i++)
       batch.push(node(`p${i}`, `item${i}`, 'src/user/items.ts'));
     q.insertNodes(batch);
     for (const useFts of [true, false]) {
-      const r = names('user', { limit: 5, useFts });
-      expect(r).toContain('getUserById');
-      expect(r.some((n) => n.startsWith('item'))).toBe(false);
+      const r = names('account', { limit: 5, useFts });
+      expect(r).toEqual(['getAccountByUser']);
+      const u = names('user', { limit: 5, useFts });
+      expect(u).toContain('getAccountByUser');
+      expect(u.some((n) => n.startsWith('item'))).toBe(false);
+    }
+  });
+
+  it('finds camelCase names with 4-term queries when FTS is on', () => {
+    for (const useFts of [true, false]) {
+      expect(names('get user by id', { useFts })[0]).toBe('getUserById');
     }
   });
 
