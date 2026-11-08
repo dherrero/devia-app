@@ -5,6 +5,7 @@ import { resolveReferences } from '../resolution/resolver';
 import { findPath, getCallees, getCallers, getImpact } from './traversal';
 import {
   bestOf,
+  perfBudget,
   mkEdge,
   mkNode,
   openTempDb,
@@ -314,19 +315,19 @@ describe('traversal performance', () => {
     expect(t.q.counts().edges).toBeGreaterThan(140_000);
 
     const r = bestOf(() => impactOf(t.q, 'n0', { depth: 3, limit: 200 }));
-    expect(r.ms).toBeLessThan(500);
+    expect(r.ms).toBeLessThan(perfBudget(500));
     expect(r.value.byDepth.flatMap((x) => x.nodes).length).toBeLessThanOrEqual(
       200,
     );
 
     const p = bestOf(() => findPath(t.q, `n${N - 1}`, 'n0', { maxDepth: 40 }));
-    expect(p.ms).toBeLessThan(3000);
+    expect(p.ms).toBeLessThan(perfBudget(3000));
     expect(p.value).not.toBeNull();
 
     const none = bestOf(() =>
       findPath(t.q, `n${N - 1}`, 'iso', { maxDepth: 40 }),
     );
-    expect(none.ms).toBeLessThan(3000);
+    expect(none.ms).toBeLessThan(perfBudget(3000));
     expect(none.value).toBeNull();
   }, 60_000);
 });

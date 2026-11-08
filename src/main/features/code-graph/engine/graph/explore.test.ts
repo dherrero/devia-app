@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveReferences } from '../resolution/resolver';
 import { createHarness, type Harness } from '../resolution/test-support';
 import { exploreSymbols } from './explore';
-import { bestOf, mkEdge, mkNode, openTempDb, seedGraph } from './test-graph';
+import { bestOf, perfBudget, mkEdge, mkNode, openTempDb, seedGraph } from './test-graph';
 
 const FILES: Record<string, string> = {
   'src/a.ts': `import { mid } from './mid';
@@ -204,7 +204,7 @@ describe('exploreSymbols', () => {
       seedGraph(t.q, nodes, edges);
       const run = bestOf(() => exploreSymbols(t.q, h.root, 'n0 n3 n6 n9 n12'));
       expect(run.value.found).toBe(5);
-      expect(run.ms).toBeLessThan(1000);
+      expect(run.ms).toBeLessThan(perfBudget(1000));
     } finally {
       t.close();
     }

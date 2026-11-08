@@ -17,6 +17,7 @@ import {
 import { makeNodeId } from '../extraction/node-id';
 import { extractorFor } from '../extraction/registry';
 import { resolveReferences } from './resolver';
+import { perfBudget } from '../graph/test-graph';
 
 let root: string;
 let dataDir: string;
@@ -790,7 +791,7 @@ describe('resolveReferences — scale', () => {
     });
     const started = Date.now();
     const stats = await resolveReferences(q, root);
-    expect(Date.now() - started).toBeLessThan(30_000);
+    expect(Date.now() - started).toBeLessThan(perfBudget(30_000));
     expect(stats.resolved + stats.failed).toBe(files * (perFile - 1) * 3);
     expect(stats.resolved).toBeGreaterThan(files * (perFile - 1) * 2);
   }, 180_000);

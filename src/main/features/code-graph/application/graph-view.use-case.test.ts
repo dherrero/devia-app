@@ -24,7 +24,7 @@ import {
   readHubs,
   type Hub,
 } from '../engine/graph/communities';
-import { bestOf } from '../engine/graph/test-graph';
+import { bestOf, perfBudget } from '../engine/graph/test-graph';
 import { indexProject } from '../engine/indexer/orchestrator';
 import { CodeGraphStore } from '../infrastructure/code-graph-store';
 import { GraphViewUseCase } from './graph-view.use-case';
@@ -845,12 +845,12 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     const cold = coldBest(env, (fresh) => fresh.overview(env.project));
     timings['overviewCold'] = cold.ms;
     expect(cold.value.edges.length).toBeGreaterThan(0);
-    expect(cold.ms).toBeLessThan(300);
+    expect(cold.ms).toBeLessThan(perfBudget(300));
     const r = bestOf(() => uc.overview(env.project));
     timings['overview'] = r.ms;
     expect(r.value.nodes.map((n) => n.id)).toEqual(['dir:big', ...Array.from({ length: 10 }, (_, i) => `dir:pkg${i}`)]);
     expect(r.value.edges.length).toBeGreaterThan(0);
-    expect(r.ms).toBeLessThan(300);
+    expect(r.ms).toBeLessThan(perfBudget(300));
   }, 60_000);
 
   it('expand of a directory with 800 children ≤ 200 ms', () => {
@@ -860,7 +860,7 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     timings['expand800'] = r.ms;
     expect(r.value.nodes).toHaveLength(GRAPH_EXPAND_LIMIT);
     expect(r.value.edges.length).toBeGreaterThan(0);
-    expect(r.ms).toBeLessThan(200);
+    expect(r.ms).toBeLessThan(perfBudget(200));
     timings['expand800Cold'] = coldBest(env, (fresh) => fresh.expand(env.project, 'dir:big', { visibleIds })).ms;
   }, 60_000);
 
@@ -870,7 +870,7 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     const cold = coldBest(env, (fresh) => fresh.expand(env.project, file, { visibleIds }));
     timings['expandFileCold'] = cold.ms;
     expect(cold.value.nodes.length).toBeGreaterThan(0);
-    expect(cold.ms).toBeLessThan(200);
+    expect(cold.ms).toBeLessThan(perfBudget(200));
     timings['expandFile'] = bestOf(() => uc.expand(env.project, file, { visibleIds })).ms;
   }, 60_000);
 
@@ -895,15 +895,15 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     const cold = coldBest(env, (fresh) => fresh.nodeDetail(env.project, target));
     timings['nodeDetailSymbolCold'] = cold.ms;
     expect(cold.value?.kind).toBe('symbol');
-    expect(cold.ms).toBeLessThan(300);
+    expect(cold.ms).toBeLessThan(perfBudget(300));
     const r = bestOf(() => uc.nodeDetail(env.project, target));
     timings['nodeDetailSymbol'] = r.ms;
     expect(r.value?.kind).toBe('symbol');
-    expect(r.ms).toBeLessThan(300);
+    expect(r.ms).toBeLessThan(perfBudget(300));
     const dir = bestOf(() => uc.nodeDetail(env.project, 'dir:pkg0'));
     timings['nodeDetailDir'] = dir.ms;
     expect(dir.value?.kind).toBe('dir');
-    expect(dir.ms).toBeLessThan(300);
+    expect(dir.ms).toBeLessThan(perfBudget(300));
   }, 60_000);
 
   it('nodeDetail of a directory holding the whole graph ≤ 300 ms cold', () => {
@@ -914,7 +914,7 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     expect(d).toMatchObject({ fileCount: 5000, symbolCount: 45_000 });
     expect(d.topHubs).toHaveLength(5);
     expect(d.topHubs.every((n) => n.filePath.startsWith('all/'))).toBe(true);
-    expect(cold.ms).toBeLessThan(300);
+    expect(cold.ms).toBeLessThan(perfBudget(300));
     const warm = new GraphViewUseCase({ store: whole.store });
     timings['nodeDetailWholeDir'] = bestOf(() => warm.nodeDetail(whole.project, 'dir:all')).ms;
   }, 60_000);
@@ -923,7 +923,7 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     const cold = coldBest(env, (fresh) => fresh.search(env.project, 'fn1'));
     timings['searchCold'] = cold.ms;
     expect(cold.value.length).toBeGreaterThan(0);
-    expect(cold.ms).toBeLessThan(300);
+    expect(cold.ms).toBeLessThan(perfBudget(300));
     const r = bestOf(() => uc.search(env.project, 'fn1'));
     timings['search'] = r.ms;
     expect(r.value.length).toBeGreaterThan(0);
@@ -931,6 +931,6 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     const mixed = uc.search(env.project, 'b00');
     expect(mixed.some((x) => x.node.kind === 'file')).toBe(true);
     expect(mixed.length).toBeLessThanOrEqual(50);
-    expect(r.ms).toBeLessThan(300);
+    expect(r.ms).toBeLessThan(perfBudget(300));
   }, 60_000);
 });

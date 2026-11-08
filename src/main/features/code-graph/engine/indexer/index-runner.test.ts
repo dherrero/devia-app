@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import type { IndexProgress } from '../../../../../shared/domain/code-graph';
 import { acquireWriterLock, readWriterLock } from '../db/writer-lock';
 import { runIndexInWorker } from './index-runner';
+import { perfBudget } from '../graph/test-graph';
 
 const workerEntry = path.join(__dirname, '__fixtures__', 'ts-worker-shim.cjs');
 
@@ -66,7 +67,7 @@ describe('runIndexInWorker', () => {
 
     await expect(run.promise).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancelledProgress?.filesDone).toBeLessThan(total);
-    expect(Date.now() - cancelledAt).toBeLessThan(2000);
+    expect(Date.now() - cancelledAt).toBeLessThan(perfBudget(2000));
     expect(fs.readdirSync(dataDir).sort()).toEqual(['graph.db']);
     expect(fs.readFileSync(path.join(dataDir, 'graph.db'), 'utf8')).toBe('previous');
     expect(readWriterLock(dataDir)).toBeNull();
@@ -128,7 +129,7 @@ describe('runIndexInWorker', () => {
     const cancelledAt = Date.now();
     run.cancel();
     await expect(run.promise).rejects.toMatchObject({ name: 'AbortError' });
-    expect(Date.now() - cancelledAt).toBeLessThan(2000);
+    expect(Date.now() - cancelledAt).toBeLessThan(perfBudget(2000));
     expect(fs.readdirSync(dataDir).sort()).toEqual(['graph.db']);
     expect(readWriterLock(dataDir)).toBeNull();
   }, 15_000);

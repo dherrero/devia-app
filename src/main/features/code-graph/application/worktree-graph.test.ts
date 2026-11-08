@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { openGraphDb } from '../engine/db/connection';
 import { GraphQueries } from '../engine/db/queries';
 import { acquireWriterLock } from '../engine/db/writer-lock';
+import { perfBudget } from '../engine/graph/test-graph';
 import { fullIndex, snapshotGraph } from '../engine/indexer/sync-test-support';
 import type { SyncResult } from '../engine/indexer/sync';
 import { CodeGraphStore } from '../infrastructure/code-graph-store';
@@ -176,7 +177,7 @@ describe('seed robustness', () => {
     maxGap = Math.max(maxGap, Date.now() - last);
     expect(res).toEqual({ seeded: true });
     expect(Date.now() - started).toBeGreaterThan(50);
-    expect(maxGap).toBeLessThan(250);
+    expect(maxGap).toBeLessThan(perfBudget(250));
   }, 60_000);
 
   it('a crashing worker yields copy-failed and leaves no temp files or graph', async () => {

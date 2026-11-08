@@ -7,6 +7,7 @@ import { resolveReferences } from '../resolution/resolver';
 import { getAffected } from './affected';
 import {
   bestOf,
+  perfBudget,
   mkEdge,
   mkNode,
   openTempDb,
@@ -298,7 +299,7 @@ describe('getAffected performance', () => {
 
     const changed = Array.from({ length: 200 }, (_, i) => `src/f${i}.ts`);
     const r = bestOf(() => getAffected(t.q, changed, { limit: 100_000 }));
-    expect(r.ms).toBeLessThan(2000);
+    expect(r.ms).toBeLessThan(perfBudget(2000));
     expect(r.value.truncated).toBe(false);
     expect(r.value.files).toHaveLength(202);
     expect(r.value.unknown).toEqual([]);

@@ -12,6 +12,7 @@ import {
 import {
   mkEdge,
   bestOf,
+  perfBudget,
   mkNode,
   openTempDb,
   seedGraph,
@@ -130,7 +131,7 @@ describe('computeCommunities', () => {
       t.q.insertEdges(edges);
     });
     const run = bestOf(() => computeCommunities(t.q));
-    expect(run.ms).toBeLessThan(10_000);
+    expect(run.ms).toBeLessThan(perfBudget(10_000));
     expect(run.value.assignments.size).toBe(N);
   }, 120_000);
 });
