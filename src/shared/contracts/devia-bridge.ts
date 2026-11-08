@@ -12,7 +12,13 @@ import type {
 import type { NewFromBaseResult } from '../domain/base';
 import type { RemoteControlStatus, TelegramTestResult } from '../domain/remote-control';
 import type { UpdateStatus } from '../domain/update';
-import type { CodeGraphStatus } from '../domain/code-graph';
+import type {
+  CodeGraphStatus,
+  GraphExpandOptions,
+  GraphNodeDetail,
+  GraphSearchResult,
+  GraphViewPage,
+} from '../domain/code-graph';
 import type { ProjectEntry, PinnedEntry } from '../domain/project';
 import type { SessionMeta } from '../domain/session';
 import type {
@@ -722,6 +728,17 @@ export interface DeviaBridge {
   /** Live status for the project open in the graph view (pushed via `onCodeGraphStatusChanged`). */
   codeGraphWatch(project: string): Promise<void>;
   codeGraphUnwatch(project: string): Promise<void>;
+  /**
+   * Graph view reads. Without a graph they resolve with an empty page, `undefined`
+   * or `[]`; unknown or vanished node ids give an empty page too. Directory ids
+   * are `dir:<root-relative path>`; pages hold at most 500 nodes (`hasMore` +
+   * `offset` for the rest) and `visibleIds` at most 2000 ids.
+   */
+  codeGraphOverview(project: string): Promise<GraphViewPage>;
+  codeGraphExpand(project: string, nodeId: string, opts?: GraphExpandOptions): Promise<GraphViewPage>;
+  codeGraphNodeDetail(project: string, nodeId: string): Promise<GraphNodeDetail | undefined>;
+  /** At most 50 symbol and file-path hits. */
+  codeGraphSearch(project: string, q: string): Promise<GraphSearchResult[]>;
   onCodeGraphProgress(cb: (e: CodeGraphProgressPayload) => void): () => void;
   onCodeGraphStatusChanged(cb: (e: CodeGraphStatusChangedPayload) => void): () => void;
 

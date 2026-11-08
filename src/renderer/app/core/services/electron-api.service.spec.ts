@@ -91,6 +91,10 @@ describe('ElectronApiService code graph wrappers', () => {
     codeGraphUpdate: vi.fn(async () => ({ state: 'ready' })),
     codeGraphWatch: vi.fn(async () => undefined),
     codeGraphUnwatch: vi.fn(async () => undefined),
+    codeGraphOverview: vi.fn(async () => ({ nodes: [], edges: [], total: 0, hasMore: false })),
+    codeGraphExpand: vi.fn(async () => ({ nodes: [], edges: [], total: 0, hasMore: false })),
+    codeGraphNodeDetail: vi.fn(async () => undefined),
+    codeGraphSearch: vi.fn(async () => []),
     onCodeGraphProgress: vi.fn(() => unsubscribe),
     onCodeGraphStatusChanged: vi.fn(() => unsubscribe),
   };
@@ -128,6 +132,20 @@ describe('ElectronApiService code graph wrappers', () => {
     expect(bridge.codeGraphUpdate).toHaveBeenCalledWith('a/b');
     expect(bridge.codeGraphWatch).toHaveBeenCalledWith('a/b');
     expect(bridge.codeGraphUnwatch).toHaveBeenCalledWith('a/b');
+  });
+
+  it('forwards the graph view reads to the bridge', async () => {
+    const service = TestBed.inject(ElectronApiService);
+
+    await expect(service.codeGraphOverview('a/b')).resolves.toEqual({ nodes: [], edges: [], total: 0, hasMore: false });
+    await service.codeGraphExpand('a/b', 'dir:src', { offset: 500, visibleIds: ['dir:src'] });
+    await service.codeGraphNodeDetail('a/b', 'dir:src');
+    await expect(service.codeGraphSearch('a/b', 'helper')).resolves.toEqual([]);
+
+    expect(bridge.codeGraphOverview).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphExpand).toHaveBeenCalledWith('a/b', 'dir:src', { offset: 500, visibleIds: ['dir:src'] });
+    expect(bridge.codeGraphNodeDetail).toHaveBeenCalledWith('a/b', 'dir:src');
+    expect(bridge.codeGraphSearch).toHaveBeenCalledWith('a/b', 'helper');
   });
 
   it('returns the unsubscribe of both event subscriptions', () => {

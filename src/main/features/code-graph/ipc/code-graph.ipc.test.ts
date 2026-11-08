@@ -1,11 +1,21 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { IPC } from '../../../../shared/contracts/ipc-channels';
-import type { CodeGraphStatus, IndexProgress } from '../../../../shared/domain/code-graph';
+import {
+  GRAPH_PAGE_LIMIT,
+  type CodeGraphStatus,
+  type GraphOverviewNode,
+  type GraphViewPage,
+  type IndexProgress,
+} from '../../../../shared/domain/code-graph';
 import type { FeatureContext } from '../../../shared/feature';
 import type { CodeGraphUseCase, SyncNowResult } from '../application/code-graph.use-case';
+import { GraphViewUseCase } from '../application/graph-view.use-case';
+import { CodeGraphStore } from '../infrastructure/code-graph-store';
 import { registerCodeGraphIpc } from './code-graph.ipc';
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
@@ -54,12 +64,20 @@ interface Harness {
     syncNow: ReturnType<typeof vi.fn>;
     watch: ReturnType<typeof vi.fn>;
   };
+  view: {
+    overview: ReturnType<typeof vi.fn>;
+    expand: ReturnType<typeof vi.fn>;
+    nodeDetail: ReturnType<typeof vi.fn>;
+    search: ReturnType<typeof vi.fn>;
+  };
   listeners: Map<string, (s: CodeGraphStatus) => void>;
   stops: Map<string, ReturnType<typeof vi.fn>>;
   call(channel: string, sender: FakeSender, ...args: unknown[]): unknown;
 }
 
-function setup(workspaceRoot = ROOT): Harness {
+const EMPTY_PAGE: GraphViewPage = { nodes: [], edges: [], total: 0, hasMore: false };
+
+function setup(workspaceRoot = ROOT, realView?: GraphViewUseCase): Harness {
   const handlers = new Map<string, Handler>();
   const ctx = {
     ipc: { handle: (channel: string, fn: Handler) => handlers.set(channel, fn) },
@@ -83,11 +101,18 @@ function setup(workspaceRoot = ROOT): Harness {
       return { stop };
     }),
   };
+  const view = {
+    overview: vi.fn(() => EMPTY_PAGE),
+    expand: vi.fn(() => EMPTY_PAGE),
+    nodeDetail: vi.fn(() => undefined),
+    search: vi.fn(() => []),
+  };
   registerCodeGraphIpc(ctx, {
     config: { get: () => ({ workspaceRoot }) } as never,
     useCase: useCase as unknown as CodeGraphUseCase,
+    view: realView ?? (view as unknown as GraphViewUseCase),
   });
-  return { handlers, useCase, listeners, stops, call: (channel, sender, ...args) => {
+  return { handlers, useCase, view, listeners, stops, call: (channel, sender, ...args) => {
       const fn = handlers.get(channel);
       if (!fn) throw new Error(`no handler for ${channel}`);
       return fn({ sender }, ...args);
@@ -107,6 +132,7 @@ describe('code-graph IPC', () => {
     for (const key of [
       'codeGraphStatus', 'codeGraphIndex', 'codeGraphCancel', 'codeGraphReset', 'codeGraphSetAgentAccess',
       'codeGraphSetAutoUpdate', 'codeGraphUpdate', 'codeGraphWatch', 'codeGraphUnwatch',
+      'codeGraphOverview', 'codeGraphExpand', 'codeGraphNodeDetail', 'codeGraphSearch',
     ] as const) {
       expect(h.handlers.has(IPC[key]), key).toBe(true);
     }
@@ -326,6 +352,128 @@ describe('code-graph IPC', () => {
       h.call(IPC.codeGraphUnwatch, sender, 'a');
       expect(sender.listenerCount('destroyed')).toBe(0);
       expect(sender.listenerCount('did-start-navigation')).toBe(0);
+    });
+  });
+
+  describe('graph view queries', () => {
+    const node = (i: number): GraphOverviewNode => ({ id: `n${i}`, kind: 'function', label: `n${i}`, childCount: 0, path: 'a.ts' });
+
+    it('delegates with the resolved project and the validated arguments', () => {
+      h.call(IPC.codeGraphOverview, sender, 'team/app');
+      h.call(IPC.codeGraphExpand, sender, 'team/app', 'dir:src', { offset: 500, visibleIds: ['dir:src', 'x'] });
+      h.call(IPC.codeGraphExpand, sender, 'team/app', 'dir:lib');
+      h.call(IPC.codeGraphNodeDetail, sender, 'team/app', 'file:abc');
+      h.call(IPC.codeGraphSearch, sender, 'team/app', 'helper');
+      expect(h.view.overview).toHaveBeenCalledWith(abs('team/app'));
+      expect(h.view.expand).toHaveBeenNthCalledWith(1, abs('team/app'), 'dir:src', { offset: 500, visibleIds: ['dir:src', 'x'] });
+      expect(h.view.expand).toHaveBeenNthCalledWith(2, abs('team/app'), 'dir:lib', { visibleIds: [] });
+      expect(h.view.nodeDetail).toHaveBeenCalledWith(abs('team/app'), 'file:abc');
+      expect(h.view.search).toHaveBeenCalledWith(abs('team/app'), 'helper');
+    });
+
+    it('rejects a bad or escaping project on every view channel', () => {
+      for (const bad of [undefined, '', 42]) {
+        expect(() => h.call(IPC.codeGraphOverview, sender, bad)).toThrow(/project/i);
+        expect(() => h.call(IPC.codeGraphExpand, sender, bad, 'x')).toThrow(/project/i);
+        expect(() => h.call(IPC.codeGraphNodeDetail, sender, bad, 'x')).toThrow(/project/i);
+        expect(() => h.call(IPC.codeGraphSearch, sender, bad, 'x')).toThrow(/project/i);
+      }
+      expect(() => h.call(IPC.codeGraphOverview, sender, '../evil')).toThrow(/workspace/i);
+      expect(() => h.call(IPC.codeGraphExpand, sender, 'a/../../evil', 'x')).toThrow(/workspace/i);
+      expect(() => h.call(IPC.codeGraphNodeDetail, sender, path.resolve('/etc'), 'x')).toThrow(/workspace/i);
+      expect(() => h.call(IPC.codeGraphSearch, sender, '../evil', 'x')).toThrow(/workspace/i);
+      expect(h.view.overview).not.toHaveBeenCalled();
+      expect(h.view.expand).not.toHaveBeenCalled();
+      expect(h.view.nodeDetail).not.toHaveBeenCalled();
+      expect(h.view.search).not.toHaveBeenCalled();
+    });
+
+    it('validates nodeId: non-empty string of at most 1000 chars', () => {
+      for (const bad of [undefined, '', 7, 'x'.repeat(1001)]) {
+        expect(() => h.call(IPC.codeGraphExpand, sender, 'a', bad)).toThrow(/nodeId/);
+        expect(() => h.call(IPC.codeGraphNodeDetail, sender, 'a', bad)).toThrow(/nodeId/);
+      }
+      h.call(IPC.codeGraphNodeDetail, sender, 'a', 'x'.repeat(1000));
+      expect(h.view.nodeDetail).toHaveBeenCalledTimes(1);
+      expect(h.view.expand).not.toHaveBeenCalled();
+    });
+
+    it('validates the search query: a string of at most 200 chars', () => {
+      for (const bad of [undefined, 3, {}, 'q'.repeat(201)]) {
+        expect(() => h.call(IPC.codeGraphSearch, sender, 'a', bad)).toThrow(/query/);
+      }
+      h.call(IPC.codeGraphSearch, sender, 'a', 'q'.repeat(200));
+      h.call(IPC.codeGraphSearch, sender, 'a', '');
+      expect(h.view.search).toHaveBeenCalledTimes(2);
+    });
+
+    it('validates expand options: offset and visibleIds limits', () => {
+      const bad: unknown[] = [
+        'nope',
+        [],
+        { offset: -1, visibleIds: [] },
+        { offset: 1.5, visibleIds: [] },
+        { offset: '3', visibleIds: [] },
+        { visibleIds: 'dir:a' },
+        { visibleIds: [''] },
+        { visibleIds: [7] },
+        { visibleIds: ['x'.repeat(1001)] },
+        { visibleIds: Array.from({ length: 2001 }, (_, i) => `n${i}`) },
+      ];
+      for (const opts of bad) {
+        expect(() => h.call(IPC.codeGraphExpand, sender, 'a', 'dir:a', opts), JSON.stringify(opts).slice(0, 40)).toThrow(/offset|visibleIds|opts/);
+      }
+      expect(h.view.expand).not.toHaveBeenCalled();
+      h.call(IPC.codeGraphExpand, sender, 'a', 'dir:a', { offset: 0, visibleIds: Array.from({ length: 2000 }, (_, i) => `n${i}`) });
+      expect(h.view.expand).toHaveBeenCalledTimes(1);
+    });
+
+    it('never returns a page above GRAPH_PAGE_LIMIT nodes', () => {
+      const nodes = Array.from({ length: GRAPH_PAGE_LIMIT + 500 }, (_, i) => node(i));
+      const edges = [
+        { source: 'n0', target: 'n1', kind: 'aggregate', weight: 1 },
+        { source: 'n0', target: `n${GRAPH_PAGE_LIMIT + 10}`, kind: 'aggregate', weight: 1 },
+        { source: 'n0', target: 'dir:visible', kind: 'aggregate', weight: 1 },
+      ];
+      const big = { nodes, edges, total: nodes.length, hasMore: false };
+      h.view.overview.mockReturnValue(big);
+      h.view.expand.mockReturnValue(big);
+      for (const page of [
+        h.call(IPC.codeGraphOverview, sender, 'a') as GraphViewPage,
+        h.call(IPC.codeGraphExpand, sender, 'a', 'dir:a', { visibleIds: ['dir:visible'] }) as GraphViewPage,
+      ]) {
+        expect(page.nodes).toHaveLength(GRAPH_PAGE_LIMIT);
+        expect(page.hasMore).toBe(true);
+        expect(page.edges.map((e) => e.target)).toEqual(['n1', 'dir:visible']);
+      }
+    });
+
+    it('sanitizes unexpected view errors (no host paths)', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      h.view.overview.mockImplementation(() => {
+        throw new Error(`SQLITE_CORRUPT ${ROOT}/graph.db`);
+      });
+      let err: unknown;
+      try {
+        h.call(IPC.codeGraphOverview, sender, 'a');
+      } catch (e) {
+        err = e;
+      }
+      expect((err as Error).message).toBe('Code graph operation failed');
+      warn.mockRestore();
+    });
+
+    it('answers success-shaped empties when the project has no graph', () => {
+      const deviaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-ipc-view-'));
+      try {
+        const real = setup(ROOT, new GraphViewUseCase({ store: new CodeGraphStore(() => deviaDir) }));
+        expect(real.call(IPC.codeGraphOverview, sender, 'a')).toEqual(EMPTY_PAGE);
+        expect(real.call(IPC.codeGraphExpand, sender, 'a', 'dir:src', { visibleIds: [] })).toEqual(EMPTY_PAGE);
+        expect(real.call(IPC.codeGraphNodeDetail, sender, 'a', 'dir:src')).toBeUndefined();
+        expect(real.call(IPC.codeGraphSearch, sender, 'a', 'helper')).toEqual([]);
+      } finally {
+        fs.rmSync(deviaDir, { recursive: true, force: true });
+      }
     });
   });
 });

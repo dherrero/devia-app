@@ -1,11 +1,12 @@
 import type { StatementSync } from 'node:sqlite';
-import type {
-  CodeGraphLanguage,
-  EdgeKind,
-  GraphEdge,
-  GraphNode,
-  NodeKind,
-  RefMetadata,
+import {
+  isEdgeKind,
+  type CodeGraphLanguage,
+  type EdgeKind,
+  type GraphEdge,
+  type GraphNode,
+  type NodeKind,
+  type RefMetadata,
 } from '../../../../../shared/domain/code-graph';
 import type { GraphDb } from './connection';
 
@@ -188,6 +189,49 @@ function toSearchRow(r: SearchRowRaw): SearchRow {
   };
   if (r.bm25_score !== undefined) row.bm25 = r.bm25_score;
   return row;
+}
+
+export interface ViewChildRow {
+  /** Root-relative path of the child directory or file. */
+  path: string;
+  isDir: boolean;
+  fileCount: number;
+  symbolCount: number;
+  /** Direct children: subdirs + files of a dir, `contains` children of a file. */
+  childCount: number;
+  fileId?: string;
+  language?: CodeGraphLanguage;
+  isTest?: boolean;
+}
+
+export interface ViewEdgeRow {
+  source: string;
+  target: string;
+  weight: number;
+}
+
+export interface ViewEdgeQuery {
+  /** Nodes whose edges are read: a directory subtree or a single file. */
+  scope: { dir: string } | { file: string };
+  kinds: EdgeKind[];
+  /** Narrows the scope (e.g. to one page of a directory); called with file paths inside it. */
+  inScope: (filePath: string) => boolean;
+  /** Key an endpoint is folded into; `null` drops the edge. */
+  rep: (filePath: string, id: string) => string | null;
+}
+
+export interface DirSummary {
+  fileCount: number;
+  symbolCount: number;
+  languages: Partial<Record<CodeGraphLanguage, number>>;
+}
+
+const VIEW_REP_FN = 'cg_view_rep';
+const VIEW_IN_FN = 'cg_view_in';
+
+/** `[lo, hi)` bounds of every path under `dir/` ('0' is the code point after '/'). */
+function dirRange(dir: string): [string, string] {
+  return [`${dir}/`, `${dir}0`];
 }
 
 function escapeLike(s: string): string {
@@ -769,6 +813,275 @@ export class GraphQueries {
         ).run(...chunk);
       }
     });
+  }
+
+  /** Direct children (subdirs + files with a file node) of `dir` ('' is the project root), dirs first. */
+  viewDirChildren(dir: string): ViewChildRow[] {
+    const plen = dir === '' ? 0 : dir.length + 1;
+    const bounds = dir === '' ? [] : dirRange(dir);
+    const rows = this.stmt(
+      `SELECT key, is_dir, files, symbols, fid, language, is_test,
+         CASE WHEN is_dir THEN children
+              ELSE (SELECT COUNT(*) FROM edges c WHERE c.source = fid AND c.kind = 'contains') END AS children
+       FROM (
+         SELECT CASE WHEN slash > 0 THEN substr(path, 1, ? + slash - 1) ELSE path END AS key,
+                slash > 0 AS is_dir,
+                COUNT(*) AS files,
+                SUM(MAX(node_count - 1, 0)) AS symbols,
+                COUNT(DISTINCT CASE WHEN slash > 0 THEN substr(path, ? + slash + 1,
+                  instr(substr(path, ? + slash + 1) || '/', '/') - 1) END) AS children,
+                MAX(fid) AS fid, MAX(language) AS language, MAX(is_test) AS is_test
+         FROM (
+           SELECT f.path, f.node_count, f.language, f.is_test, n.id AS fid,
+                  instr(substr(f.path, ? + 1), '/') AS slash
+           FROM files f JOIN nodes n ON n.file_path = f.path AND n.kind = 'file'
+           ${dir === '' ? '' : 'WHERE f.path >= ? AND f.path < ?'}
+         )
+         GROUP BY key
+       )`,
+    ).all(plen, plen, plen, plen, ...bounds) as unknown as {
+      key: string;
+      is_dir: number;
+      files: number;
+      symbols: number;
+      children: number;
+      fid: string;
+      language: string;
+      is_test: number;
+    }[];
+    const out = rows.map((r) => {
+      const row: ViewChildRow = {
+        path: r.key,
+        isDir: r.is_dir === 1,
+        fileCount: r.files,
+        symbolCount: r.symbols,
+        childCount: r.children,
+      };
+      if (r.is_dir !== 1) {
+        row.fileId = r.fid;
+        row.language = r.language as CodeGraphLanguage;
+        if (r.is_test === 1) row.isTest = true;
+      }
+      return row;
+    });
+    return out.sort(
+      (a, b) =>
+        Number(b.isDir) - Number(a.isDir) ||
+        (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+    );
+  }
+
+  /**
+   * Real edges between the project's root entries, as `source → target` weights.
+   * Directories are keyed `name/`, root files by their path.
+   */
+  viewTopLevelEdges(kinds: EdgeKind[]): ViewEdgeRow[] {
+    if (kinds.length === 0) return [];
+    const top = (c: string): string => `substr(${c}, 1, instr(${c} || '/', '/'))`;
+    // CROSS JOIN keeps `edges` as the outer loop: otherwise the forced index makes SQLite
+    // scan every node and probe edges by target, ~1.6x slower.
+    return this.stmt(
+      `SELECT s AS source, t AS target, COUNT(*) AS weight FROM (
+         SELECT ${top('ns.file_path')} AS s, ${top('nt.file_path')} AS t
+         FROM edges e CROSS JOIN nodes ns ${this.byIdFile()} CROSS JOIN nodes nt ${this.byIdFile()}
+         WHERE ns.id = e.source AND nt.id = e.target AND e.kind IN (${kinds.map(() => '?').join(',')})
+       ) WHERE s <> t GROUP BY s, t ORDER BY s, t`,
+    ).all(...kinds) as unknown as ViewEdgeRow[];
+  }
+
+  /**
+   * Real edges with at least one endpoint in the scope, each endpoint folded by `rep`,
+   * counted once per edge. Self pairs and endpoints `rep` drops are left out.
+   */
+  viewAggregateEdges(query: ViewEdgeQuery): ViewEdgeRow[] {
+    if (query.kinds.length === 0) return [];
+    this.ensureViewFunctions();
+    const byDir = 'dir' in query.scope;
+    const bounds = 'dir' in query.scope ? dirRange(query.scope.dir) : [query.scope.file];
+    const inN = byDir ? 'file_path >= ? AND file_path < ?' : 'file_path = ?';
+    const inO = byDir ? 'o.file_path >= ? AND o.file_path < ?' : 'o.file_path = ?';
+    const kinds = query.kinds.map(() => '?').join(',');
+    this.viewRep = query.rep;
+    this.viewIn = query.inScope;
+    try {
+      // The scoped side is materialized so `rep` runs once per node rather than once per edge.
+      const rows = this.stmt(
+        `WITH n AS MATERIALIZED (
+           SELECT id, ${VIEW_REP_FN}(file_path, id) AS r FROM nodes WHERE ${inN} AND ${VIEW_IN_FN}(file_path)
+         )
+         SELECT s AS source, t AS target, COUNT(*) AS weight FROM (
+           SELECT n.r AS s, ${VIEW_REP_FN}(o.file_path, o.id) AS t
+           FROM n CROSS JOIN edges e CROSS JOIN nodes o ${this.byIdFile()}
+           WHERE e.source = n.id AND e.kind IN (${kinds}) AND o.id = e.target
+           UNION ALL
+           SELECT ${VIEW_REP_FN}(o.file_path, o.id), n.r
+           FROM n CROSS JOIN edges e CROSS JOIN nodes o ${this.byIdFile()}
+           WHERE e.target = n.id AND e.kind IN (${kinds}) AND o.id = e.source
+             AND NOT (${inO} AND ${VIEW_IN_FN}(o.file_path))
+         ) GROUP BY s, t ORDER BY s, t`,
+      ).all(...bounds, ...query.kinds, ...query.kinds, ...bounds) as unknown as {
+        source: string | null;
+        target: string | null;
+        weight: number;
+      }[];
+      // Filtering here rather than in SQL: a WHERE on s/t is pushed into both UNION arms
+      // and calls the rep function again for every reference.
+      return rows.filter((r): r is ViewEdgeRow => r.source !== null && r.target !== null && r.source !== r.target);
+    } finally {
+      this.viewRep = () => null;
+      this.viewIn = () => false;
+    }
+  }
+
+  private idFileIndex: boolean | undefined;
+
+  // Without ANALYZE stats SQLite picks the primary-key index and probes the table for
+  // file_path on every edge; graphs built before the index existed fall back to that.
+  private byIdFile(): string {
+    this.idFileIndex ??=
+      this.stmt("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_nodes_id_file'").get() !==
+      undefined;
+    return this.idFileIndex ? 'INDEXED BY idx_nodes_id_file' : '';
+  }
+
+  private viewRep: ViewEdgeQuery['rep'] = () => null;
+  private viewIn: ViewEdgeQuery['inScope'] = () => false;
+  private viewFunctions = false;
+
+  // The SQL functions call through fields so they are registered once per connection.
+  private ensureViewFunctions(): void {
+    if (this.viewFunctions) return;
+    this.db.function(VIEW_REP_FN, (filePath, id) => this.viewRep(String(filePath), String(id)));
+    this.db.function(VIEW_IN_FN, (filePath) => (this.viewIn(String(filePath)) ? 1 : 0));
+    this.viewFunctions = true;
+  }
+
+  nodeLocations(ids: string[]): { id: string; kind: NodeKind; filePath: string }[] {
+    if (ids.length === 0) return [];
+    const rows = this.stmt(
+      'SELECT id, kind, file_path FROM nodes WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id',
+    ).all(JSON.stringify([...new Set(ids)])) as unknown as { id: string; kind: string; file_path: string }[];
+    return rows.map((r) => ({ id: r.id, kind: r.kind as NodeKind, filePath: r.file_path }));
+  }
+
+  /** `contains` parent of every node in the files (child id → parent id). */
+  containsParents(filePaths: string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    if (filePaths.length === 0) return out;
+    const rows = this.stmt(
+      `SELECT e.target AS child, e.source AS parent
+       FROM nodes n JOIN edges e ON e.target = n.id AND e.kind = 'contains'
+       WHERE n.file_path IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify([...new Set(filePaths)])) as unknown as { child: string; parent: string }[];
+    for (const r of rows) out.set(r.child, r.parent);
+    return out;
+  }
+
+  containsChildren(parentId: string, offset: number, limit: number): GraphNode[] {
+    const rows = this.stmt(
+      `SELECT n.* FROM edges e JOIN nodes n ON n.id = e.target
+       WHERE e.source = ? AND e.kind = 'contains'
+       ORDER BY n.start_line, n.id LIMIT ? OFFSET ?`,
+    ).all(parentId, limit, offset);
+    return (rows as unknown as NodeRow[]).map(toNode);
+  }
+
+  /** Number of `contains` children per id; ids without children are absent. */
+  containsChildCounts(ids: string[]): Map<string, number> {
+    const out = new Map<string, number>();
+    if (ids.length === 0) return out;
+    const rows = this.stmt(
+      `SELECT source, COUNT(*) AS c FROM edges
+       WHERE source IN (SELECT value FROM json_each(?)) AND kind = 'contains' GROUP BY source`,
+    ).all(JSON.stringify([...new Set(ids)])) as unknown as { source: string; c: number }[];
+    for (const r of rows) out.set(r.source, r.c);
+    return out;
+  }
+
+  fileNodeIds(paths: string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    if (paths.length === 0) return out;
+    const rows = this.stmt(
+      `SELECT file_path, id FROM nodes
+       WHERE file_path IN (SELECT value FROM json_each(?)) AND kind = 'file'`,
+    ).all(JSON.stringify([...new Set(paths)])) as unknown as { file_path: string; id: string }[];
+    for (const r of rows) out.set(r.file_path, r.id);
+    return out;
+  }
+
+  dirSummary(dir: string): DirSummary {
+    const rows = this.stmt(
+      `SELECT f.language AS language, COUNT(*) AS files, SUM(MAX(f.node_count - 1, 0)) AS symbols
+       FROM files f JOIN nodes n ON n.file_path = f.path AND n.kind = 'file'
+       WHERE f.path >= ? AND f.path < ? GROUP BY f.language ORDER BY f.language`,
+    ).all(...dirRange(dir)) as unknown as { language: string; files: number; symbols: number }[];
+    const out: DirSummary = { fileCount: 0, symbolCount: 0, languages: {} };
+    for (const r of rows) {
+      out.fileCount += r.files;
+      out.symbolCount += r.symbols;
+      out.languages[r.language as CodeGraphLanguage] = r.files;
+    }
+    return out;
+  }
+
+  /** Highest weighted-degree symbols under `dir`, ranked like `findHubs` (no files, tests or generated code). */
+  topHubsUnder(dir: string, weights: Partial<Record<EdgeKind, number>>, limit: number): GraphNode[] {
+    const entries = Object.entries(weights).filter(
+      (e): e is [EdgeKind, number] => isEdgeKind(e[0]) && Number.isFinite(e[1]),
+    );
+    if (entries.length === 0 || limit <= 0) return [];
+    const weight = `CASE e.kind ${entries.map(([k, w]) => `WHEN '${k}' THEN ${w}`).join(' ')} ELSE 0 END`;
+    const kinds = entries.map(([k]) => `'${k}'`).join(',');
+    const rows = this.stmt(
+      `SELECT * FROM (
+         SELECT n.*,
+           (SELECT COALESCE(SUM(${weight}), 0) FROM edges e
+              WHERE e.source = n.id AND e.target <> n.id AND e.kind IN (${kinds}))
+         + (SELECT COALESCE(SUM(${weight}), 0) FROM edges e
+              WHERE e.target = n.id AND e.source <> n.id AND e.kind IN (${kinds})) AS degree
+         FROM nodes n
+         WHERE n.file_path >= ? AND n.file_path < ? AND n.kind <> 'file'
+           AND n.file_path NOT IN (SELECT path FROM files WHERE is_test = 1 OR generated = 1)
+       ) WHERE degree > 0 ORDER BY degree DESC, qualified_name, id LIMIT ?`,
+    ).all(...dirRange(dir), limit);
+    return (rows as unknown as NodeRow[]).map(toNode);
+  }
+
+  /** Files imported by `path` (excluding itself), sorted. */
+  importedFilePaths(path: string): string[] {
+    return this.importPaths('source', 'target', path);
+  }
+
+  /** Files importing `path` (excluding itself), sorted. */
+  importingFilePaths(path: string): string[] {
+    return this.importPaths('target', 'source', path);
+  }
+
+  private importPaths(own: 'source' | 'target', other: 'source' | 'target', path: string): string[] {
+    const rows = this.stmt(
+      `SELECT DISTINCT o.file_path AS p
+       FROM nodes n JOIN edges e ON e.${own} = n.id AND e.kind = 'imports' JOIN nodes o ON o.id = e.${other}
+       WHERE n.file_path = ? AND o.file_path <> ? ORDER BY p`,
+    ).all(path, path) as unknown as { p: string }[];
+    return rows.map((r) => r.p);
+  }
+
+  fileSymbolCount(path: string): number {
+    return (
+      this.stmt("SELECT COUNT(*) AS c FROM nodes WHERE file_path = ? AND kind <> 'file'").get(path) as {
+        c: number;
+      }
+    ).c;
+  }
+
+  /** File nodes whose path contains `text` (case-insensitive), shortest path first. */
+  searchFiles(text: string, limit: number): GraphNode[] {
+    if (text === '' || limit <= 0) return [];
+    const rows = this.stmt(
+      `SELECT * FROM nodes WHERE kind = 'file' AND lower(file_path) LIKE ? ESCAPE '\\'
+       ORDER BY length(file_path), file_path LIMIT ?`,
+    ).all(`%${escapeLike(text.toLowerCase())}%`, limit);
+    return (rows as unknown as NodeRow[]).map(toNode);
   }
 
   getMeta(key: string): string | undefined {

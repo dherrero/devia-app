@@ -3,6 +3,7 @@ import type { DeviaBridge } from '../../../types/devia';
 import type { SessionStats } from '../../../../shared/domain/session-stats';
 import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import type { BranchCheckoutRef } from '../../../../shared/domain/git';
+import type { GraphExpandOptions } from '../../../../shared/domain/code-graph';
 
 // Thin Angular wrapper around window.devia. Centralising it lets components
 // inject this service instead of touching window directly, which keeps the
@@ -450,6 +451,12 @@ export class ElectronApiService {
   codeGraphUpdate(project: string) { return this.api.codeGraphUpdate(project); }
   codeGraphWatch(project: string) { return this.api.codeGraphWatch(project); }
   codeGraphUnwatch(project: string) { return this.api.codeGraphUnwatch(project); }
+  codeGraphOverview(project: string) { return this.api.codeGraphOverview(project); }
+  codeGraphExpand(project: string, nodeId: string, opts?: GraphExpandOptions) {
+    return this.api.codeGraphExpand(project, nodeId, opts);
+  }
+  codeGraphNodeDetail(project: string, nodeId: string) { return this.api.codeGraphNodeDetail(project, nodeId); }
+  codeGraphSearch(project: string, q: string) { return this.api.codeGraphSearch(project, q); }
   onCodeGraphProgress(cb: Parameters<DeviaBridge['onCodeGraphProgress']>[0]): () => void {
     return this.api.onCodeGraphProgress(cb);
   }

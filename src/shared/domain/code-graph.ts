@@ -102,6 +102,10 @@ export interface IndexProgress {
   edges: number;
 }
 
+/**
+ * A node of the graph view. Directories are virtual (`dir:<root-relative path>`);
+ * files and symbols use their real `GraphNode.id`.
+ */
 export interface GraphOverviewNode {
   id: string;
   kind: NodeKind | 'dir';
@@ -109,6 +113,101 @@ export interface GraphOverviewNode {
   childCount: number;
   community?: number;
   hub?: boolean;
+  /** Root-relative `/` path: the directory itself, or the file a file/symbol lives in. */
+  path: string;
+  /** Absent for the entries at the project root. */
+  parentId?: string;
+  language?: CodeGraphLanguage;
+  symbolCount?: number;
+  fileCount?: number;
+  isTest?: boolean;
+  exported?: boolean;
+  line?: number;
+}
+
+export interface GraphViewEdge {
+  source: string;
+  target: string;
+  kind: EdgeKind | 'aggregate';
+  /** Number of real edges folded into this one. */
+  weight: number;
+}
+
+export interface GraphViewPage {
+  nodes: GraphOverviewNode[];
+  edges: GraphViewEdge[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface GraphExpandOptions {
+  offset?: number;
+  /** Ids already on screen; edges of the new children are mapped onto their nearest visible node. */
+  visibleIds: string[];
+}
+
+export interface GraphImpactSummary {
+  /** Impacted files in impact order (the node's own file first). */
+  files: string[];
+  /** Number of impacted files before the list was capped. */
+  count: number;
+  truncated: boolean;
+}
+
+export interface GraphFileRef {
+  id: string;
+  path: string;
+}
+
+export interface GraphSymbolDetail {
+  kind: 'symbol';
+  node: GraphNode;
+  /** Ids to expand, in order, to reveal the node: its directories, its file, then its enclosing symbols. */
+  ancestors: string[];
+  callers: GraphNode[];
+  callees: GraphNode[];
+  impact: GraphImpactSummary;
+  community?: number;
+  hub?: boolean;
+  signature?: string;
+  docstring?: string;
+}
+
+export interface GraphFileDetail {
+  kind: 'file';
+  node: GraphNode;
+  path: string;
+  language: CodeGraphLanguage;
+  ancestors: string[];
+  symbolCount: number;
+  importedBy: GraphFileRef[];
+  importedByCount: number;
+  imports: GraphFileRef[];
+  importsCount: number;
+  community?: number;
+  isTest?: boolean;
+}
+
+export interface GraphDirDetail {
+  kind: 'dir';
+  id: string;
+  path: string;
+  ancestors: string[];
+  fileCount: number;
+  symbolCount: number;
+  /** Files per language. */
+  languages: Partial<Record<CodeGraphLanguage, number>>;
+  topHubs: GraphNode[];
+  /** Files per community, largest first. */
+  communities: { id: number; files: number }[];
+}
+
+export type GraphNodeDetail = GraphSymbolDetail | GraphFileDetail | GraphDirDetail;
+
+export interface GraphSearchResult {
+  node: GraphOverviewNode;
+  ancestors: string[];
+  score: number;
 }
 
 export const GRAPH_PAGE_LIMIT = 2000;

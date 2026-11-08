@@ -40,6 +40,11 @@ const HUB_KINDS: EdgeKind[] = [
 
 const COMMUNITY_KINDS = Object.keys(EDGE_WEIGHTS) as EdgeKind[];
 
+/** The weights `findHubs` uses, for SQL that must rank hubs the same way. */
+export const HUB_EDGE_WEIGHTS: Partial<Record<EdgeKind, number>> = Object.fromEntries(
+  HUB_KINDS.map((k) => [k, EDGE_WEIGHTS[k] ?? 1]),
+);
+
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

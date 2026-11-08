@@ -4,6 +4,7 @@ import type { McpServerConfig } from '../../../shared/domain/mcp';
 
 import { CodeGraphStore } from './infrastructure/code-graph-store';
 import { CodeGraphUseCase } from './application/code-graph.use-case';
+import { GraphViewUseCase } from './application/graph-view.use-case';
 import { createWorktreeGraph } from './application/worktree-graph';
 import { registerCodeGraphIpc } from './ipc/code-graph.ipc';
 
@@ -31,12 +32,13 @@ export interface CodeGraphFeatureBuilt {
 export function buildCodeGraphFeature(deps: CodeGraphDeps): CodeGraphFeatureBuilt {
   const store = new CodeGraphStore(() => deps.config.deviaDir());
   const useCase = new CodeGraphUseCase({ store });
+  const view = new GraphViewUseCase({ store });
   const { seedWorktreeGraph, dropWorktreeGraph } = createWorktreeGraph({ store, useCase });
 
   const feature: Feature = {
     id: 'code-graph',
     register(ctx) {
-      registerCodeGraphIpc(ctx, { config: deps.config, useCase });
+      registerCodeGraphIpc(ctx, { config: deps.config, useCase, view });
     },
   };
 
