@@ -360,11 +360,13 @@ describe('code-graph IPC', () => {
 
     it('delegates with the resolved project and the validated arguments', () => {
       h.call(IPC.codeGraphOverview, sender, 'team/app');
+      h.call(IPC.codeGraphOverview, sender, 'team/app', { offset: 500 });
       h.call(IPC.codeGraphExpand, sender, 'team/app', 'dir:src', { offset: 500, visibleIds: ['dir:src', 'x'] });
       h.call(IPC.codeGraphExpand, sender, 'team/app', 'dir:lib');
       h.call(IPC.codeGraphNodeDetail, sender, 'team/app', 'file:abc');
       h.call(IPC.codeGraphSearch, sender, 'team/app', 'helper');
-      expect(h.view.overview).toHaveBeenCalledWith(abs('team/app'));
+      expect(h.view.overview).toHaveBeenNthCalledWith(1, abs('team/app'), {});
+      expect(h.view.overview).toHaveBeenNthCalledWith(2, abs('team/app'), { offset: 500 });
       expect(h.view.expand).toHaveBeenNthCalledWith(1, abs('team/app'), 'dir:src', { offset: 500, visibleIds: ['dir:src', 'x'] });
       expect(h.view.expand).toHaveBeenNthCalledWith(2, abs('team/app'), 'dir:lib', { visibleIds: [] });
       expect(h.view.nodeDetail).toHaveBeenCalledWith(abs('team/app'), 'file:abc');
@@ -426,6 +428,16 @@ describe('code-graph IPC', () => {
       expect(h.view.expand).not.toHaveBeenCalled();
       h.call(IPC.codeGraphExpand, sender, 'a', 'dir:a', { offset: 0, visibleIds: Array.from({ length: 2000 }, (_, i) => `n${i}`) });
       expect(h.view.expand).toHaveBeenCalledTimes(1);
+    });
+
+    it('validates overview options: an object with a non-negative integer offset', () => {
+      for (const opts of ['nope', [], null, { offset: -1 }, { offset: 1.5 }, { offset: '3' }]) {
+        expect(() => h.call(IPC.codeGraphOverview, sender, 'a', opts), JSON.stringify(opts)).toThrow(/offset|opts/);
+      }
+      expect(h.view.overview).not.toHaveBeenCalled();
+      h.call(IPC.codeGraphOverview, sender, 'a', { offset: 0 });
+      h.call(IPC.codeGraphOverview, sender, 'a', undefined);
+      expect(h.view.overview).toHaveBeenCalledTimes(2);
     });
 
     it('never returns a page above GRAPH_PAGE_LIMIT nodes', () => {

@@ -1,5 +1,5 @@
 import type { GraphQueries } from '../db/queries';
-import { computeCommunities, persistCommunities } from '../graph/communities';
+import { PERSISTED_HUBS, computeCommunities, findHubs, persistCommunities, persistHubs } from '../graph/communities';
 import { resolveReferences, type ResolveStats } from '../resolution/resolver';
 
 /** The one resolution step of the pipeline: full index (`postIndex`), sync and tests all use it. */
@@ -12,4 +12,5 @@ export function resolveGraph(db: GraphQueries, root: string, onlyFiles?: string[
 export const postIndex: (db: GraphQueries, root: string) => Promise<void> = async (db, root) => {
   resolveGraph(db, root);
   persistCommunities(db, computeCommunities(db).assignments);
+  persistHubs(db, findHubs(db, { top: PERSISTED_HUBS }));
 };

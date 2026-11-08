@@ -135,9 +135,17 @@ export interface GraphViewEdge {
 
 export interface GraphViewPage {
   nodes: GraphOverviewNode[];
+  /** At most GRAPH_EDGE_LIMIT, heaviest first when cut. */
   edges: GraphViewEdge[];
   total: number;
   hasMore: boolean;
+  /** Set when edges beyond GRAPH_EDGE_LIMIT were left out. */
+  edgesTruncated?: boolean;
+}
+
+export interface GraphOverviewOptions {
+  /** Root entries to skip, for the root entries past the first page. */
+  offset?: number;
 }
 
 export interface GraphExpandOptions {
@@ -212,6 +220,7 @@ export interface GraphSearchResult {
 
 export const GRAPH_PAGE_LIMIT = 2000;
 export const GRAPH_EXPAND_LIMIT = 500;
+export const GRAPH_EDGE_LIMIT = 5000;
 
 export function isCodeGraphLanguage(v: string): v is CodeGraphLanguage {
   return (CODE_GRAPH_LANGUAGES as readonly string[]).includes(v);

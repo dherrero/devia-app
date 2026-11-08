@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  GRAPH_EDGE_LIMIT,
   GRAPH_EXPAND_LIMIT,
   type EdgeKind,
   type GraphEdge,
@@ -13,7 +14,16 @@ import {
 import { openGraphDb, type GraphDb } from '../engine/db/connection';
 import { GraphQueries } from '../engine/db/queries';
 import { makeNodeId } from '../engine/extraction/node-id';
-import { computeCommunities, findHubs, persistCommunities, readCommunities } from '../engine/graph/communities';
+import {
+  PERSISTED_HUBS,
+  computeCommunities,
+  findHubs,
+  persistCommunities,
+  persistHubs,
+  readCommunities,
+  readHubs,
+  type Hub,
+} from '../engine/graph/communities';
 import { bestOf } from '../engine/graph/test-graph';
 import { indexProject } from '../engine/indexer/orchestrator';
 import { CodeGraphStore } from '../infrastructure/code-graph-store';
@@ -124,6 +134,35 @@ function withDb<T>(env: Env, fn: (q: GraphQueries) => T, readonly = true): T {
   const db = openGraphDb(env.store.dbPath(env.project), { readonly });
   try {
     return fn(new GraphQueries(db));
+  } finally {
+    db.close();
+  }
+}
+
+/** A file node plus one function per path; `edges` gets their ids, index-aligned with `paths`. */
+function seedPlain(env: Env, paths: string[], edges: (files: string[], fns: string[]) => GraphEdge[]): void {
+  fs.mkdirSync(env.store.dataDir(env.project), { recursive: true });
+  const db = openGraphDb(env.store.dbPath(env.project));
+  try {
+    const q = new GraphQueries(db);
+    const nodes: GraphNode[] = [];
+    const files: string[] = [];
+    const fns: string[] = [];
+    const contains: GraphEdge[] = [];
+    for (const p of paths) {
+      const base = { filePath: p, language: 'typescript' as const, endLine: 9, isExported: true };
+      const file: GraphNode = { ...base, id: makeNodeId(p, 'file', p, 1), kind: 'file', name: p, qualifiedName: p, startLine: 1 };
+      const fn: GraphNode = { ...base, id: makeNodeId(p, 'function', 'fn', 2), kind: 'function', name: 'fn', qualifiedName: 'fn', startLine: 2 };
+      nodes.push(file, fn);
+      files.push(file.id);
+      fns.push(fn.id);
+      contains.push({ source: file.id, target: fn.id, kind: 'contains' });
+      q.upsertFile({ path: p, contentHash: 'h', language: 'typescript', size: 1, modifiedAt: 1, indexedAt: 1, nodeCount: 2, generated: false, isTest: false });
+    }
+    q.insertNodes(nodes);
+    q.insertEdges([...contains, ...edges(files, fns)]);
+    persistCommunities(q, computeCommunities(q).assignments);
+    persistHubs(q, findHubs(q, { top: PERSISTED_HUBS }));
   } finally {
     db.close();
   }
@@ -363,11 +402,12 @@ describe('GraphViewUseCase on a real multi-language project', () => {
     });
   });
 
-  it('attaches communities to every node and hub flags to the top hubs', () => {
+  it('attaches communities to every node and hub flags to the top persisted hubs', () => {
     const { communities, hubs } = withDb(env, (q) => ({
       communities: readCommunities(q),
-      hubs: new Set(findHubs(q, { top: 20 }).map((h) => h.nodeId)),
+      hubs: new Set(readHubs(q).slice(0, 20).map((h) => h.nodeId)),
     }));
+    expect(hubs.size).toBeGreaterThan(0);
     const files = uc.expand(env.project, 'dir:src/lib', { visibleIds: [] }).nodes;
     for (const n of files) expect(n.community).toBe(communities.get(n.path));
     const symbols = uc.expand(env.project, idOf('src/lib/util.ts'), { visibleIds: [] }).nodes;
@@ -479,35 +519,202 @@ describe('GraphViewUseCase lifecycle', () => {
     }
   }, 60_000);
 
-  it('caches hubs and communities per graph file and recomputes when it changes', async () => {
+  it('reads hubs and communities from the graph metadata, cached per graph file but not per WAL write', async () => {
     const env = makeEnv();
     try {
       await indexFixture(env, FIXTURE);
-      const hubs = vi.fn(findHubs);
-      const uc = new GraphViewUseCase({ store: env.store, findHubs: hubs });
-      const fileId = must(uc.expand(env.project, 'dir:web', { visibleIds: [] }).nodes.find((n) => n.label === 'app.js')).id;
-      uc.expand(env.project, fileId, { visibleIds: [] });
-      uc.expand(env.project, fileId, { visibleIds: [] });
-      uc.search(env.project, 'fmt');
-      expect(hubs).toHaveBeenCalledTimes(1);
-      expect(uc.overview(env.project).nodes.find((n) => n.id === 'dir:web')?.community).not.toBe(4242);
-
-      withDb(
-        env,
-        (q) => {
-          const all = readCommunities(q);
-          for (const k of all.keys()) all.set(k, 4242);
-          persistCommunities(q, all);
-        },
-        false,
-      );
-      expect(uc.overview(env.project).nodes.find((n) => n.id === 'dir:web')?.community).toBe(4242);
-      uc.expand(env.project, fileId, { visibleIds: [] });
-      expect(hubs).toHaveBeenCalledTimes(2);
+      const uc = new GraphViewUseCase({ store: env.store });
+      const ids = withDb(env, (q) => ({
+        util: must(q.nodesInFile('src/lib/util.ts').find((n) => n.kind === 'file')).id,
+        unused: must(q.nodesInFile('src/lib/util.ts').find((n) => n.name === 'unused')).id,
+        index: must(q.nodesInFile('index.ts').find((n) => n.kind === 'file')).id,
+        web: must(q.nodesInFile('web/app.js').find((n) => n.kind === 'file')).id,
+      }));
+      const hubOf = (id: string): boolean | undefined =>
+        uc.expand(env.project, ids.util, { visibleIds: [] }).nodes.find((n) => n.id === id)?.hub;
+      const webCommunity = (): number | undefined => uc.overview(env.project).nodes.find((n) => n.id === 'dir:web')?.community;
+      const indexToWeb = (): number | undefined =>
+        uc.overview(env.project).edges.find((e) => e.source === ids.index && e.target === 'dir:web')?.weight;
+      const graphFile = env.store.dbPath(env.project);
+      // A published graph is in rollback mode: the writer's switch to WAL rewrites the header.
+      const writer = openGraphDb(graphFile);
+      try {
+        const before = fs.statSync(graphFile);
+        expect(hubOf(ids.unused)).toBeUndefined();
+        expect(webCommunity()).not.toBe(4242);
+        expect(indexToWeb()).toBeUndefined();
+        const q = new GraphQueries(writer);
+        const all = readCommunities(q);
+        for (const k of all.keys()) all.set(k, 4242);
+        persistCommunities(q, all);
+        persistHubs(q, [{ nodeId: ids.unused, degree: 1, score: 1 }]);
+        q.insertEdges([{ source: ids.index, target: ids.web, kind: 'imports' }]);
+        const after = fs.statSync(graphFile);
+        expect({ ino: after.ino, mtimeMs: after.mtimeMs, size: after.size }).toEqual({ ino: before.ino, mtimeMs: before.mtimeMs, size: before.size });
+        // Only the WAL changed (as after a sync): the overview edges follow it, the hints do not.
+        expect(indexToWeb()).toBe(1);
+        expect(webCommunity()).not.toBe(4242);
+        expect(hubOf(ids.unused)).toBeUndefined();
+      } finally {
+        writer.close();
+      }
+      // Closing checkpoints the WAL into graph.db, as a full index replaces the file.
+      expect(webCommunity()).toBe(4242);
+      expect(hubOf(ids.unused)).toBe(true);
+      expect(indexToWeb()).toBe(1);
     } finally {
       env.dispose();
     }
   }, 60_000);
+
+  it('never computes hubs at request time: no persisted hubs means no hub flags', async () => {
+    const env = makeEnv();
+    try {
+      await indexFixture(env, FIXTURE);
+      withDb(env, (q) => q.setMeta('hubs', '{corrupt'), false);
+      const uc = new GraphViewUseCase({ store: env.store });
+      const util = must(uc.expand(env.project, 'dir:src/lib', { visibleIds: [] }).nodes.find((n) => n.label === 'util.ts')).id;
+      const symbols = uc.expand(env.project, util, { visibleIds: [] }).nodes;
+      expect(symbols.length).toBeGreaterThan(0);
+      expect(symbols.some((n) => n.hub === true)).toBe(false);
+      const dir = uc.nodeDetail(env.project, 'dir:src');
+      if (dir?.kind !== 'dir') throw new Error('expected a dir detail');
+      expect(dir.topHubs).toEqual([]);
+    } finally {
+      env.dispose();
+    }
+  }, 60_000);
+
+  it('takes a directory\'s top hubs from the persisted ranking, filtered by path prefix', async () => {
+    const env = makeEnv();
+    try {
+      await indexFixture(env, FIXTURE);
+      const ranked = withDb(env, (q) => {
+        const sym = (file: string, name: string): string => must(q.nodesInFile(file).find((n) => n.name === name), name).id;
+        return ['wrap', 'helper', 'run', 'unused', 'greet', 'Greeter'].map((name) =>
+          name === 'run' ? sym('src/app/main.ts', name) : sym(name === 'helper' || name === 'unused' ? 'src/lib/util.ts' : 'src/lib/greeter.ts', name),
+        );
+      });
+      const fmt = withDb(env, (q) => must(q.nodesInFile('web/util.js').find((n) => n.name === 'fmt')).id);
+      const hubs: Hub[] = [...ranked.slice(0, 2), 'ghost-node', ...ranked.slice(2), fmt].map((nodeId, i) => ({ nodeId, degree: 100 - i, score: 1 }));
+      withDb(env, (q) => persistHubs(q, hubs), false);
+      const uc = new GraphViewUseCase({ store: env.store });
+      const lib = uc.nodeDetail(env.project, 'dir:src/lib');
+      if (lib?.kind !== 'dir') throw new Error('expected a dir detail');
+      expect(lib.topHubs.map((n) => n.id)).toEqual([ranked[0], ranked[1], ranked[3], ranked[4], ranked[5]]);
+      const src = uc.nodeDetail(env.project, 'dir:src');
+      if (src?.kind !== 'dir') throw new Error('expected a dir detail');
+      expect(src.topHubs.map((n) => n.id)).toEqual(ranked.slice(0, 5));
+      const web = uc.nodeDetail(env.project, 'dir:web');
+      if (web?.kind !== 'dir') throw new Error('expected a dir detail');
+      expect(web.topHubs.map((n) => n.id)).toEqual([fmt]);
+      const py = uc.nodeDetail(env.project, 'dir:py');
+      if (py?.kind !== 'dir') throw new Error('expected a dir detail');
+      expect(py.topHubs).toEqual([]);
+    } finally {
+      env.dispose();
+    }
+  }, 60_000);
+
+  it('returns the empty result when graph.db vanishes between the stat and the open', () => {
+    const env = makeEnv();
+    try {
+      seedPlain(env, ['a/x.ts', 'b/y.ts'], (_files, fns) => [{ source: must(fns[0]), target: must(fns[1]), kind: 'calls' }]);
+      const file = env.store.dbPath(env.project);
+      const backup = `${file}.bak`;
+      fs.copyFileSync(file, backup);
+      let opens = 0;
+      const uc = new GraphViewUseCase({
+        store: env.store,
+        openDb: (f, o) => {
+          opens++;
+          fs.rmSync(f, { force: true });
+          return openGraphDb(f, o);
+        },
+      });
+      const restore = (): void => fs.copyFileSync(backup, file);
+      restore();
+      expect(uc.overview(env.project)).toEqual(EMPTY);
+      restore();
+      expect(uc.expand(env.project, 'dir:a', { visibleIds: [] })).toEqual(EMPTY);
+      restore();
+      expect(uc.nodeDetail(env.project, 'dir:a')).toBeUndefined();
+      restore();
+      expect(uc.search(env.project, 'x')).toEqual([]);
+      expect(opens).toBe(4);
+    } finally {
+      env.dispose();
+    }
+  });
+
+  it('pages the root entries past the first 500 with offset, with edges back to earlier pages', () => {
+    const env = makeEnv();
+    try {
+      const paths = Array.from({ length: 520 }, (_, i) => `d${String(i).padStart(3, '0')}/f.ts`);
+      seedPlain(env, paths, (_files, fns) =>
+        fns.map((fn, i) => ({ source: fn, target: must(fns[(i + 1) % fns.length]), kind: 'calls' as const })),
+      );
+      const uc = new GraphViewUseCase({ store: env.store });
+      const dir = (i: number): string => `dir:d${String(i).padStart(3, '0')}`;
+      const first = uc.overview(env.project);
+      expect(first).toMatchObject({ total: 520, hasMore: true });
+      expect(first.nodes.map((n) => n.id)).toEqual(Array.from({ length: 500 }, (_, i) => dir(i)));
+      expect(asMap(first.edges)).toEqual(new Map(Array.from({ length: 499 }, (_, i) => [`${dir(i)} -> ${dir(i + 1)}`, 1])));
+      const second = uc.overview(env.project, { offset: 500 });
+      expect(second).toMatchObject({ total: 520, hasMore: false });
+      expect(second.nodes.map((n) => n.id)).toEqual(Array.from({ length: 20 }, (_, i) => dir(500 + i)));
+      expect(asMap(second.edges)).toEqual(
+        new Map([
+          ...Array.from({ length: 20 }, (_, i): [string, number] => [`${dir(499 + i)} -> ${dir(500 + i)}`, 1]),
+          [`${dir(519)} -> ${dir(0)}`, 1],
+        ]),
+      );
+      expect(uc.overview(env.project, { offset: 520 })).toEqual({ nodes: [], edges: [], total: 520, hasMore: false });
+    } finally {
+      env.dispose();
+    }
+  });
+
+  it('caps the edges of a page at GRAPH_EDGE_LIMIT, heaviest first, and flags the cut', () => {
+    const env = makeEnv();
+    try {
+      const n = 80;
+      const pad = (i: number): string => String(i).padStart(2, '0');
+      const weight = (i: number, j: number): number => 1 + ((i + 2 * j) % 3);
+      const paths = [
+        ...Array.from({ length: n }, (_, i) => `w/f${pad(i)}.ts`),
+        ...Array.from({ length: n }, (_, i) => `r${pad(i)}/f.ts`),
+      ];
+      seedPlain(env, paths, (_files, fns) => {
+        const out: GraphEdge[] = [];
+        for (const base of [0, n])
+          for (let i = 0; i < n; i++)
+            for (let j = 0; j < n; j++)
+              for (let k = 0; i !== j && k < weight(i, j); k++)
+                out.push({ source: must(fns[base + i]), target: must(fns[base + j]), kind: 'calls', line: k + 1 });
+        return out;
+      });
+      const all = [];
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (i !== j) all.push(weight(i, j));
+      all.sort((a, b) => b - a);
+      const threshold = must(all[GRAPH_EDGE_LIMIT - 1]);
+      const above = all.filter((w) => w > threshold).length;
+      const expectCapped = (page: GraphViewPage): void => {
+        expect(page.edgesTruncated).toBe(true);
+        expect(page.edges).toHaveLength(GRAPH_EDGE_LIMIT);
+        expect(page.edges.every((e) => e.weight >= threshold)).toBe(true);
+        expect(page.edges.filter((e) => e.weight > threshold)).toHaveLength(above);
+      };
+      const uc = new GraphViewUseCase({ store: env.store });
+      expectCapped(uc.overview(env.project));
+      expectCapped(uc.expand(env.project, 'dir:w', { visibleIds: [] }));
+      const small = uc.expand(env.project, 'dir:r00', { visibleIds: ['dir:r01', 'dir:r02'] });
+      expect(small.edges.length).toBeGreaterThan(0);
+      expect(small).not.toHaveProperty('edgesTruncated');
+    } finally {
+      env.dispose();
+    }
+  });
 });
 
 /*
@@ -515,11 +722,27 @@ describe('GraphViewUseCase lifecycle', () => {
  * 10 nodes per file (file, class + 4 methods, 4 functions). Besides the 45k `contains`
  * edges there is one import per file and 100k calls between uniformly random symbols,
  * the worst case for aggregation (no locality, almost every edge crosses files).
+ * `whole` is the same graph moved under a single `all/` directory.
  */
 describe('GraphViewUseCase on a 50k-node graph', () => {
   let env: Env;
+  let whole: Env;
   let uc: GraphViewUseCase;
   const timings: Record<string, number> = {};
+  const COLD_RUNS = 5;
+
+  /** Best time of `op` on a fresh use case (no cached derivatives) per run; only `op` is timed. */
+  const coldBest = <T>(target: Env, op: (fresh: GraphViewUseCase) => T): { ms: number; value: T } => {
+    let best = Infinity;
+    let value: T | undefined;
+    for (let i = 0; i < COLD_RUNS; i++) {
+      const fresh = new GraphViewUseCase({ store: target.store });
+      const start = performance.now();
+      value = op(fresh);
+      best = Math.min(best, performance.now() - start);
+    }
+    return { ms: best, value: value as T };
+  };
 
   beforeAll(() => {
     env = makeEnv();
@@ -586,26 +809,43 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
       q.insertNodes(nodes);
       q.insertEdges(edges);
       persistCommunities(q, computeCommunities(q).assignments);
+      persistHubs(q, findHubs(q, { top: PERSISTED_HUBS }));
       expect(q.counts()).toMatchObject({ nodes: 50_000, edges: 150_000 });
     } finally {
       db.close();
     }
     uc = new GraphViewUseCase({ store: env.store });
+
+    whole = makeEnv();
+    fs.mkdirSync(whole.store.dataDir(whole.project), { recursive: true });
+    fs.copyFileSync(env.store.dbPath(env.project), whole.store.dbPath(whole.project));
+    const w = openGraphDb(whole.store.dbPath(whole.project));
+    try {
+      const q = new GraphQueries(w);
+      // The FTS columns do not include file_path: re-indexing 50k rows would only slow the setup.
+      w.exec('DROP TRIGGER nodes_au');
+      w.exec("UPDATE nodes SET file_path = 'all/' || file_path");
+      w.exec("UPDATE files SET path = 'all/' || path");
+      persistCommunities(q, new Map([...readCommunities(q)].map(([p, c]) => [`all/${p}`, c])));
+    } finally {
+      w.close();
+    }
   }, 120_000);
 
   afterAll(() => {
     const out = process.env['CG_VIEW_PERF_FILE'];
     if (out) fs.writeFileSync(out, JSON.stringify(timings, null, 2));
     env.dispose();
+    whole.dispose();
   });
 
   const overviewIds = (): string[] => uc.overview(env.project).nodes.map((n) => n.id);
 
-  it('overview ≤ 300 ms', () => {
-    const cold = new GraphViewUseCase({ store: env.store });
-    const start = performance.now();
-    cold.overview(env.project);
-    timings['overviewCold'] = performance.now() - start;
+  it('overview ≤ 300 ms, cold included', () => {
+    const cold = coldBest(env, (fresh) => fresh.overview(env.project));
+    timings['overviewCold'] = cold.ms;
+    expect(cold.value.edges.length).toBeGreaterThan(0);
+    expect(cold.ms).toBeLessThan(300);
     const r = bestOf(() => uc.overview(env.project));
     timings['overview'] = r.ms;
     expect(r.value.nodes.map((n) => n.id)).toEqual(['dir:big', ...Array.from({ length: 10 }, (_, i) => `dir:pkg${i}`)]);
@@ -616,11 +856,22 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
   it('expand of a directory with 800 children ≤ 200 ms', () => {
     const visibleIds = overviewIds();
     // ~70 ms alone, but the parallel main suite can starve it for seconds: sample longer.
-    const r = bestOf(() => uc.expand(env.project, 'dir:big', { visibleIds }), 10);
+    const r = bestOf(() => uc.expand(env.project, 'dir:big', { visibleIds }), 20);
     timings['expand800'] = r.ms;
     expect(r.value.nodes).toHaveLength(GRAPH_EXPAND_LIMIT);
     expect(r.value.edges.length).toBeGreaterThan(0);
     expect(r.ms).toBeLessThan(200);
+    timings['expand800Cold'] = coldBest(env, (fresh) => fresh.expand(env.project, 'dir:big', { visibleIds })).ms;
+  }, 60_000);
+
+  it('expand of a file ≤ 200 ms cold', () => {
+    const file = must(uc.expand(env.project, 'dir:big', { visibleIds: [] }).nodes[0]).id;
+    const visibleIds = [...overviewIds(), file];
+    const cold = coldBest(env, (fresh) => fresh.expand(env.project, file, { visibleIds }));
+    timings['expandFileCold'] = cold.ms;
+    expect(cold.value.nodes.length).toBeGreaterThan(0);
+    expect(cold.ms).toBeLessThan(200);
+    timings['expandFile'] = bestOf(() => uc.expand(env.project, file, { visibleIds })).ms;
   }, 60_000);
 
   it('pages 800 children: 500 + hasMore, then the other 300, no duplicates or gaps', () => {
@@ -638,9 +889,13 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     for (const e of second.edges) expect(secondIds.has(e.source) || secondIds.has(e.target)).toBe(true);
   }, 60_000);
 
-  it('nodeDetail ≤ 300 ms', () => {
+  it('nodeDetail ≤ 300 ms, cold included', () => {
     const sample = uc.expand(env.project, must(uc.expand(env.project, 'dir:big', { visibleIds: [] }).nodes[0]).id, { visibleIds: [] }).nodes;
     const target = must(sample.find((n) => n.kind === 'function')).id;
+    const cold = coldBest(env, (fresh) => fresh.nodeDetail(env.project, target));
+    timings['nodeDetailSymbolCold'] = cold.ms;
+    expect(cold.value?.kind).toBe('symbol');
+    expect(cold.ms).toBeLessThan(300);
     const r = bestOf(() => uc.nodeDetail(env.project, target));
     timings['nodeDetailSymbol'] = r.ms;
     expect(r.value?.kind).toBe('symbol');
@@ -651,7 +906,24 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     expect(dir.ms).toBeLessThan(300);
   }, 60_000);
 
-  it('search ≤ 300 ms and at most 50 merged results', () => {
+  it('nodeDetail of a directory holding the whole graph ≤ 300 ms cold', () => {
+    const cold = coldBest(whole, (fresh) => fresh.nodeDetail(whole.project, 'dir:all'));
+    timings['nodeDetailWholeDirCold'] = cold.ms;
+    const d = cold.value;
+    if (d?.kind !== 'dir') throw new Error('expected a dir detail');
+    expect(d).toMatchObject({ fileCount: 5000, symbolCount: 45_000 });
+    expect(d.topHubs).toHaveLength(5);
+    expect(d.topHubs.every((n) => n.filePath.startsWith('all/'))).toBe(true);
+    expect(cold.ms).toBeLessThan(300);
+    const warm = new GraphViewUseCase({ store: whole.store });
+    timings['nodeDetailWholeDir'] = bestOf(() => warm.nodeDetail(whole.project, 'dir:all')).ms;
+  }, 60_000);
+
+  it('search ≤ 300 ms and at most 50 merged results, cold included', () => {
+    const cold = coldBest(env, (fresh) => fresh.search(env.project, 'fn1'));
+    timings['searchCold'] = cold.ms;
+    expect(cold.value.length).toBeGreaterThan(0);
+    expect(cold.ms).toBeLessThan(300);
     const r = bestOf(() => uc.search(env.project, 'fn1'));
     timings['search'] = r.ms;
     expect(r.value.length).toBeGreaterThan(0);

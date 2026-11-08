@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import {
+  GRAPH_EDGE_LIMIT,
   GRAPH_EXPAND_LIMIT,
   GRAPH_PAGE_LIMIT,
   type EdgeKind,
@@ -10,6 +11,7 @@ import {
   type GraphNode,
   type GraphNodeDetail,
   type GraphOverviewNode,
+  type GraphOverviewOptions,
   type GraphSearchResult,
   type GraphSymbolDetail,
   type GraphViewEdge,
@@ -17,7 +19,7 @@ import {
 } from '../../../../shared/domain/code-graph';
 import { openGraphDb, type GraphDb } from '../engine/db/connection';
 import { GraphQueries, type ViewChildRow, type ViewEdgeQuery } from '../engine/db/queries';
-import { HUB_EDGE_WEIGHTS, findHubs, readCommunities } from '../engine/graph/communities';
+import { readCommunities, readHubs, type Hub } from '../engine/graph/communities';
 import { getCallees, getCallers, getImpact } from '../engine/graph/traversal';
 import { searchSymbols } from '../engine/search/search';
 import type { CodeGraphStore } from '../infrastructure/code-graph-store';
@@ -25,7 +27,6 @@ import type { CodeGraphStore } from '../infrastructure/code-graph-store';
 export interface GraphViewUseCaseDeps {
   store: CodeGraphStore;
   openDb?: typeof openGraphDb;
-  findHubs?: typeof findHubs;
 }
 
 const AGGREGATE_KINDS: EdgeKind[] = ['imports', 'calls', 'instantiates', 'extends', 'implements', 'references'];
@@ -43,10 +44,20 @@ const MAX_NESTING = 64;
 const READ_CACHE_KIB = -65536;
 const READ_MMAP_BYTES = 256 * 1024 * 1024;
 
+interface GraphVersion {
+  /** graph.db alone: changes when a full index swaps the file in (or a checkpoint lands). */
+  file: string;
+  /** graph.db plus its WAL: changes on every write, an incremental sync included. */
+  full: string;
+}
+
 interface CacheEntry {
-  version: string;
+  file: string;
+  full: string;
+  /** Hints persisted by the last full index; a sync leaves them as they are. */
   communities?: Map<string, number>;
-  hubs?: Set<string>;
+  hubs?: Hub[];
+  hubFlags?: Set<string>;
   overviewEdges?: GraphViewEdge[];
 }
 
@@ -54,7 +65,8 @@ interface Ctx {
   q: GraphQueries;
   entry: CacheEntry;
   communities(): Map<string, number>;
-  hubs(): Set<string>;
+  hubs(): Hub[];
+  hubFlags(): Set<string>;
 }
 
 const emptyPage = (): GraphViewPage => ({ nodes: [], edges: [], total: 0, hasMore: false });
@@ -75,8 +87,8 @@ function parentDirs(p: string): string[] {
   return out;
 }
 
-// Keyed on the WAL as well: an incremental sync writes there without touching graph.db.
-function graphVersion(file: string): string | undefined {
+// The full version includes the WAL: an incremental sync writes there without touching graph.db.
+function graphVersion(file: string): GraphVersion | undefined {
   let main: fs.Stats;
   try {
     main = fs.statSync(file);
@@ -90,7 +102,17 @@ function graphVersion(file: string): string | undefined {
   } catch {
     // no WAL
   }
-  return `${main.ino}:${main.mtimeMs}:${main.size}:${wal}`;
+  const base = `${main.ino}:${main.mtimeMs}:${main.size}`;
+  return { file: base, full: `${base}:${wal}` };
+}
+
+/** Keeps the heaviest GRAPH_EDGE_LIMIT edges and flags the page when some were cut. */
+function withEdges(page: GraphViewPage, edges: GraphViewEdge[]): GraphViewPage {
+  if (edges.length <= GRAPH_EDGE_LIMIT) return { ...page, edges };
+  const kept = [...edges]
+    .sort((a, b) => b.weight - a.weight || compare(a.source, b.source) || compare(a.target, b.target))
+    .slice(0, GRAPH_EDGE_LIMIT);
+  return { ...page, edges: kept, edgesTruncated: true };
 }
 
 function fileScore(filePath: string, text: string): number {
@@ -111,23 +133,29 @@ function fileScore(filePath: string, text: string): number {
 export class GraphViewUseCase {
   private readonly store: CodeGraphStore;
   private readonly openDb: typeof openGraphDb;
-  private readonly findHubs: typeof findHubs;
   private readonly cache = new Map<string, CacheEntry>();
 
   constructor(deps: GraphViewUseCaseDeps) {
     this.store = deps.store;
     this.openDb = deps.openDb ?? openGraphDb;
-    this.findHubs = deps.findHubs ?? findHubs;
   }
 
-  overview(projectAbs: string): GraphViewPage {
+  /** Root entries; a page past the first carries its edges back to the earlier pages too. */
+  overview(projectAbs: string, opts: GraphOverviewOptions = {}): GraphViewPage {
     return this.withGraph(projectAbs, emptyPage, (ctx) => {
+      const offset = opts.offset ?? 0;
       const rows = ctx.q.viewDirChildren('');
-      const page = this.dirPage(ctx, rows, undefined, 0);
-      const ids = new Set(page.nodes.map((n) => n.id));
+      const page = this.dirPage(ctx, rows, undefined, offset);
+      if (page.nodes.length === 0) return page;
+      const fresh = new Set(page.nodes.map((n) => n.id));
+      const shown = new Set(rows.slice(0, offset + page.nodes.length).map((r) => (r.isDir ? dirId(r.path) : r.fileId)));
       ctx.entry.overviewEdges ??= this.topLevelEdges(ctx.q, rows);
-      page.edges = ctx.entry.overviewEdges.filter((e) => ids.has(e.source) && ids.has(e.target));
-      return page;
+      return withEdges(
+        page,
+        ctx.entry.overviewEdges.filter(
+          (e) => (fresh.has(e.source) || fresh.has(e.target)) && shown.has(e.source) && shown.has(e.target),
+        ),
+      );
     });
   }
 
@@ -147,12 +175,14 @@ export class GraphViewUseCase {
           const i = fp.indexOf('/', dir.length + 1);
           return i < 0 ? fp : fp.slice(0, i);
         };
-        page.edges = this.edgesFor(ctx, page.nodes, visible, {
-          scope: { dir },
-          inScope: whole ? () => true : (fp) => keys.has(childKey(fp)),
-          blocked: [nodeId, ...parentDirs(dir).map(dirId)],
-        });
-        return page;
+        return withEdges(
+          page,
+          this.edgesFor(ctx, page.nodes, visible, {
+            scope: { dir },
+            inScope: whole ? () => true : (fp) => keys.has(childKey(fp)),
+            blocked: [nodeId, ...parentDirs(dir).map(dirId)],
+          }),
+        );
       }
       const node = ctx.q.nodeById(nodeId);
       if (!node) return emptyPage();
@@ -164,7 +194,7 @@ export class GraphViewUseCase {
         inScope: () => true,
         blocked: [node.id, ...this.ancestorsOf(ctx.q, node)],
       });
-      return { nodes, edges, total, hasMore: offset + nodes.length < total };
+      return withEdges({ nodes, edges: [], total, hasMore: offset + nodes.length < total }, edges);
     });
   }
 
@@ -219,36 +249,50 @@ export class GraphViewUseCase {
     const file = this.store.dbPath(projectAbs);
     const version = graphVersion(file);
     if (version === undefined) return empty();
-    let db: GraphDb | undefined;
+    let db: GraphDb;
     try {
       db = this.openDb(file, { readonly: true });
+    } catch (err) {
+      // Removed (reset, swap) between the stat and the open: the same as no graph.
+      if (!fs.existsSync(file)) return empty();
+      throw err;
+    }
+    try {
       // Each request starts with a cold connection; the default 2 MB page cache thrashes on
       // the random id lookups of an aggregation over a large graph (measured ~25% slower).
       db.exec(`PRAGMA cache_size = ${READ_CACHE_KIB}`);
       // Memory-mapped reads skip a copy per page: ~18% faster on the 150k-edge aggregation.
       // Safe here: the live graph file is only ever grown or replaced, never truncated.
       db.exec(`PRAGMA mmap_size = ${READ_MMAP_BYTES}`);
+      // The temp map and GROUP BY trees of the aggregations stay off disk (~10% on the overview scan).
+      db.exec('PRAGMA temp_store = MEMORY');
       const q = new GraphQueries(db);
       const entry = this.entryFor(projectAbs, version);
+      const hubs = (): Hub[] => (entry.hubs ??= readHubs(q));
       return fn({
         q,
         entry,
         communities: () => (entry.communities ??= readCommunities(q)),
-        hubs: () => (entry.hubs ??= new Set(this.findHubs(q, { top: HUB_FLAGS }).map((h) => h.nodeId))),
+        hubs,
+        hubFlags: () => (entry.hubFlags ??= new Set(hubs().slice(0, HUB_FLAGS).map((h) => h.nodeId))),
       });
     } finally {
       try {
-        db?.close();
+        db.close();
       } catch {
         // already closed
       }
     }
   }
 
-  private entryFor(projectAbs: string, version: string): CacheEntry {
+  private entryFor(projectAbs: string, version: GraphVersion): CacheEntry {
     const current = this.cache.get(projectAbs);
     this.cache.delete(projectAbs);
-    const entry = current?.version === version ? current : { version };
+    const entry: CacheEntry = current?.file === version.file ? current : { file: version.file, full: version.full };
+    if (entry.full !== version.full) {
+      entry.full = version.full;
+      delete entry.overviewEdges;
+    }
     this.cache.set(projectAbs, entry);
     for (const key of this.cache.keys()) {
       if (this.cache.size <= VIEW_CACHE_PROJECTS) break;
@@ -325,7 +369,7 @@ export class GraphViewUseCase {
     if (n.isTest === true) o.isTest = true;
     const community = ctx.communities().get(n.filePath);
     if (community !== undefined) o.community = community;
-    if (!isFile && ctx.hubs().has(n.id)) o.hub = true;
+    if (!isFile && ctx.hubFlags().has(n.id)) o.hub = true;
     return o;
   }
 
@@ -426,11 +470,25 @@ export class GraphViewUseCase {
       fileCount: summary.fileCount,
       symbolCount: summary.symbolCount,
       languages: summary.languages,
-      topHubs: ctx.q.topHubsUnder(dir, HUB_EDGE_WEIGHTS, DETAIL_TOP_HUBS),
+      topHubs: this.topHubsUnder(ctx, prefix),
       communities: [...counts.entries()]
         .map(([id, files]) => ({ id, files }))
         .sort((a, b) => b.files - a.files || a.id - b.id),
     };
+  }
+
+  /** The persisted ranking filtered by path; nodes gone since the last full index are skipped. */
+  private topHubsUnder(ctx: Ctx, prefix: string): GraphNode[] {
+    const ranked = ctx.hubs();
+    const byId = new Map(ctx.q.nodesByIds(ranked.map((h) => h.nodeId)).map((n) => [n.id, n]));
+    const out: GraphNode[] = [];
+    for (const h of ranked) {
+      const n = byId.get(h.nodeId);
+      if (n?.filePath.startsWith(prefix) !== true) continue;
+      out.push(n);
+      if (out.length === DETAIL_TOP_HUBS) break;
+    }
+    return out;
   }
 
   private fileDetail(ctx: Ctx, node: GraphNode): GraphFileDetail {
@@ -478,7 +536,7 @@ export class GraphViewUseCase {
     };
     const community = ctx.communities().get(node.filePath);
     if (community !== undefined) out.community = community;
-    if (ctx.hubs().has(node.id)) out.hub = true;
+    if (ctx.hubFlags().has(node.id)) out.hub = true;
     if (node.signature !== undefined) out.signature = node.signature;
     if (node.docstring !== undefined) out.docstring = node.docstring;
     return out;

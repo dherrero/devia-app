@@ -5,7 +5,9 @@ import {
   computeCommunities,
   findHubs,
   persistCommunities,
+  persistHubs,
   readCommunities,
+  readHubs,
 } from './communities';
 import {
   mkEdge,
@@ -237,5 +239,30 @@ describe('persistCommunities / readCommunities', () => {
     expect(readCommunities(t.q).size).toBe(0);
     t.q.setMeta('communities', '{"a.ts":"x"}');
     expect(readCommunities(t.q).size).toBe(0);
+  });
+});
+
+describe('persistHubs / readHubs', () => {
+  let t: SeededDb;
+  beforeEach(() => {
+    t = openTempDb();
+  });
+  afterEach(() => t.close());
+
+  it('round-trips the ranked hubs in order', () => {
+    const hubs = [
+      { nodeId: 'b', degree: 6, score: 1 },
+      { nodeId: 'a', degree: 3, score: 0.5 },
+    ];
+    t.q.transaction(() => persistHubs(t.q, hubs));
+    expect(readHubs(t.q)).toEqual(hubs);
+  });
+
+  it('returns an empty list when absent or corrupt, never throwing', () => {
+    expect(readHubs(t.q)).toEqual([]);
+    for (const raw of ['{not json', '{"a":1}', '[{"nodeId":1,"degree":1,"score":1}]', '[{"nodeId":"a","degree":"x","score":1}]', '[null]']) {
+      t.q.setMeta('hubs', raw);
+      expect(readHubs(t.q)).toEqual([]);
+    }
   });
 });

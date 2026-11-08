@@ -6,6 +6,7 @@ import {
   GRAPH_PAGE_LIMIT,
   type CodeGraphStatus,
   type GraphExpandOptions,
+  type GraphOverviewOptions,
   type GraphNodeDetail,
   type GraphSearchResult,
   type GraphViewPage,
@@ -102,15 +103,30 @@ function requireQuery(q: unknown): string {
   return q;
 }
 
-function requireExpandOptions(opts: unknown): GraphExpandOptions {
-  if (opts === undefined) return { visibleIds: [] };
+function requireOptionsObject(opts: unknown): Record<string, unknown> {
   if (typeof opts !== 'object' || opts === null || Array.isArray(opts)) {
     throw new InvalidArgumentError('opts must be an object');
   }
-  const { offset, visibleIds } = opts as { offset?: unknown; visibleIds?: unknown };
+  return opts as Record<string, unknown>;
+}
+
+function requireOffset(offset: unknown): number | undefined {
   if (offset !== undefined && (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0)) {
     throw new InvalidArgumentError('offset must be a non-negative integer');
   }
+  return offset;
+}
+
+function requireOverviewOptions(opts: unknown): GraphOverviewOptions {
+  if (opts === undefined) return {};
+  const offset = requireOffset(requireOptionsObject(opts)['offset']);
+  return offset === undefined ? {} : { offset };
+}
+
+function requireExpandOptions(opts: unknown): GraphExpandOptions {
+  if (opts === undefined) return { visibleIds: [] };
+  const { offset: rawOffset, visibleIds } = requireOptionsObject(opts);
+  const offset = requireOffset(rawOffset);
   const ids = visibleIds ?? [];
   if (
     !Array.isArray(ids) ||
@@ -122,7 +138,7 @@ function requireExpandOptions(opts: unknown): GraphExpandOptions {
     );
   }
   const out: GraphExpandOptions = { visibleIds: ids as string[] };
-  if (offset !== undefined) out.offset = offset as number;
+  if (offset !== undefined) out.offset = offset;
   return out;
 }
 
@@ -294,7 +310,10 @@ export function registerCodeGraphIpc(ctx: FeatureContext, deps: CodeGraphIpcDeps
 
   ctx.ipc.handle(
     IPC.codeGraphOverview,
-    guarded((_e, project: unknown): GraphViewPage => capPage(view.overview(resolveProject(project)))),
+    guarded((_e, project: unknown, opts: unknown): GraphViewPage => {
+      const abs = resolveProject(project);
+      return capPage(view.overview(abs, requireOverviewOptions(opts)));
+    }),
   );
 
   ctx.ipc.handle(

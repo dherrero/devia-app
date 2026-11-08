@@ -138,11 +138,13 @@ describe('ElectronApiService code graph wrappers', () => {
     const service = TestBed.inject(ElectronApiService);
 
     await expect(service.codeGraphOverview('a/b')).resolves.toEqual({ nodes: [], edges: [], total: 0, hasMore: false });
+    await service.codeGraphOverview('a/b', { offset: 500 });
     await service.codeGraphExpand('a/b', 'dir:src', { offset: 500, visibleIds: ['dir:src'] });
     await service.codeGraphNodeDetail('a/b', 'dir:src');
     await expect(service.codeGraphSearch('a/b', 'helper')).resolves.toEqual([]);
 
-    expect(bridge.codeGraphOverview).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphOverview).toHaveBeenNthCalledWith(1, 'a/b', undefined);
+    expect(bridge.codeGraphOverview).toHaveBeenNthCalledWith(2, 'a/b', { offset: 500 });
     expect(bridge.codeGraphExpand).toHaveBeenCalledWith('a/b', 'dir:src', { offset: 500, visibleIds: ['dir:src'] });
     expect(bridge.codeGraphNodeDetail).toHaveBeenCalledWith('a/b', 'dir:src');
     expect(bridge.codeGraphSearch).toHaveBeenCalledWith('a/b', 'helper');

@@ -4,7 +4,6 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { EdgeKind, GraphEdge, GraphNode } from '../../../../../shared/domain/code-graph';
 import { mkNode, openTempDb, type SeededDb } from '../graph/test-graph';
-import { HUB_EDGE_WEIGHTS } from '../graph/communities';
 import { openGraphDb, type GraphDb } from './connection';
 import { GraphQueries } from './queries';
 
@@ -166,6 +165,18 @@ describe('GraphQueries view queries', () => {
       ]);
     });
 
+    it('lists a directory whose name is outside the BMP (UTF-16 surrogate pairs)', () => {
+      for (const p of ['\u{1F600}\u{1F680}/a/k.ts', '\u{1F600}\u{1F680}/k2.ts']) {
+        db.q.upsertFile({ path: p, contentHash: 'h', language: 'typescript', size: 1, modifiedAt: 1, indexedAt: 1, nodeCount: 1, generated: false, isTest: false });
+        db.q.insertNodes([file(p)]);
+      }
+      expect(db.q.viewDirChildren('\u{1F600}\u{1F680}')).toEqual([
+        { path: '\u{1F600}\u{1F680}/a', isDir: true, fileCount: 1, symbolCount: 0, childCount: 1 },
+        expect.objectContaining({ path: '\u{1F600}\u{1F680}/k2.ts', isDir: false, fileId: 'F:\u{1F600}\u{1F680}/k2.ts' }),
+      ]);
+      expect(db.q.viewDirChildren('\u{1F600}\u{1F680}/a').map((r) => r.path)).toEqual(['\u{1F600}\u{1F680}/a/k.ts']);
+    });
+
     it('returns nothing for an unknown directory', () => {
       expect(db.q.viewDirChildren('nope')).toEqual([]);
     });
@@ -276,10 +287,9 @@ describe('GraphQueries view queries', () => {
     expect(db.q.dirSummary('nope')).toEqual({ fileCount: 0, symbolCount: 0, languages: {} });
   });
 
-  it('topHubsUnder ranks by weighted degree inside the dir, never files or tests', () => {
-    expect(db.q.topHubsUnder('a', HUB_EDGE_WEIGHTS, 5).map((n) => n.id)).toEqual(['f', 'g', 'm1', 'A', 'm2']);
-    expect(db.q.topHubsUnder('t', HUB_EDGE_WEIGHTS, 5)).toEqual([]);
-    expect(db.q.topHubsUnder('a', HUB_EDGE_WEIGHTS, 1).map((n) => n.id)).toEqual(['f']);
+  it('nodesByIds returns the existing nodes among the ids', () => {
+    expect(db.q.nodesByIds(['g', 'nope', 'A', 'g']).map((n) => n.id).sort()).toEqual(['A', 'g']);
+    expect(db.q.nodesByIds([])).toEqual([]);
   });
 
   it('lists the files a file imports and the files importing it', () => {
@@ -328,7 +338,7 @@ describe('GraphQueries view aggregations and the id/file_path index', () => {
 
   const plans = (): string[] =>
     sqls
-      .filter((s) => s.includes('cg_view_rep') || s.includes("instr(ns.file_path || '/', '/')"))
+      .filter((s) => s.includes('cg_view_rep'))
       .map((s) =>
         (raw.prepare(`EXPLAIN QUERY PLAN ${s}`).all(...Array<string>(countParams(s)).fill('')) as { detail: string }[])
           .map((r) => r.detail)
@@ -337,14 +347,27 @@ describe('GraphQueries view aggregations and the id/file_path index', () => {
 
   it('looks the edge endpoints up through the covering index', () => {
     aggregate();
-    q.viewTopLevelEdges(AGG);
     const got = plans();
-    expect(got).toHaveLength(2);
+    expect(got).toHaveLength(1);
     for (const plan of got) {
       expect(plan).toMatch(/COVERING INDEX idx_nodes_id_file/);
       expect(plan).not.toMatch(/sqlite_autoindex_nodes_1/);
     }
-    expect(got[1]?.split('\n')[0]).toMatch(/^SCAN e\b/);
+  });
+
+  it('builds the top-level map in temp tables and drops them, also on a read-only connection', () => {
+    const want = q.viewTopLevelEdges(AGG);
+    const temps = (db: GraphDb): unknown[] => db.prepare("SELECT name FROM sqlite_temp_master WHERE type = 'table'").all();
+    expect(temps(raw)).toEqual([]);
+    const ro = openGraphDb(path.join(dir, 'graph.db'), { readonly: true });
+    try {
+      const rq = new GraphQueries(ro);
+      expect(rq.viewTopLevelEdges(AGG)).toEqual(want);
+      expect(rq.viewTopLevelEdges(AGG)).toEqual(want);
+      expect(temps(ro)).toEqual([]);
+    } finally {
+      ro.close();
+    }
   });
 
   it('answers the same on a graph created before the index existed', () => {

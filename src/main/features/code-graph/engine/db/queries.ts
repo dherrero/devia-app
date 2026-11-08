@@ -1,12 +1,11 @@
 import type { StatementSync } from 'node:sqlite';
-import {
-  isEdgeKind,
-  type CodeGraphLanguage,
-  type EdgeKind,
-  type GraphEdge,
-  type GraphNode,
-  type NodeKind,
-  type RefMetadata,
+import type {
+  CodeGraphLanguage,
+  EdgeKind,
+  GraphEdge,
+  GraphNode,
+  NodeKind,
+  RefMetadata,
 } from '../../../../../shared/domain/code-graph';
 import type { GraphDb } from './connection';
 
@@ -228,6 +227,8 @@ export interface DirSummary {
 
 const VIEW_REP_FN = 'cg_view_rep';
 const VIEW_IN_FN = 'cg_view_in';
+const VIEW_TOP_KEYS = 'temp.cg_view_top_keys';
+const VIEW_TOP_NODES = 'temp.cg_view_top_nodes';
 
 /** `[lo, hi)` bounds of every path under `dir/` ('0' is the code point after '/'). */
 function dirRange(dir: string): [string, string] {
@@ -817,29 +818,30 @@ export class GraphQueries {
 
   /** Direct children (subdirs + files with a file node) of `dir` ('' is the project root), dirs first. */
   viewDirChildren(dir: string): ViewChildRow[] {
-    const plen = dir === '' ? 0 : dir.length + 1;
     const bounds = dir === '' ? [] : dirRange(dir);
+    // SQL counts characters and JS UTF-16 units: the prefix length must come from SQL.
     const rows = this.stmt(
-      `SELECT key, is_dir, files, symbols, fid, language, is_test,
+      `WITH p(plen) AS (SELECT CASE WHEN ?1 = '' THEN 0 ELSE length(?1) + 1 END)
+       SELECT key, is_dir, files, symbols, fid, language, is_test,
          CASE WHEN is_dir THEN children
               ELSE (SELECT COUNT(*) FROM edges c WHERE c.source = fid AND c.kind = 'contains') END AS children
        FROM (
-         SELECT CASE WHEN slash > 0 THEN substr(path, 1, ? + slash - 1) ELSE path END AS key,
+         SELECT CASE WHEN slash > 0 THEN substr(path, 1, plen + slash - 1) ELSE path END AS key,
                 slash > 0 AS is_dir,
                 COUNT(*) AS files,
                 SUM(MAX(node_count - 1, 0)) AS symbols,
-                COUNT(DISTINCT CASE WHEN slash > 0 THEN substr(path, ? + slash + 1,
-                  instr(substr(path, ? + slash + 1) || '/', '/') - 1) END) AS children,
+                COUNT(DISTINCT CASE WHEN slash > 0 THEN substr(path, plen + slash + 1,
+                  instr(substr(path, plen + slash + 1) || '/', '/') - 1) END) AS children,
                 MAX(fid) AS fid, MAX(language) AS language, MAX(is_test) AS is_test
          FROM (
-           SELECT f.path, f.node_count, f.language, f.is_test, n.id AS fid,
-                  instr(substr(f.path, ? + 1), '/') AS slash
-           FROM files f JOIN nodes n ON n.file_path = f.path AND n.kind = 'file'
-           ${dir === '' ? '' : 'WHERE f.path >= ? AND f.path < ?'}
+           SELECT f.path, f.node_count, f.language, f.is_test, n.id AS fid, p.plen,
+                  instr(substr(f.path, p.plen + 1), '/') AS slash
+           FROM p CROSS JOIN files f JOIN nodes n ON n.file_path = f.path AND n.kind = 'file'
+           ${dir === '' ? '' : 'WHERE f.path >= ?2 AND f.path < ?3'}
          )
          GROUP BY key
        )`,
-    ).all(plen, plen, plen, plen, ...bounds) as unknown as {
+    ).all(dir, ...bounds) as unknown as {
       key: string;
       is_dir: number;
       files: number;
@@ -878,15 +880,34 @@ export class GraphQueries {
   viewTopLevelEdges(kinds: EdgeKind[]): ViewEdgeRow[] {
     if (kinds.length === 0) return [];
     const top = (c: string): string => `substr(${c}, 1, instr(${c} || '/', '/'))`;
-    // CROSS JOIN keeps `edges` as the outer loop: otherwise the forced index makes SQLite
-    // scan every node and probe edges by target, ~1.6x slower.
-    return this.stmt(
-      `SELECT s AS source, t AS target, COUNT(*) AS weight FROM (
-         SELECT ${top('ns.file_path')} AS s, ${top('nt.file_path')} AS t
-         FROM edges e CROSS JOIN nodes ns ${this.byIdFile()} CROSS JOIN nodes nt ${this.byIdFile()}
-         WHERE ns.id = e.source AND nt.id = e.target AND e.kind IN (${kinds.map(() => '?').join(',')})
-       ) WHERE s <> t GROUP BY s, t ORDER BY s, t`,
-    ).all(...kinds) as unknown as ViewEdgeRow[];
+    // Each node's root entry is resolved once into a temp map, so the edge scan joins small
+    // integer keys instead of slicing and grouping two paths per edge (~20% faster on 150k).
+    // Keys come from `files` like the root entries themselves; nodes are matched by key.
+    this.db.exec(
+      `CREATE TEMP TABLE ${VIEW_TOP_KEYS} (k INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE);
+       CREATE TEMP TABLE ${VIEW_TOP_NODES} (id TEXT PRIMARY KEY, k INTEGER NOT NULL) WITHOUT ROWID;`,
+    );
+    try {
+      this.db.exec(
+        `INSERT INTO ${VIEW_TOP_KEYS} (key) SELECT DISTINCT ${top('path')} FROM files;
+         INSERT INTO ${VIEW_TOP_NODES} SELECT n.id, k.k FROM nodes n ${this.byIdFile()}
+           JOIN ${VIEW_TOP_KEYS} k ON k.key = ${top('n.file_path')} ORDER BY n.id;`,
+      );
+      // The outer loop walks the map in id order, so the edges are read in index order too.
+      return this.db
+        .prepare(
+          `SELECT ks.key AS source, kt.key AS target, w AS weight FROM (
+             SELECT a.k AS s, b.k AS t, COUNT(*) AS w
+             FROM ${VIEW_TOP_NODES} a CROSS JOIN edges e INDEXED BY idx_edges_identity CROSS JOIN ${VIEW_TOP_NODES} b
+             WHERE e.source = a.id AND b.id = e.target AND e.kind IN (${kinds.map(() => '?').join(',')}) AND a.k <> b.k
+             GROUP BY a.k, b.k
+           ) JOIN ${VIEW_TOP_KEYS} ks ON ks.k = s JOIN ${VIEW_TOP_KEYS} kt ON kt.k = t
+           ORDER BY 1, 2`,
+        )
+        .all(...kinds) as unknown as ViewEdgeRow[];
+    } finally {
+      this.db.exec(`DROP TABLE IF EXISTS ${VIEW_TOP_NODES}; DROP TABLE IF EXISTS ${VIEW_TOP_KEYS};`);
+    }
   }
 
   /**
@@ -1024,26 +1045,11 @@ export class GraphQueries {
     return out;
   }
 
-  /** Highest weighted-degree symbols under `dir`, ranked like `findHubs` (no files, tests or generated code). */
-  topHubsUnder(dir: string, weights: Partial<Record<EdgeKind, number>>, limit: number): GraphNode[] {
-    const entries = Object.entries(weights).filter(
-      (e): e is [EdgeKind, number] => isEdgeKind(e[0]) && Number.isFinite(e[1]),
+  nodesByIds(ids: string[]): GraphNode[] {
+    if (ids.length === 0) return [];
+    const rows = this.stmt('SELECT * FROM nodes WHERE id IN (SELECT value FROM json_each(?))').all(
+      JSON.stringify([...new Set(ids)]),
     );
-    if (entries.length === 0 || limit <= 0) return [];
-    const weight = `CASE e.kind ${entries.map(([k, w]) => `WHEN '${k}' THEN ${w}`).join(' ')} ELSE 0 END`;
-    const kinds = entries.map(([k]) => `'${k}'`).join(',');
-    const rows = this.stmt(
-      `SELECT * FROM (
-         SELECT n.*,
-           (SELECT COALESCE(SUM(${weight}), 0) FROM edges e
-              WHERE e.source = n.id AND e.target <> n.id AND e.kind IN (${kinds}))
-         + (SELECT COALESCE(SUM(${weight}), 0) FROM edges e
-              WHERE e.target = n.id AND e.source <> n.id AND e.kind IN (${kinds})) AS degree
-         FROM nodes n
-         WHERE n.file_path >= ? AND n.file_path < ? AND n.kind <> 'file'
-           AND n.file_path NOT IN (SELECT path FROM files WHERE is_test = 1 OR generated = 1)
-       ) WHERE degree > 0 ORDER BY degree DESC, qualified_name, id LIMIT ?`,
-    ).all(...dirRange(dir), limit);
     return (rows as unknown as NodeRow[]).map(toNode);
   }
 

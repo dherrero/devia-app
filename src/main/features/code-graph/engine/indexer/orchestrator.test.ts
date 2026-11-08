@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import type { IndexProgress } from '../../../../../shared/domain/code-graph';
 import { openGraphDb } from '../db/connection';
 import { GraphQueries } from '../db/queries';
-import { readCommunities } from '../graph/communities';
+import { findHubs, readCommunities, readHubs } from '../graph/communities';
 import { contentHash } from './hash';
 import { EXTRACTION_VERSION, indexProject } from './orchestrator';
 
@@ -114,7 +114,7 @@ describe('indexProject', () => {
     expect(seen).toEqual({ graphExists: false, buildingExists: true, files: 3 });
   });
 
-  it('by default resolves references, persists communities and records the resolution configs', async () => {
+  it('by default resolves references, persists communities and hubs and records the resolution configs', async () => {
     writeThreeFiles();
     write('tsconfig.json', '{}\n');
     write('node_modules/dep/tsconfig.json', '{}\n');
@@ -126,6 +126,8 @@ describe('indexProject', () => {
       const b = q.nodesInFile('src/b.ts').find((n) => n.kind === 'function' && n.name === 'b');
       expect(a && q.edgesFrom(a.id, ['calls']).map((e) => e.target)).toEqual([b?.id]);
       expect(readCommunities(q).has('src/a.ts')).toBe(true);
+      expect(readHubs(q).length).toBeGreaterThan(0);
+      expect(readHubs(q)).toEqual(findHubs(q, { top: 200 }));
       expect(JSON.parse(q.getMeta('resolution_config_hashes') ?? 'null')).toEqual({
         'tsconfig.json': contentHash(Buffer.from('{}\n')),
       });

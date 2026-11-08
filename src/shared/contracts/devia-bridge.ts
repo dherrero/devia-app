@@ -15,6 +15,7 @@ import type { UpdateStatus } from '../domain/update';
 import type {
   CodeGraphStatus,
   GraphExpandOptions,
+  GraphOverviewOptions,
   GraphNodeDetail,
   GraphSearchResult,
   GraphViewPage,
@@ -732,9 +733,10 @@ export interface DeviaBridge {
    * Graph view reads. Without a graph they resolve with an empty page, `undefined`
    * or `[]`; unknown or vanished node ids give an empty page too. Directory ids
    * are `dir:<root-relative path>`; pages hold at most 500 nodes (`hasMore` +
-   * `offset` for the rest) and `visibleIds` at most 2000 ids.
+   * `offset` for the rest, on the overview too) and `visibleIds` at most 2000 ids;
+   * edges are capped at 5000, heaviest first (`edgesTruncated`).
    */
-  codeGraphOverview(project: string): Promise<GraphViewPage>;
+  codeGraphOverview(project: string, opts?: GraphOverviewOptions): Promise<GraphViewPage>;
   codeGraphExpand(project: string, nodeId: string, opts?: GraphExpandOptions): Promise<GraphViewPage>;
   codeGraphNodeDetail(project: string, nodeId: string): Promise<GraphNodeDetail | undefined>;
   /** At most 50 symbol and file-path hits. */

@@ -20,6 +20,10 @@ export interface Hub {
 
 const COMMUNITIES_KEY = 'communities';
 const COUNT_KEY = 'community_count';
+const HUBS_KEY = 'hubs';
+
+/** How many hubs a full index persists for the graph view (flags, per-dir top hubs). */
+export const PERSISTED_HUBS = 200;
 
 const EDGE_WEIGHTS: Partial<Record<EdgeKind, number>> = {
   imports: 1,
@@ -39,11 +43,6 @@ const HUB_KINDS: EdgeKind[] = [
 ];
 
 const COMMUNITY_KINDS = Object.keys(EDGE_WEIGHTS) as EdgeKind[];
-
-/** The weights `findHubs` uses, for SQL that must rank hubs the same way. */
-export const HUB_EDGE_WEIGHTS: Partial<Record<EdgeKind, number>> = Object.fromEntries(
-  HUB_KINDS.map((k) => [k, EDGE_WEIGHTS[k] ?? 1]),
-);
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -223,5 +222,32 @@ export function readCommunities(db: GraphQueries): Map<string, number> {
     return out;
   } catch {
     return new Map();
+  }
+}
+
+/**
+ * Like communities, the persisted hubs are hints from the last full index: an
+ * incremental sync leaves them as they are. Safe inside an open transaction.
+ */
+export function persistHubs(db: GraphQueries, hubs: Hub[]): void {
+  db.setMeta(HUBS_KEY, JSON.stringify(hubs.map((h) => ({ nodeId: h.nodeId, degree: h.degree, score: h.score }))));
+}
+
+function isHub(v: unknown): v is Hub {
+  if (typeof v !== 'object' || v === null) return false;
+  const h = v as Record<string, unknown>;
+  return typeof h['nodeId'] === 'string' && Number.isFinite(h['degree']) && Number.isFinite(h['score']);
+}
+
+/** Ranked hubs of the last full index; empty when absent or corrupt. */
+export function readHubs(db: GraphQueries): Hub[] {
+  try {
+    const raw = db.getMeta(HUBS_KEY);
+    if (raw === undefined) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.every(isHub)) return [];
+    return parsed.map((h) => ({ nodeId: h.nodeId, degree: h.degree, score: h.score }));
+  } catch {
+    return [];
   }
 }

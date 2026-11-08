@@ -6,7 +6,7 @@ import { openGraphDb } from '../db/connection';
 import { GraphQueries } from '../db/queries';
 import { acquireWriterLock, readWriterLock } from '../db/writer-lock';
 import { discoverFiles } from '../discovery/discover';
-import { persistCommunities, readCommunities } from '../graph/communities';
+import { persistCommunities, persistHubs, readCommunities, readHubs } from '../graph/communities';
 import { detectChanges } from './change-detection';
 import { isSupported } from './extract-file';
 import { EXTRACTION_VERSION, GRAPH_DB_FILE } from './orchestrator';
@@ -484,12 +484,13 @@ describe('syncProject', () => {
     expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ fullIndexRequired: false });
   });
 
-  it('keeps the community metadata and refreshes indexed_at and languages', async () => {
+  it('keeps the community and hub metadata and refreshes indexed_at and languages', async () => {
     await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
     const rw = openGraphDb(path.join(dataDir, GRAPH_DB_FILE));
     try {
       const q = new GraphQueries(rw);
       persistCommunities(q, new Map([['a.ts', 7]]));
+      persistHubs(q, [{ nodeId: 'stale-hint', degree: 9, score: 1 }]);
       q.setMeta('indexed_at', '1');
     } finally {
       rw.close();
@@ -498,6 +499,7 @@ describe('syncProject', () => {
     await syncProject({ root: project.root, dataDir });
     withDb((q) => {
       expect(readCommunities(q).get('a.ts')).toBe(7);
+      expect(readHubs(q)).toEqual([{ nodeId: 'stale-hint', degree: 9, score: 1 }]);
       expect(Number(q.getMeta('indexed_at'))).toBeGreaterThan(1);
       expect(JSON.parse(q.getMeta('languages') ?? '{}')).toEqual({ typescript: 2, python: 1 });
     });
