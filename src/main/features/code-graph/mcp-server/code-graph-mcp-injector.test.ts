@@ -61,7 +61,6 @@ describe('buildCodeGraphFeature().codeGraphMcpServer (gating)', () => {
 
   it('is null when the project has no graph', () => {
     expect(built().codeGraphMcpServer(project, 'claude')).toBeNull();
-    expect(built().codeGraphServerRegistered(project)).toBe(false);
   });
 
   it('is null when only project.json exists (no graph.db)', () => {
@@ -72,14 +71,12 @@ describe('buildCodeGraphFeature().codeGraphMcpServer (gating)', () => {
   it('is null when the user switched agent access off', () => {
     withGraph(project, false);
     expect(built().codeGraphMcpServer(project, 'claude')).toBeNull();
-    expect(built().codeGraphServerRegistered(project)).toBe(false);
   });
 
   it('is the server config for a project with a graph and the default switch', () => {
     withGraph(project);
     const server = built().codeGraphMcpServer(project, 'claude');
     expect(server).toEqual(new CodeGraphMcpInjector(() => deviaDir).serverConfig(project, 'claude'));
-    expect(built().codeGraphServerRegistered(project)).toBe(true);
   });
 
   it('looks up the exact path it is given: a worktree without its own graph gets nothing, even if the base has one', () => {
@@ -93,7 +90,6 @@ describe('buildCodeGraphFeature().codeGraphMcpServer (gating)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const broken = buildCodeGraphFeature({ config: config(() => { throw new Error('boom'); }) });
     expect(broken.codeGraphMcpServer(project, 'claude')).toBeNull();
-    expect(broken.codeGraphServerRegistered(project)).toBe(false);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('[code-graph]'), 'boom');
   });
 });

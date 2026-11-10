@@ -45,7 +45,8 @@ import type {
 } from '../infrastructure/cli-runner-adapter';
 import type { AgentProcessHandle, AgentRunHandlers } from '../domain/ports';
 import { StaticMapperRegistry } from '../../agents/infrastructure/static-mapper-registry';
-import type { NativeConfigDelivery } from '../../agents/shared/native-config-mcp';
+import { NativeConfigMcpDelivery, type NativeConfigDelivery } from '../../agents/shared/native-config-mcp';
+import { geminiAgentDef } from '../../cli-adapters/infrastructure/defs/gemini';
 import type { CliAdapterRegistry } from '../../cli-adapters';
 import type { WorktreeRef } from '../../git/domain/worktree-ref';
 import type { EnsureWorktreeResult } from '../../git';
@@ -3548,38 +3549,58 @@ describe('RunInstructionUseCase — devia-code-graph delivery (S-44)', () => {
     expect(h.runner.last().req.prepared.mcpServerIds).toContain('devia-code-graph');
   });
 
+  const homeDir = (): string => path.join(tmpDir, 'home');
+  /** Every file under `dir`, with its content, sorted — the persistent files a run left behind. */
+  const filesUnder = (dir: string): Array<[string, string]> =>
+    !fs.existsSync(dir)
+      ? []
+      : (fs.readdirSync(dir, { recursive: true }) as string[])
+          .map((rel) => path.join(dir, rel))
+          .filter((abs) => fs.statSync(abs).isFile())
+          .sort()
+          .map((abs) => [path.relative(tmpDir, abs), fs.readFileSync(abs, 'utf8')]);
+
   /**
    * Everything a run hands its agent: the plan, the system prompt, the delivery,
-   * the argv/env/stdin (Devia's temp files inlined by content) and the Claude
-   * settings file. The run id is the only legitimately different value.
+   * the argv/env/stdin (Devia's temp files inlined by content), the ACP plan-mode
+   * trust list, and every persistent file the run wrote in the project and the
+   * home dir (Claude settings, the REAL native MCP config written by
+   * `NativeConfigMcpDelivery`, seeded with a hand-added server beforehand). The
+   * run id is the only legitimately different value.
    */
-  function runFingerprint(defOverrides: Partial<RuntimeAgentDef>, extras: BuildExtras): string {
+  function runFingerprint(defOverrides: Partial<RuntimeAgentDef>, extras: BuildExtras, mode: 'plan' | 'apply' = 'apply'): string {
     fs.rmSync(projectDir(), { recursive: true, force: true });
     fs.rmSync(deviaDir(), { recursive: true, force: true });
-    fs.mkdirSync(projectDir(), { recursive: true });
+    fs.rmSync(homeDir(), { recursive: true, force: true });
+    fs.mkdirSync(path.join(projectDir(), '.gemini'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir(), '.gemini', 'settings.json'),
+      JSON.stringify({ mcpServers: { github: { command: 'gh', args: [] } }, ui: { theme: 'x' } }),
+    );
     const h = build(defOverrides, {
       config: projectConfig(),
       sessions: new FixedSessions(),
       kanbanMcpServer: () => enabledServer('devia-kanban'),
       memoryMcpServer: () => enabledServer('devia-memory'),
       uiMcpServer: uiServer,
-      nativeMcp: nativeDelivery(true),
+      nativeMcp: new NativeConfigMcpDelivery(undefined, homeDir),
       ...extras,
     });
     const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
     // The capability token's expiry is derived from the clock.
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
     try {
-      h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+      h.uc.execute('proj-a', 'do thing', [], makeHandlers(), mode);
     } finally {
       now.mockRestore();
     }
     const req = h.runner.last().req;
     const inline = (v: string): string =>
       v.startsWith(deviaDir()) && fs.existsSync(v) && fs.statSync(v).isFile() ? `<file>${fs.readFileSync(v, 'utf8')}` : v;
+    const plan = prepare.mock.calls[0]?.[0];
     const fingerprint = JSON.stringify({
       cwd: req.cwd,
-      plan: prepare.mock.calls[0]?.[0],
+      plan,
       systemPrompt: prepare.mock.calls[0]?.[1],
       delivery: prepare.mock.calls[0]?.[2],
       args: req.prepared.args.map(inline),
@@ -3587,24 +3608,61 @@ describe('RunInstructionUseCase — devia-code-graph delivery (S-44)', () => {
       env: req.prepared.env,
       agentEnv: Object.entries(req.prepared.agentEnv ?? {}).map(([k, v]) => [k, inline(v)]),
       mcpServerIds: req.prepared.mcpServerIds,
-      claudeSettings: fs.existsSync(settingsFile()) ? fs.readFileSync(settingsFile(), 'utf8') : null,
+      // What an ACP session trusts in plan mode (acp/session.ts).
+      acpPlanTrust: plan?.harness.mcp.devia.map((s) => s.id),
+      persistentFiles: [...filesUnder(projectDir()), ...filesUnder(homeDir())],
     });
     return fingerprint.split(req.runId ?? '<no run id>').join('<run>');
   }
 
-  const AGENTS: ReadonlyArray<[string, Partial<RuntimeAgentDef>]> = [
-    ['claude', claudeStreamDef],
-    ['gemini (native config)', { id: 'gemini', name: 'Gemini CLI' }],
-    ['pi', { id: 'pi', name: 'Pi' }],
-    ['opencode', { id: 'opencode', name: 'OpenCode' }],
-    ['hermes (ACP)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }],
+  /** Gemini with its real per-run plan-mode policy writer. */
+  const geminiDef: Partial<RuntimeAgentDef> = {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    ...(geminiAgentDef.buildRunFiles !== undefined && { buildRunFiles: geminiAgentDef.buildRunFiles }),
+  };
+  const AGENTS: ReadonlyArray<[string, Partial<RuntimeAgentDef>, 'plan' | 'apply']> = [
+    ['claude', claudeStreamDef, 'apply'],
+    ['gemini (native config)', geminiDef, 'apply'],
+    ['pi', { id: 'pi', name: 'Pi' }, 'apply'],
+    ['opencode', { id: 'opencode', name: 'OpenCode' }, 'apply'],
+    ['hermes (ACP)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, 'apply'],
+    ['gemini (native config, plan-mode policy)', geminiDef, 'plan'],
+    ['hermes (ACP plan-mode trust)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, 'plan'],
   ];
 
-  it.each(AGENTS)('%s: a run without a graph is identical to a run built without the provider', (_name, def) => {
-    const baseline = runFingerprint(def, {});
-    const withoutGraph = runFingerprint(def, { codeGraphMcpServer: () => null });
+  it.each(AGENTS)('%s: a run without a graph is identical to a run built without the provider', (_name, def, mode) => {
+    const baseline = runFingerprint(def, {}, mode);
+    const withoutGraph = runFingerprint(def, { codeGraphMcpServer: () => null }, mode);
     expect(withoutGraph).toBe(baseline);
     expect(baseline).not.toContain('devia-code-graph');
+  });
+
+  it('the gemini rows really compare the plan-mode policy and the written native config', () => {
+    const plan = runFingerprint(geminiDef, {}, 'plan');
+    expect(plan).toContain('exit_plan_mode');
+    expect(plan).toContain(path.join('proj-a', '.gemini', 'settings.json'));
+    expect(plan).toContain('devia-kanban');
+  });
+
+  it.each([
+    ['gemini (native config + plan-mode policy)', geminiDef, 'plan'],
+    ['hermes (ACP plan-mode trust)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, 'plan'],
+  ] as const)('%s: the fingerprint does see the server when the graph exists', (_name, def, mode) => {
+    const baseline = runFingerprint(def, {}, mode);
+    const withGraph = runFingerprint(def, { codeGraphMcpServer: codeGraph() }, mode);
+    expect(withGraph).not.toBe(baseline);
+    expect(withGraph).toContain('devia-code-graph');
+  });
+
+  it('a gemini plan run with a graph writes the policy rule and the native entry for it', () => {
+    const withGraph = JSON.parse(runFingerprint(geminiDef, { codeGraphMcpServer: codeGraph() }, 'plan')) as {
+      args: string[];
+      persistentFiles: Array<[string, string]>;
+    };
+    expect(withGraph.args.find((a) => a.startsWith('<file>'))).toContain('mcpName = "devia-code-graph"');
+    const settings = withGraph.persistentFiles.find(([rel]) => rel.endsWith(path.join('.gemini', 'settings.json')))?.[1] ?? '';
+    expect(Object.keys((JSON.parse(settings) as { mcpServers: Record<string, unknown> }).mcpServers)).toContain('devia-code-graph');
   });
 
   it('the fingerprint does see the server when the graph exists (the comparison is not blind)', () => {

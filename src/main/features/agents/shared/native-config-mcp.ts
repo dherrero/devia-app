@@ -10,6 +10,15 @@ import { McpSyncWriter } from '../../mcp/infrastructure/mcp-sync-writer';
  */
 const RETIRED_SERVER_IDS = ['devia-ask'];
 
+/**
+ * The code-graph server points at ONE project's graph (`--project`), and a
+ * native config file outlives the run (Grok's is even global). A run without
+ * it must remove the entry an earlier run wrote, or the CLI keeps loading a
+ * graph that is off, deleted, or another project's. The writers only remove
+ * entries Devia wrote, so a file that never held it is left as it was.
+ */
+const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
+
 export interface NativeConfigDelivery {
   /** The project config file written, or null when nothing could be written. */
   readonly file: string | null;
@@ -29,7 +38,8 @@ export interface NativeConfigDelivery {
  * passing `prune: false`). Writing them together removes that class of bug by
  * construction. Entries the user added by hand are preserved by the
  * marker-merge writer; Devia entries no longer requested stay untouched
- * (`prune: false`) so a server delivered by another path is never deleted.
+ * (`prune: false`) so a server delivered by another path is never deleted —
+ * except `devia-code-graph`, removed when the run does not carry it (below).
  *
  * The file lands in `cwd` — the CLI reads its project config from where it
  * runs, which for an isolated pane is the session worktree.
@@ -49,7 +59,10 @@ export class NativeConfigMcpDelivery {
         agent,
         target,
         managed: servers,
-        removedIds: RETIRED_SERVER_IDS,
+        removedIds: [
+          ...RETIRED_SERVER_IDS,
+          ...(servers.some((s) => s.id === CODE_GRAPH_SERVER_ID) ? [] : [CODE_GRAPH_SERVER_ID]),
+        ],
         parentEnv: process.env,
         prune: false,
       });

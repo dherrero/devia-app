@@ -9,8 +9,17 @@ let deviaDir: string;
 beforeEach(() => { deviaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-gemini-policy-')); });
 afterEach(() => fs.rmSync(deviaDir, { recursive: true, force: true }));
 
-const filesFor = (mode: 'plan' | 'apply' | 'apply-yolo') =>
-  geminiAgentDef.buildRunFiles?.({ mode, deviaDir, runId: 'run-1' }) ?? null;
+const BASE_SERVERS = ['devia-kanban', 'devia-memory', 'devia-ui'];
+const filesFor = (mode: 'plan' | 'apply' | 'apply-yolo', deviaServerIds: readonly string[] = BASE_SERVERS) =>
+  geminiAgentDef.buildRunFiles?.({ mode, deviaDir, runId: 'run-1', deviaServerIds }) ?? null;
+const policyFor = (deviaServerIds: readonly string[]): string => {
+  const files = filesFor('plan', deviaServerIds);
+  const body = fs.readFileSync(files?.args[1] ?? '', 'utf8');
+  files?.cleanup();
+  return body;
+};
+const allowRules = (policy: string): string[] =>
+  policy.split('[[rule]]').filter((r) => r.includes('decision = "allow"'));
 
 describe('Gemini plan-mode policy', () => {
   it('is only written for plan mode', () => {
@@ -31,12 +40,27 @@ describe('Gemini plan-mode policy', () => {
   });
 
   it("allows Devia's own servers in plan mode and nothing else", () => {
-    for (const server of ['devia-kanban', 'devia-memory', 'devia-code-graph', 'devia-ui']) {
+    for (const server of BASE_SERVERS) {
       expect(GEMINI_PLAN_POLICY).toContain(`mcpName = "${server}"`);
     }
-    const allows = GEMINI_PLAN_POLICY.split('[[rule]]').filter((r) => r.includes('decision = "allow"'));
-    expect(allows).toHaveLength(4);
+    const allows = allowRules(GEMINI_PLAN_POLICY);
+    expect(allows).toHaveLength(3);
     for (const rule of allows) expect(rule).toMatch(/modes = \["plan"\]/);
+  });
+
+  it('without devia-code-graph in the run, the policy is exactly the memory/kanban/ui one', () => {
+    const policy = policyFor(BASE_SERVERS);
+    expect(policy).toBe(GEMINI_PLAN_POLICY);
+    expect(policy).not.toContain('devia-code-graph');
+  });
+
+  it('allows devia-code-graph in plan mode only when the run carries it', () => {
+    const policy = policyFor(['devia-kanban', 'devia-memory', 'devia-code-graph', 'devia-ui']);
+    expect(policy).toContain('mcpName = "devia-code-graph"');
+    expect(allowRules(policy)).toHaveLength(4);
+    // memory/kanban/ui rules unchanged: dropping the graph rule gives back the base policy.
+    const graphRule = `[[rule]]\nmcpName = "devia-code-graph"\ntoolName = "*"\ndecision = "allow"\npriority = 900\nmodes = ["plan"]\n\n`;
+    expect(policy.replace(graphRule, '')).toBe(GEMINI_PLAN_POLICY);
   });
 
   it('stops the agent from leaving plan mode by itself', () => {

@@ -31,10 +31,13 @@ export interface CodeGraphFeatureBuilt {
    * The bundled `devia-code-graph` MCP server for the run's EFFECTIVE cwd (a
    * worktree with its own graph, else the checkout), or null when that exact
    * path has no graph or the user turned agent access off.
+   *
+   * Prompt guidance (T-508) must gate on what THIS run got, not on a second
+   * disk lookup that can disagree with it: inside the runner use
+   * `codeGraphServer !== undefined && delivery.mcpServerIds.includes(CODE_GRAPH_SERVER_ID)`
+   * (the second half also covers a delivery that failed).
    */
   readonly codeGraphMcpServer: (projectAbs: string, agentId?: string) => McpServerConfig | null;
-  /** Same decision as `codeGraphMcpServer`, as a boolean. */
-  readonly codeGraphServerRegistered: (projectAbs: string) => boolean;
 }
 
 export function buildCodeGraphFeature(deps: CodeGraphDeps): CodeGraphFeatureBuilt {
@@ -47,6 +50,8 @@ export function buildCodeGraphFeature(deps: CodeGraphDeps): CodeGraphFeatureBuil
   // Read once when a run starts: the agent's MCP set is fixed for the whole
   // run, so the switch (or a graph built mid-run) takes effect on the next one.
   // No fallback to the base graph for a worktree: it describes other files.
+  // A worktree created DURING a run is seeded asynchronously, so that first
+  // run never sees the graph.
   const codeGraphMcpServer = (projectAbs: string, agentId?: string): McpServerConfig | null => {
     try {
       if (!store.exists(projectAbs) || store.loadDoc(projectAbs)?.agentAccess === false) return null;
@@ -71,6 +76,5 @@ export function buildCodeGraphFeature(deps: CodeGraphDeps): CodeGraphFeatureBuil
     seedWorktreeGraph,
     dropWorktreeGraph,
     codeGraphMcpServer,
-    codeGraphServerRegistered: (projectAbs: string): boolean => codeGraphMcpServer(projectAbs) !== null,
   };
 }
