@@ -1111,6 +1111,10 @@
       "not_created": "This project no longer has a graph. Index it again.",
       "watch_limit": "Too many projects are being watched at once; automatic updates for this one are paused.",
       "dismiss": "Dismiss"
+    },
+    "canvas": {
+      "collapsed_notice": "Collapsed {{count}} older node to keep the graph responsive.",
+      "collapsed_notice_plural": "Collapsed {{count}} older nodes to keep the graph responsive."
     }
   }
 }

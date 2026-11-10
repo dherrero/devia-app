@@ -1111,6 +1111,10 @@
       "not_created": "Este proyecto ya no tiene grafo. Vuelve a indexarlo.",
       "watch_limit": "Hay demasiados proyectos vigilados a la vez; la actualización automática de este está en pausa.",
       "dismiss": "Cerrar aviso"
+    },
+    "canvas": {
+      "collapsed_notice": "Se ha contraído {{count}} nodo antiguo para mantener el grafo fluido.",
+      "collapsed_notice_plural": "Se han contraído {{count}} nodos antiguos para mantener el grafo fluido."
     }
   }
 }
