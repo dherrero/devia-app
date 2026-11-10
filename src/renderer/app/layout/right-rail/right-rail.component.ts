@@ -7,7 +7,7 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { IconComponent, TooltipDirective } from '@devia/ui';
 import {
   LucideLayoutDashboard, LucidePuzzle, LucideZap, LucideUsers,
-  LucideContainer, LucideFolderOpen, LucideTerminal,
+  LucideContainer, LucideFolderOpen, LucideTerminal, LucideNetwork,
 } from '@lucide/angular';
 import { AppStateService } from '../../core/services/app-state.service';
 import { TerminalPanelComponent } from '../../features/chat/terminal/terminal-panel.component';
@@ -55,6 +55,7 @@ export class RightRailComponent {
   readonly LucideContainer       = LucideContainer;
   readonly LucideFolderOpen      = LucideFolderOpen;
   readonly LucideTerminal        = LucideTerminal;
+  readonly LucideNetwork         = LucideNetwork;
 
   readonly state = inject(AppStateService);
   readonly rail = inject(RightRailStateService);
@@ -170,6 +171,10 @@ export class RightRailComponent {
     }
     void this.router.navigateByUrl('/kanban');
 
+  }
+
+  openGraph(): void {
+    void this.router.navigateByUrl('/graph');
   }
 
   openSkills(): void {

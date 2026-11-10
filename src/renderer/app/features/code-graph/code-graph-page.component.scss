@@ -1,0 +1,36 @@
+:host {
+  position: fixed;
+  /* Same frame-aware inset as the Kanban board: below the titlebar, inside the 2px window border. */
+  inset: calc(var(--dv-titlebar-h, 2.5rem) + 2px) 2px 2px 2px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--dv-surf);
+  color: var(--dv-fg);
+  border-bottom-left-radius: calc(var(--dv-window-radius) - 2px);
+  border-bottom-right-radius: calc(var(--dv-window-radius) - 2px);
+  overflow: hidden;
+}
+.cg-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.75rem; flex: 0 0 auto;
+  padding: 0.375rem 0.875rem; border-bottom: 1px solid var(--dv-bor);
+  background: var(--dv-surf);
+}
+.cg-title { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 0.9375rem; min-width: 0; }
+.cg-title dv-icon { color: var(--dv-acc); }
+.cg-project { color: var(--dv-muted); font-weight: 400; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-body {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  background: var(--dv-surf-3);
+}
+.cg-center,
+.cg-slot {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.5rem; padding: 2rem; text-align: center;
+}
+.cg-message { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--dv-fg); }
+.cg-detail { margin: 0 0 0.625rem; font-size: 0.8125rem; color: var(--dv-muted); max-width: 32rem; overflow-wrap: anywhere; }
+.cg-raw { font-family: var(--dv-mono); font-size: 0.75rem; color: var(--dv-muted); }

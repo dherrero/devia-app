@@ -67,5 +67,14 @@ export const routes: Routes = [
       ),
     data: { chunkName: 'kanban' },
   },
+  {
+    path: 'graph',
+    loadComponent: () =>
+      recoverLazyImport(() =>
+        import('./features/code-graph/code-graph-page.component')
+          .then((m) => m.default),
+      ),
+    data: { chunkName: 'code-graph' },
+  },
   { path: '**', redirectTo: '' },
 ];

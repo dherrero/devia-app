@@ -1,0 +1,83 @@
+<header class="cg-header">
+  <div class="cg-title">
+    <dv-icon [icon]="LucideNetwork" size="sm" />
+    <span>{{ 'codeGraph.title' | translate }}</span>
+    @if (project(); as p) {
+      <span class="cg-project">{{ p }}</span>
+    }
+  </div>
+  <dv-button iconOnly
+             variant="ghost"
+             size="sm"
+             data-testid="cg-back"
+             (clicked)="back()"
+             [dvTooltip]="'codeGraph.back' | translate"
+             [ariaLabel]="'codeGraph.back' | translate">
+    <dv-icon [icon]="LucideX" size="sm" />
+  </dv-button>
+</header>
+
+<div class="cg-body">
+  @switch (view()) {
+    @case ('no-project') {
+      <div class="cg-center" data-testid="cg-no-project">
+        <p class="cg-message">{{ 'empty_state.select_project' | translate }}</p>
+      </div>
+    }
+    @case ('loading') {
+      <div class="cg-center" data-testid="cg-loading" role="status">
+        <dv-spinner size="lg" />
+        <p class="cg-message">{{ 'codeGraph.loading' | translate }}</p>
+      </div>
+    }
+    @case ('load-error') {
+      <section class="cg-slot" data-testid="cg-error-slot">
+        <p class="cg-message">{{ 'codeGraph.state.error' | translate }}</p>
+        <p class="cg-detail">{{ graph.error() }}</p>
+        <dv-button variant="secondary" size="sm" data-testid="cg-retry" (clicked)="retry()">
+          {{ 'codeGraph.retry' | translate }}
+        </dv-button>
+      </section>
+    }
+    @case ('error') {
+      <section class="cg-slot" data-testid="cg-error-slot">
+        <p class="cg-message">{{ 'codeGraph.state.error' | translate }}</p>
+        <code class="cg-raw">error</code>
+        @if (graph.error(); as message) {
+          <p class="cg-detail">{{ message }}</p>
+        }
+        <dv-button variant="secondary" size="sm" data-testid="cg-retry" (clicked)="retry()">
+          {{ 'codeGraph.retry' | translate }}
+        </dv-button>
+      </section>
+    }
+    @case ('unsupported') {
+      <!-- T-509 -->
+      <section class="cg-slot" data-testid="cg-unsupported-slot">
+        <p class="cg-message">{{ 'codeGraph.state.unsupported' | translate }}</p>
+        <code class="cg-raw">unsupported</code>
+      </section>
+    }
+    @case ('none') {
+      <!-- T-509 -->
+      <section class="cg-slot" data-testid="cg-empty-slot">
+        <p class="cg-message">{{ 'codeGraph.state.none' | translate }}</p>
+        <code class="cg-raw">none</code>
+      </section>
+    }
+    @case ('indexing') {
+      <!-- T-509 -->
+      <section class="cg-slot" data-testid="cg-progress-slot">
+        <p class="cg-message">{{ 'codeGraph.state.indexing' | translate }}</p>
+        <code class="cg-raw">indexing</code>
+      </section>
+    }
+    @case ('graph') {
+      <!-- T-510 / T-511 -->
+      <section class="cg-slot" data-testid="cg-graph-slot">
+        <p class="cg-message">{{ 'codeGraph.state.' + graph.status()?.state | translate }}</p>
+        <code class="cg-raw">{{ graph.status()?.state }}</code>
+      </section>
+    }
+  }
+</div>

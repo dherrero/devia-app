@@ -48,6 +48,14 @@
               [attr.aria-label]="'sdd.kanban_title' | translate">
         <dv-icon [icon]="LucideLayoutDashboard" size="sm" />
       </button>
+      <button class="dsr-rail-btn"
+              type="button"
+              (click)="openGraph()"
+              [dvTooltip]="'codeGraph.title' | translate"
+              dvTooltipPosition="left"
+              [attr.aria-label]="'codeGraph.title' | translate">
+        <dv-icon [icon]="LucideNetwork" size="sm" />
+      </button>
       <div class="dsr-rail-divider" aria-hidden="true"></div>
       <button class="dsr-rail-btn"
               type="button"

@@ -171,7 +171,8 @@ describe('round trip against the real files', () => {
     // was added untranslated (the parity gate should have caught it).
     // 269: +4 for the auto-continue switch and banner (es/en only).
     // 293: +24 for the starter kit settings tab and first-run card (es/en only).
-    expect(Object.keys(missing).length).toBe(293);
+    // 303: +10 for the code graph screen (es/en only; T-513 translates).
+    expect(Object.keys(missing).length).toBe(303);
   });
 
   it('extracts nothing for the complete language', () => {

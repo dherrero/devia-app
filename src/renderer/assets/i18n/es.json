@@ -1025,5 +1025,19 @@
       "later": "Ahora no",
       "more": "Detalles"
     }
+  },
+  "codeGraph": {
+    "title": "Grafo de código",
+    "back": "Volver al chat",
+    "loading": "Cargando el grafo de código…",
+    "retry": "Reintentar",
+    "state": {
+      "none": "Este proyecto aún no tiene grafo de código.",
+      "indexing": "Indexando el proyecto…",
+      "ready": "Grafo de código listo.",
+      "stale": "El grafo de código está desactualizado.",
+      "error": "No se pudo cargar el grafo de código.",
+      "unsupported": "Este proyecto no tiene lenguajes compatibles con el grafo de código."
+    }
   }
 }
