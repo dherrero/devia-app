@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { TranslateModule } from '@ngx-translate/core';
 import { DialogService } from '@devia/ui';
 import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodeGraphProgressPayload, CodeGraphStatusChangedPayload } from '../../../../shared/contracts/events';
 import type { CodeGraphStatus } from '../../../../shared/domain/code-graph';
@@ -198,5 +198,57 @@ describe('CodeGraphPageComponent', () => {
   it('shows the title in the header', async () => {
     await mount(graphStatus());
     expect(host().querySelector('header')?.textContent).toContain('codeGraph.title');
+  });
+
+  describe('focus', () => {
+    const attach = (): void => {
+      document.body.appendChild(host());
+    };
+    afterEach(() => {
+      host().remove();
+    });
+
+    it('moves focus to the Cancel button when indexing starts and the index button disappears', async () => {
+      await mount(graphStatus());
+      attach();
+      api.codeGraphIndex.mockReturnValueOnce(new Promise<CodeGraphStatus>(() => undefined));
+      button('cg-index')?.focus();
+      expect(document.activeElement).toBe(button('cg-index'));
+      button('cg-index')?.click();
+      await settle();
+      expect(button('cg-index')).toBeNull();
+      expect(document.activeElement).toBe(button('cg-cancel'));
+    });
+
+    it('moves focus to the primary button of the empty state after a confirmed reset', async () => {
+      await mount(graphStatus({ state: 'ready', nodeCount: 3 }));
+      attach();
+      api.codeGraphStatus.mockResolvedValueOnce(graphStatus({ state: 'none' }));
+      button('cg-reset')?.focus();
+      button('cg-reset')?.click();
+      await settle();
+      await settle();
+      expect(byId('cg-empty')).not.toBeNull();
+      expect(document.activeElement).toBe(button('cg-index'));
+    });
+
+    it('does not steal focus the user has already placed elsewhere', async () => {
+      await mount(graphStatus());
+      attach();
+      const other = document.createElement('input');
+      document.body.appendChild(other);
+      api.codeGraphIndex.mockReturnValueOnce(new Promise<CodeGraphStatus>(() => undefined));
+      button('cg-index')?.click();
+      other.focus();
+      await settle();
+      expect(document.activeElement).toBe(other);
+      other.remove();
+    });
+
+    it('does not move focus on the first render', async () => {
+      await mount(graphStatus());
+      attach();
+      expect(document.activeElement).toBe(document.body);
+    });
   });
 });

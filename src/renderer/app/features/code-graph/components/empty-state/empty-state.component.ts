@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input } from '@angular/core';
 import { TranslateModule } from '@ngx-translate/core';
 import { ButtonComponent, IconComponent } from '@devia/ui';
 import { LucideFileQuestion, LucideNetwork, LucideRefreshCw, LucideRotateCcw, LucideTriangleAlert } from '@lucide/angular';
@@ -24,6 +24,7 @@ export type CodeGraphEmptyVariant = 'none' | 'unsupported' | 'failed' | 'load-er
 })
 export class CodeGraphEmptyStateComponent {
   readonly graph = inject(CodeGraphStateService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly variant = input.required<CodeGraphEmptyVariant>();
 
@@ -36,6 +37,11 @@ export class CodeGraphEmptyStateComponent {
   readonly languages = SUPPORTED_LANGUAGE_NAMES;
 
   readonly failure = computed(() => describeCodeGraphError(this.graph.error()));
+
+  /** Focus the variant's primary action (used when the previous view's focused control was destroyed). */
+  focusPrimary(): void {
+    this.host.nativeElement.querySelector<HTMLElement>('[data-cg-primary] button')?.focus();
+  }
 
   index(): void {
     void this.graph.index();

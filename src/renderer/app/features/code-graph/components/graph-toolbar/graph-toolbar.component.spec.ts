@@ -2,8 +2,10 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { DialogService } from '@devia/ui';
 import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import en from '../../../../../assets/i18n/en.json';
+import es from '../../../../../assets/i18n/es.json';
 import type { CodeGraphStatus } from '../../../../../../shared/domain/code-graph';
 import { CodeGraphStateService } from '../../services/code-graph-state.service';
 import { graphStatus, makeFakeGraphState, type FakeGraphState } from '../../testing/fake-code-graph-state';
@@ -163,5 +165,91 @@ describe('CodeGraphToolbarComponent', () => {
     expect(byId('cg-action-error')?.textContent).toContain('codeGraph.errors.action');
     button('cg-dismiss-error')?.click();
     expect(graph.dismissError).toHaveBeenCalledTimes(1);
+  });
+
+  describe('relative time', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function mountAt(indexedAt: number): ComponentFixture<CodeGraphToolbarComponent> {
+      graph.status.set(graphStatus({ ...READY, indexedAt }));
+      const f = TestBed.createComponent(CodeGraphToolbarComponent);
+      f.detectChanges();
+      return f;
+    }
+    const timeText = (f: ComponentFixture<CodeGraphToolbarComponent>): string =>
+      (f.nativeElement as HTMLElement).querySelector('[data-testid="cg-indexed-at"]')?.textContent ?? '';
+
+    it('ticks about once a minute: "now" becomes "1 minute ago" with no other change', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-01-01T10:00:00Z'));
+      TestBed.inject(TranslateService).setTranslation('es', { codeGraph: { toolbar: { indexed_at: 'Indexado {{time}}' } } });
+      const f = mountAt(Date.now());
+      const rtf = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+      expect(timeText(f)).toContain(rtf.format(0, 'second'));
+      vi.advanceTimersByTime(61_000);
+      f.detectChanges();
+      expect(timeText(f)).toContain(rtf.format(-1, 'minute'));
+      f.destroy();
+    });
+
+    it('does not tick every second', () => {
+      vi.useFakeTimers();
+      const f = mountAt(Date.now());
+      expect(vi.getTimerCount()).toBe(1);
+      const spy = vi.spyOn(f.componentInstance, 'relativeTime');
+      f.detectChanges();
+      spy.mockClear();
+      vi.advanceTimersByTime(30_000);
+      f.detectChanges();
+      expect(spy).not.toHaveBeenCalled();
+      f.destroy();
+    });
+
+    it('a future indexedAt (clock skew) clamps to "now"', () => {
+      vi.useFakeTimers();
+      const f = mountAt(Date.now() + 3_600_000);
+      const rtf = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+      expect(f.componentInstance.relativeTime(Date.now() + 3_600_000)).toBe(rtf.format(0, 'second'));
+      f.destroy();
+    });
+
+    it('clears the timer when destroyed', () => {
+      vi.useFakeTimers();
+      const setSpy = vi.spyOn(globalThis, 'setInterval');
+      const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+      const f = mountAt(Date.now());
+      const id = setSpy.mock.results[0]?.value as unknown;
+      expect(setSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+      expect(clearSpy).not.toHaveBeenCalledWith(id);
+      f.destroy();
+      expect(clearSpy).toHaveBeenCalledWith(id);
+    });
+  });
+
+  describe('plural counts (real es/en translations)', () => {
+    const load = (lang: 'es' | 'en'): void => {
+      const json: Record<string, unknown> = lang === 'es' ? es : en;
+      const t = TestBed.inject(TranslateService);
+      t.setTranslation(lang, json);
+      t.use(lang);
+    };
+    const stats = (): string => (byId('cg-stats')?.textContent ?? '').replace(/\s*·\s*/g, ' · ').replace(/\s+/g, ' ');
+
+    it.each([
+      ['es', 1, '1 nodo · 1 arista · 1 fichero'],
+      ['es', 0, '0 nodos · 0 aristas · 0 ficheros'],
+      ['es', 2, '2 nodos · 2 aristas · 2 ficheros'],
+      ['es', 1000, `${new Intl.NumberFormat('es').format(1000)} nodos · ${new Intl.NumberFormat('es').format(1000)} aristas · ${new Intl.NumberFormat('es').format(1000)} ficheros`],
+      ['en', 1, '1 node · 1 edge · 1 file'],
+      ['en', 0, '0 nodes · 0 edges · 0 files'],
+      ['en', 2, '2 nodes · 2 edges · 2 files'],
+      ['en', 1000, '1,000 nodes · 1,000 edges · 1,000 files'],
+    ] as const)('%s with %i of each', (lang, n, expected) => {
+      load(lang);
+      setStatus({ nodeCount: n, edgeCount: n, fileCount: n });
+      expect(stats().trim()).toBe(expected);
+    });
   });
 });

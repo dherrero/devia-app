@@ -29,11 +29,11 @@
 
     <div class="cg-toolbar__facts">
       <span class="cg-toolbar__stats" data-testid="cg-stats">
-        <span><strong>{{ format(s.nodeCount) }}</strong> {{ 'codeGraph.stats.nodes' | translate }}</span>
+        <span><strong>{{ format(s.nodeCount) }}</strong> {{ plural('codeGraph.stats.nodes', s.nodeCount) | translate }}</span>
         <span class="cg-toolbar__sep" aria-hidden="true">·</span>
-        <span><strong>{{ format(s.edgeCount) }}</strong> {{ 'codeGraph.stats.edges' | translate }}</span>
+        <span><strong>{{ format(s.edgeCount) }}</strong> {{ plural('codeGraph.stats.edges', s.edgeCount) | translate }}</span>
         <span class="cg-toolbar__sep" aria-hidden="true">·</span>
-        <span><strong>{{ format(s.fileCount) }}</strong> {{ 'codeGraph.stats.files' | translate }}</span>
+        <span><strong>{{ format(s.fileCount) }}</strong> {{ plural('codeGraph.stats.files', s.fileCount) | translate }}</span>
       </span>
       @if (languages().length > 0) {
         <ul class="cg-toolbar__langs" data-testid="cg-languages" [attr.aria-label]="'codeGraph.toolbar.languages' | translate">

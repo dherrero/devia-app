@@ -1,5 +1,5 @@
 import {
-  ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, untracked,
+  ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRender, computed, effect, inject, untracked, viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { TranslateModule } from '@ngx-translate/core';
@@ -32,11 +32,16 @@ export default class CodeGraphPageComponent {
   private readonly appState = inject(AppStateService);
   private readonly router = inject(Router);
   readonly graph = inject(CodeGraphStateService);
+  private readonly injector = inject(Injector);
 
   readonly LucideNetwork = LucideNetwork;
   readonly LucideX = LucideX;
 
   readonly project = computed(() => this.appState.selectedProject());
+
+  private readonly emptyState = viewChild(CodeGraphEmptyStateComponent);
+  private readonly progress = viewChild(CodeGraphIndexProgressComponent);
+  private previousView: CodeGraphView | null = null;
 
   readonly view = computed<CodeGraphView>(() => {
     if (!this.project()) return 'no-project';
@@ -55,7 +60,29 @@ export default class CodeGraphPageComponent {
       const project = this.project();
       untracked(() => void (project ? this.graph.open(project) : this.graph.close()));
     });
+    effect(() => this.moveFocusOnTransition(this.view()));
     inject(DestroyRef).onDestroy(() => void this.graph.close());
+  }
+
+  /**
+   * The control that was focused (the index or Reset button) is destroyed when the view switches,
+   * which drops focus to <body>: hand it to the new view's primary action, but only if nobody
+   * has taken it in the meantime.
+   */
+  private moveFocusOnTransition(view: CodeGraphView): void {
+    const previous = this.previousView;
+    this.previousView = view;
+    if (previous === null || previous === view) return;
+    const target = view === 'indexing' ? this.progress : view === 'none' ? this.emptyState : null;
+    if (!target) return;
+    afterNextRender(
+      () => {
+        const active = document.activeElement;
+        if (active && active !== document.body) return;
+        target()?.focusPrimary();
+      },
+      { injector: this.injector },
+    );
   }
 
   back(): void {

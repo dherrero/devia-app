@@ -15,7 +15,7 @@
         </ul>
       </div>
       <dv-button variant="primary"
-                 data-testid="cg-index"
+                 data-testid="cg-index" data-cg-primary
                  [disabled]="graph.busy()"
                  (clicked)="index()">
         <dv-icon [icon]="LucideNetwork" size="sm" />
@@ -33,7 +33,7 @@
       <p class="cg-empty__body">{{ 'codeGraph.unsupported.body' | translate }}</p>
       <p class="cg-empty__hint">{{ 'codeGraph.unsupported.hint' | translate }}</p>
       <dv-button variant="secondary"
-                 data-testid="cg-reindex"
+                 data-testid="cg-reindex" data-cg-primary
                  [disabled]="graph.busy()"
                  (clicked)="index()">
         <dv-icon [icon]="LucideRotateCcw" size="sm" />
@@ -43,19 +43,19 @@
     </section>
   }
   @case ('failed') {
-    <section class="cg-empty" data-testid="cg-failed" role="alert">
+    <section class="cg-empty" data-testid="cg-failed">
       <span class="cg-empty__badge cg-empty__badge--danger" aria-hidden="true">
         <dv-icon [icon]="LucideTriangleAlert" size="lg" />
       </span>
       <h2 class="cg-empty__title">{{ 'codeGraph.failed.title' | translate }}</h2>
       @if (failure(); as f) {
-        <p class="cg-empty__body">{{ f.detail ?? (f.key | translate) }}</p>
+        <p class="cg-empty__body" role="alert">{{ f.detail ?? (f.key | translate) }}</p>
       } @else {
-        <p class="cg-empty__body">{{ 'codeGraph.failed.body' | translate }}</p>
+        <p class="cg-empty__body" role="alert">{{ 'codeGraph.failed.body' | translate }}</p>
       }
       <div class="cg-empty__actions">
         <dv-button variant="primary"
-                   data-testid="cg-retry-index"
+                   data-testid="cg-retry-index" data-cg-primary
                    [disabled]="graph.busy()"
                    (clicked)="index()">
           <dv-icon [icon]="LucideRotateCcw" size="sm" />
@@ -72,18 +72,18 @@
     </section>
   }
   @case ('load-error') {
-    <section class="cg-empty" data-testid="cg-load-error" role="alert">
+    <section class="cg-empty" data-testid="cg-load-error">
       <span class="cg-empty__badge cg-empty__badge--danger" aria-hidden="true">
         <dv-icon [icon]="LucideTriangleAlert" size="lg" />
       </span>
       <h2 class="cg-empty__title">{{ 'codeGraph.state.error' | translate }}</h2>
       @if (failure(); as f) {
-        <p class="cg-empty__body">{{ f.key | translate }}</p>
+        <p class="cg-empty__body" role="alert">{{ f.key | translate }}</p>
         @if (f.detail) {
           <p class="cg-empty__hint">{{ f.detail }}</p>
         }
       }
-      <dv-button variant="secondary" data-testid="cg-retry" (clicked)="reload()">
+      <dv-button variant="secondary" data-testid="cg-retry" data-cg-primary (clicked)="reload()">
         <dv-icon [icon]="LucideRefreshCw" size="sm" />
         {{ 'codeGraph.retry' | translate }}
       </dv-button>

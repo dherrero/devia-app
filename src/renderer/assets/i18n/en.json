@@ -1065,14 +1065,18 @@
         "resolve": "Resolving references",
         "finalize": "Saving the graph"
       },
-      "files": "{{done}} of {{total}} files",
+      "files": "{{done}} of {{total}} file",
+      "files_plural": "{{done}} of {{total}} files",
       "aria": "Indexing progress",
       "cancel": "Cancel"
     },
     "stats": {
-      "nodes": "nodes",
-      "edges": "edges",
-      "files": "files"
+      "nodes": "node",
+      "nodes_plural": "nodes",
+      "edges": "edge",
+      "edges_plural": "edges",
+      "files": "file",
+      "files_plural": "files"
     },
     "toolbar": {
       "aria": "Code graph actions",

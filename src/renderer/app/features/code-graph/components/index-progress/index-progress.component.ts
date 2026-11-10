@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, signal } from '@angular/core';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { ButtonComponent, IconComponent, ProgressComponent } from '@devia/ui';
 import { LucideNetwork, LucideX } from '@lucide/angular';
 
 import { CodeGraphStateService } from '../../services/code-graph-state.service';
 import { uiLocale } from '../../utils/locale';
+import { pluralKey } from '../../utils/plural';
 import { CodeGraphActionErrorComponent } from '../action-error/action-error.component';
 
 /**
@@ -22,6 +23,7 @@ import { CodeGraphActionErrorComponent } from '../action-error/action-error.comp
 export class CodeGraphIndexProgressComponent {
   readonly graph = inject(CodeGraphStateService);
   private readonly translate = inject(TranslateService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly LucideNetwork = LucideNetwork;
   readonly LucideX = LucideX;
@@ -40,6 +42,15 @@ export class CodeGraphIndexProgressComponent {
     if (p.phase === 'resolve' || p.phase === 'finalize') return null;
     return Math.min(100, Math.round((p.filesDone / p.filesTotal) * 100));
   });
+
+  /** Focus the Cancel button (used when the previous view's focused control was destroyed). */
+  focusPrimary(): void {
+    this.host.nativeElement.querySelector<HTMLElement>('[data-cg-primary] button')?.focus();
+  }
+
+  plural(key: string, count: number): string {
+    return pluralKey(key, count);
+  }
 
   format(n: number): string {
     return new Intl.NumberFormat(uiLocale(this.translate)).format(n);

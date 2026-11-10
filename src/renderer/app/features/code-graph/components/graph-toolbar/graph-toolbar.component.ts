@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import {
   BadgeComponent, ButtonComponent, DialogService, IconComponent, ToggleComponent, TooltipDirective,
@@ -10,7 +10,10 @@ import type { CodeGraphLanguage } from '../../../../../../shared/domain/code-gra
 import { CodeGraphStateService } from '../../services/code-graph-state.service';
 import { LANGUAGE_NAMES } from '../../utils/languages';
 import { uiLocale } from '../../utils/locale';
+import { pluralKey } from '../../utils/plural';
 import { CodeGraphActionErrorComponent } from '../action-error/action-error.component';
+
+const CLOCK_TICK_MS = 60_000;
 
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['year', 31_536_000],
@@ -37,6 +40,9 @@ export class CodeGraphToolbarComponent {
   private readonly translate = inject(TranslateService);
   private readonly dialogs = inject(DialogService);
 
+  /** Clock for the relative time: ticks once a minute, which is the finest unit the text shows. */
+  private readonly now = signal(Date.now());
+
   readonly LucideRefreshCw = LucideRefreshCw;
   readonly LucideTrash2 = LucideTrash2;
   readonly LucideTriangleAlert = LucideTriangleAlert;
@@ -60,12 +66,18 @@ export class CodeGraphToolbarComponent {
   );
 
   constructor() {
+    const timer = setInterval(() => this.now.set(Date.now()), CLOCK_TICK_MS);
+    inject(DestroyRef).onDestroy(() => clearInterval(timer));
     effect(() => {
       const s = this.status();
       if (!s) return;
       this.agentToggle()?.writeValue(s.agentAccess);
       this.autoToggle()?.writeValue(s.autoUpdate);
     });
+  }
+
+  plural(key: string, count: number): string {
+    return pluralKey(key, count);
   }
 
   format(n: number): string {
@@ -82,7 +94,7 @@ export class CodeGraphToolbarComponent {
 
   relativeTime(ms: number): string {
     const rtf = new Intl.RelativeTimeFormat(uiLocale(this.translate), { numeric: 'auto' });
-    const diffSec = Math.round((Date.now() - ms) / 1000);
+    const diffSec = Math.max(0, Math.round((this.now() - ms) / 1000));
     for (const [unit, secs] of RELATIVE_UNITS) {
       if (Math.abs(diffSec) >= secs) return rtf.format(-Math.round(diffSec / secs), unit);
     }

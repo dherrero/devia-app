@@ -90,6 +90,14 @@ describe('CodeGraphEmptyStateComponent', () => {
       expect(graph.open).toHaveBeenCalledWith('proj-a');
     });
 
+    it('role="alert" is on the message only, not on the section holding the buttons', () => {
+      expect(host().querySelector('[data-testid="cg-failed"]')?.hasAttribute('role')).toBe(false);
+      const alerts = host().querySelectorAll('[role="alert"]');
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]?.querySelector('button')).toBeNull();
+      expect(alerts[0]?.textContent).toContain('codeGraph.failed.body');
+    });
+
     it('shows the error message from the state', () => {
       graph.error.set("Error invoking remote method 'code-graph:index': Error: Workspace not configured");
       fixture.detectChanges();
@@ -101,6 +109,16 @@ describe('CodeGraphEmptyStateComponent', () => {
 
   describe('load-error', () => {
     beforeEach(() => render('load-error'));
+
+    it('role="alert" is on the message only, not on the section holding the retry button', () => {
+      graph.error.set("Error invoking remote method 'code-graph:status': Error: Code graph operation failed");
+      fixture.detectChanges();
+      expect(host().querySelector('[data-testid="cg-load-error"]')?.hasAttribute('role')).toBe(false);
+      const alerts = host().querySelectorAll('[role="alert"]');
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]?.querySelector('button')).toBeNull();
+      expect(alerts[0]?.textContent).toContain('codeGraph.errors.action');
+    });
 
     it('shows the load failure with a retry that opens the project again', () => {
       graph.error.set("Error invoking remote method 'code-graph:status': Error: Code graph operation failed");

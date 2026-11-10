@@ -5,6 +5,8 @@ import { ElectronApiService } from '../../../core/services/electron-api.service'
 
 const DOMAIN_CODES = ['CODE_GRAPH_NOT_CREATED', 'CODE_GRAPH_WATCH_LIMIT'] as const;
 
+const STATE_CHANGING_CODES: readonly string[] = ['CODE_GRAPH_NOT_CREATED'];
+
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -143,7 +145,19 @@ export class CodeGraphStateService {
       this.applyStatus(status);
     } catch (err) {
       if (token !== this.generation) return;
-      this._error.set(mapError(err));
+      const mapped = mapError(err);
+      this._error.set(mapped);
+      if (STATE_CHANGING_CODES.includes(mapped)) await this.refreshAfterFailure(project, token);
+    }
+  }
+
+  /** Best-effort: the failure says the graph changed under us (e.g. reset from another window). */
+  private async refreshAfterFailure(project: string, token: number): Promise<void> {
+    try {
+      const status = await this.api.codeGraphStatus(project);
+      if (token === this.generation) this.applyStatus(status);
+    } catch {
+      // Keep the action's error; the next status event or open() will correct the view.
     }
   }
 

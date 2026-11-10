@@ -281,6 +281,47 @@ describe('CodeGraphStateService (S-44 T-506)', () => {
     expect(svc.error()).toBe('CODE_GRAPH_NOT_CREATED');
   });
 
+  it('a state-changing failure (graph gone) refreshes the status and keeps the error', async () => {
+    api.codeGraphStatus.mockResolvedValueOnce(status({ state: 'ready', nodeCount: 7 }));
+    await svc.open('proj-a');
+    api.codeGraphReset.mockRejectedValueOnce(ipcError('CODE_GRAPH_NOT_CREATED'));
+    api.codeGraphStatus.mockResolvedValueOnce(status({ state: 'none' }));
+    await svc.reset();
+    expect(svc.error()).toBe('CODE_GRAPH_NOT_CREATED');
+    expect(svc.status()?.state).toBe('none');
+    expect(svc.status()?.nodeCount).toBe(0);
+  });
+
+  it('the refresh after a failed toggle never throws and keeps the error', async () => {
+    await svc.open('proj-a');
+    api.codeGraphSetAgentAccess.mockRejectedValueOnce(ipcError('CODE_GRAPH_NOT_CREATED'));
+    api.codeGraphStatus.mockRejectedValueOnce(new Error('boom'));
+    await expect(svc.setAgentAccess(true)).resolves.toBeUndefined();
+    expect(svc.error()).toBe('CODE_GRAPH_NOT_CREATED');
+  });
+
+  it('a generic action failure does not refresh the status', async () => {
+    await svc.open('proj-a');
+    api.codeGraphSetAutoUpdate.mockRejectedValueOnce(new Error('disk full'));
+    await svc.setAutoUpdate(true);
+    expect(api.codeGraphStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the refresh of a failed action when the project changed meanwhile', async () => {
+    await svc.open('proj-a');
+    const refresh = deferred<CodeGraphStatus>();
+    api.codeGraphReset.mockRejectedValueOnce(ipcError('CODE_GRAPH_NOT_CREATED'));
+    api.codeGraphStatus.mockReturnValueOnce(refresh.promise);
+    const resetting = svc.reset();
+    await new Promise((r) => setTimeout(r, 0));
+    api.codeGraphStatus.mockResolvedValueOnce(status({ state: 'ready', nodeCount: 99 }));
+    await svc.open('proj-b');
+    refresh.resolve(status({ state: 'none', nodeCount: 1 }));
+    await resetting;
+    expect(svc.project()).toBe('proj-b');
+    expect(svc.status()?.nodeCount).toBe(99);
+  });
+
   it('a wrapped CODE_GRAPH_WATCH_LIMIT marks the watch unavailable without an error', async () => {
     api.codeGraphWatch.mockRejectedValueOnce(ipcError('CODE_GRAPH_WATCH_LIMIT'));
     await svc.open('proj-a');

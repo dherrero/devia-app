@@ -2,6 +2,8 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import en from '../../../../../assets/i18n/en.json';
+import es from '../../../../../assets/i18n/es.json';
 import type { IndexProgress } from '../../../../../../shared/domain/code-graph';
 import { CodeGraphStateService } from '../../services/code-graph-state.service';
 import { graphStatus, makeFakeGraphState, type FakeGraphState } from '../../testing/fake-code-graph-state';
@@ -81,5 +83,56 @@ describe('CodeGraphIndexProgressComponent', () => {
 
   it('cancel stays available while the index job keeps the state busy', () => {
     expect(cancel()?.disabled).toBe(false);
+  });
+
+  describe('a11y placement', () => {
+    it('aria-live is on the phase label only, not on the whole section', () => {
+      graph.progress.set(progress());
+      fixture.detectChanges();
+      const live = Array.from(host().querySelectorAll('[aria-live]'));
+      expect(live).toHaveLength(1);
+      expect(live[0]?.getAttribute('data-testid')).toBe('cg-progress-phase');
+      expect(live[0]?.getAttribute('aria-live')).toBe('polite');
+      expect(host().querySelector('[data-testid="cg-progress"]')?.hasAttribute('aria-live')).toBe(false);
+    });
+  });
+
+  describe('plural file count (real es/en translations)', () => {
+    const load = (lang: 'es' | 'en'): void => {
+      const json: Record<string, unknown> = lang === 'es' ? es : en;
+      const t = TestBed.inject(TranslateService);
+      t.setTranslation(lang, json);
+      t.use(lang);
+    };
+    const meta = (): string => (host().querySelector('.cg-progress__meta')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const counters = (): string => (host().querySelector('[data-testid="cg-progress-counters"]')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+    it.each([
+      ['es', 1, '0 de 1 fichero'],
+      ['es', 2, '0 de 2 ficheros'],
+      ['es', 1000, `0 de ${new Intl.NumberFormat('es').format(1000)} ficheros`],
+      ['en', 1, '0 of 1 file'],
+      ['en', 2, '0 of 2 files'],
+      ['en', 1000, '0 of 1,000 files'],
+    ] as const)('%s with %i total file(s)', (lang, total, expected) => {
+      load(lang);
+      graph.progress.set(progress({ filesDone: 0, filesTotal: total }));
+      fixture.detectChanges();
+      expect(meta()).toContain(expected);
+    });
+
+    it.each([
+      ['es', 1, 'nodo1arista1'],
+      ['es', 0, 'nodos0aristas0'],
+      ['es', 2, 'nodos2aristas2'],
+      ['en', 1, 'node1edge1'],
+      ['en', 0, 'nodes0edges0'],
+      ['en', 2, 'nodes2edges2'],
+    ] as const)('%s counters with %i node(s) and edge(s)', (lang, n, expected) => {
+      load(lang);
+      graph.progress.set(progress({ nodes: n, edges: n }));
+      fixture.detectChanges();
+      expect(counters()).toContain(expected);
+    });
   });
 });

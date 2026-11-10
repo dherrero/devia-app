@@ -1,9 +1,9 @@
-<section class="cg-progress" data-testid="cg-progress" aria-live="polite">
+<section class="cg-progress" data-testid="cg-progress">
   <span class="cg-progress__badge" aria-hidden="true">
     <dv-icon [icon]="LucideNetwork" size="lg" />
   </span>
   <h2 class="cg-progress__title">{{ 'codeGraph.state.indexing' | translate }}</h2>
-  <p class="cg-progress__phase" data-testid="cg-progress-phase">{{ phaseKey() | translate }}</p>
+  <p class="cg-progress__phase" data-testid="cg-progress-phase" aria-live="polite">{{ phaseKey() | translate }}</p>
 
   <div class="cg-progress__card">
     <div class="cg-progress__bar-wrap">
@@ -15,7 +15,7 @@
         <div class="cg-progress__meta">
           <span>
             @if (p.filesTotal > 0) {
-              {{ 'codeGraph.progress.files' | translate: { done: format(p.filesDone), total: format(p.filesTotal) } }}
+              {{ plural('codeGraph.progress.files', p.filesTotal) | translate: { done: format(p.filesDone), total: format(p.filesTotal) } }}
             }
           </span>
           @if (percent() !== null) {
@@ -28,11 +28,11 @@
     @if (graph.progress(); as p) {
       <dl class="cg-progress__counters" data-testid="cg-progress-counters">
         <div class="cg-progress__counter">
-          <dt>{{ 'codeGraph.stats.nodes' | translate }}</dt>
+          <dt>{{ plural('codeGraph.stats.nodes', p.nodes) | translate }}</dt>
           <dd>{{ format(p.nodes) }}</dd>
         </div>
         <div class="cg-progress__counter">
-          <dt>{{ 'codeGraph.stats.edges' | translate }}</dt>
+          <dt>{{ plural('codeGraph.stats.edges', p.edges) | translate }}</dt>
           <dd>{{ format(p.edges) }}</dd>
         </div>
       </dl>
@@ -41,6 +41,7 @@
 
   <dv-button variant="secondary"
              data-testid="cg-cancel"
+             data-cg-primary
              [disabled]="cancelling()"
              (clicked)="cancel()">
     <dv-icon [icon]="LucideX" size="sm" />

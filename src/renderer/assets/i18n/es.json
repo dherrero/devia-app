@@ -1065,14 +1065,18 @@
         "resolve": "Resolviendo referencias",
         "finalize": "Guardando el grafo"
       },
-      "files": "{{done}} de {{total}} ficheros",
+      "files": "{{done}} de {{total}} fichero",
+      "files_plural": "{{done}} de {{total}} ficheros",
       "aria": "Progreso de la indexación",
       "cancel": "Cancelar"
     },
     "stats": {
-      "nodes": "nodos",
-      "edges": "aristas",
-      "files": "ficheros"
+      "nodes": "nodo",
+      "nodes_plural": "nodos",
+      "edges": "arista",
+      "edges_plural": "aristas",
+      "files": "fichero",
+      "files_plural": "ficheros"
     },
     "toolbar": {
       "aria": "Acciones del grafo de código",
