@@ -25,11 +25,11 @@ const readMcp = (): Record<string, Record<string, unknown>> =>
 
 describe('NativeConfigMcpDelivery', () => {
   it('writes every Devia server in ONE file write, in the agent shape', () => {
-    const out = delivery().deliver('opencode', project, [server('devia-kanban'), server('devia-memory'), server('devia-ui')]);
+    const out = delivery().deliver('opencode', project, [server('devia-kanban'), server('devia-memory'), server('devia-code-graph'), server('devia-ui')]);
     expect(out.file).toBe(path.join(project, 'opencode.json'));
-    expect(out.deliveredServerIds).toEqual(['devia-kanban', 'devia-memory', 'devia-ui']);
+    expect(out.deliveredServerIds).toEqual(['devia-kanban', 'devia-memory', 'devia-code-graph', 'devia-ui']);
     const mcp = readMcp();
-    expect(Object.keys(mcp).sort()).toEqual(['devia-kanban', 'devia-memory', 'devia-ui']);
+    expect(Object.keys(mcp).sort()).toEqual(['devia-code-graph', 'devia-kanban', 'devia-memory', 'devia-ui']);
     expect(mcp['devia-ui']).toMatchObject({ type: 'local', command: ['node', 'devia-ui.js'] });
   });
 

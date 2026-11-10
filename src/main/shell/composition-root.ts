@@ -303,7 +303,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // (Phase 3b) the same way `sddBuilt.kanbanMcpServer` is.
   const memoryBuilt = buildMemoryFeature({ config });
 
-  // S-44: Code Graph (project knowledge graph); MCP server and IPC land in later tasks.
+  // S-44: Code Graph (project knowledge graph). Built before the array so its
+  // `codeGraphMcpServer` callback can be handed to the runner like memory's.
   const codeGraphBuilt = buildCodeGraphFeature({ config });
 
   // S-39: bundled methodology kits (Devia Method). The packaged app carries them
@@ -429,6 +430,9 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // S-1: Devia internal memory server. How it — like kanban and ui —
       // reaches each agent is that agent's mapper's job (S-30).
       memoryMcpServer: memoryBuilt.memoryMcpServer,
+      // S-44: the code-graph server, only for a checkout with a graph the user
+      // lets agents use. Delivered by each agent's mapper, like memory.
+      codeGraphMcpServer: codeGraphBuilt.codeGraphMcpServer,
       // S-24: `devia_ask_user` — the question card, now a Devia MCP tool.
       // Keyed by the per-run rendezvous dir, not by project.
       // S-25 F2.6: `devia_notify` reaches the chat relay too. Lazy like

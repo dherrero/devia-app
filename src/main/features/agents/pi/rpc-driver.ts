@@ -83,7 +83,7 @@ function num(value: unknown): number | undefined {
 const FIRE_AND_FORGET = new Set(['setStatus', 'setWidget', 'notify', 'setTitle', 'set_editor_text']);
 
 /** Devia's bundled MCP servers — the ones the renderer has icons/cards for. */
-export const DEVIA_MCP_SERVER_IDS: readonly string[] = ['devia-ui', 'devia-kanban', 'devia-memory'];
+export const DEVIA_MCP_SERVER_IDS: readonly string[] = ['devia-ui', 'devia-kanban', 'devia-memory', 'devia-code-graph'];
 
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',

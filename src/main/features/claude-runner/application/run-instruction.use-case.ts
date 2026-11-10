@@ -230,6 +230,13 @@ export class RunInstructionUseCase {
      */
     memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
     /**
+     * S-44: provider for Devia's bundled `devia-code-graph` MCP server config,
+     * keyed by the run's EFFECTIVE cwd (graphs are per checkout). Null when that
+     * checkout has no graph or the user turned agent access off: the run then
+     * carries nothing of it.
+     */
+    codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
+    /**
      * S-25: provider for Devia's bundled `devia-ui` MCP server config, keyed by
      * the PER-RUN rendezvous directory (not by project — unlike the other two
      * bundled servers). Delivered to Claude via `--mcp-config`.
@@ -753,9 +760,12 @@ export class RunInstructionUseCase {
       ? `${replayBlock}\n\n## Mensaje actual del usuario\n${augmented}`
       : augmented;
 
-    // Devia's bundled servers, in delivery order (kanban, memory, ui).
+    // Devia's bundled servers, in delivery order (kanban, memory, code graph, ui).
     const kanbanServer = this.deps.kanbanMcpServer?.(projectCheckout);
     const memoryServer = cfg.memory.enabled ? this.deps.memoryMcpServer?.(projectCheckout, def.id) : undefined;
+    // Unlike memory/kanban, the graph describes the files the agent sees, so it
+    // is looked up on the effective cwd (the session worktree when isolated).
+    const codeGraphServer = this.deps.codeGraphMcpServer?.(cwd, def.id) ?? undefined;
     const uiServer =
       uiCandidate.length > 0
         ? this.deps.uiMcpServer?.(uiDir, uiCandidate, {
@@ -767,6 +777,7 @@ export class RunInstructionUseCase {
     const deviaServers = (withUi: boolean): McpServerConfig[] => [
       ...(kanbanServer ? [kanbanServer] : []),
       ...(memoryServer ? [memoryServer] : []),
+      ...(codeGraphServer ? [codeGraphServer] : []),
       ...(withUi && uiServer ? [uiServer] : []),
     ];
     // S-43: the files attached to THIS message live in `<deviaDir>/attachments`,

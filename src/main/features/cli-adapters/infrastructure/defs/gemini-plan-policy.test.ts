@@ -30,12 +30,12 @@ describe('Gemini plan-mode policy', () => {
     expect(fs.existsSync(file)).toBe(false);
   });
 
-  it("allows Devia's three servers in plan mode and nothing else", () => {
-    for (const server of ['devia-kanban', 'devia-memory', 'devia-ui']) {
+  it("allows Devia's own servers in plan mode and nothing else", () => {
+    for (const server of ['devia-kanban', 'devia-memory', 'devia-code-graph', 'devia-ui']) {
       expect(GEMINI_PLAN_POLICY).toContain(`mcpName = "${server}"`);
     }
     const allows = GEMINI_PLAN_POLICY.split('[[rule]]').filter((r) => r.includes('decision = "allow"'));
-    expect(allows).toHaveLength(3);
+    expect(allows).toHaveLength(4);
     for (const rule of allows) expect(rule).toMatch(/modes = \["plan"\]/);
   });
 

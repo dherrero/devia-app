@@ -36,6 +36,7 @@ import {
 } from '../../../shared/ui-rendezvous';
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
 import { UiMcpInjector, type UiServerHarness } from '../../ui-tools';
+import { CodeGraphMcpInjector } from '../../code-graph';
 import type { StarterKitsPort } from '../../../shared/ports';
 import type { HarnessCatalog } from '../domain/ports';
 import type {
@@ -298,12 +299,14 @@ interface Harness {
   registry: InMemoryProjectRegistry;
   audit: RecordingAuditLog;
   def: RuntimeAgentDef;
+  mappers: StaticMapperRegistry;
 }
 
 interface BuildExtras {
   config?: ConfigRepository;
   kanbanMcpServer?: (projectAbs: string) => McpServerConfig;
   memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
+  codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
   saveMemoryPrompt?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   saveMemoryHandoff?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   handoffSummary?: (identity: string, sessionId: string) => string | null;
@@ -342,6 +345,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
   const runner = new FakeRunner();
   const registry = new InMemoryProjectRegistry();
   const audit = new RecordingAuditLog();
+  const mappers = makeMappers(extras);
   const uc = new RunInstructionUseCase({
     config: extras.config ?? new FakeConfig(),
     sessions: extras.sessions ?? new FakeSessions(),
@@ -349,7 +353,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     registry,
     runner,
     agents: new FakeRegistry(def),
-    mappers: makeMappers(extras),
+    mappers,
     attachments: new FakeAttachments(),
     outbox: extras.outbox ?? new FakeOutbox(),
     tech: new FakeTech(),
@@ -358,6 +362,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.harnessCatalog ? { harnessCatalog: extras.harnessCatalog } : {}),
     ...(extras.kanbanMcpServer ? { kanbanMcpServer: extras.kanbanMcpServer } : {}),
     ...(extras.memoryMcpServer ? { memoryMcpServer: extras.memoryMcpServer } : {}),
+    ...(extras.codeGraphMcpServer ? { codeGraphMcpServer: extras.codeGraphMcpServer } : {}),
     ...(extras.saveMemoryPrompt ? { saveMemoryPrompt: extras.saveMemoryPrompt } : {}),
     ...(extras.saveMemoryHandoff ? { saveMemoryHandoff: extras.saveMemoryHandoff } : {}),
     ...(extras.handoffSummary ? { handoffSummary: extras.handoffSummary } : {}),
@@ -374,7 +379,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.turnContextTracker ? { turnContextTracker: extras.turnContextTracker } : {}),
     ...(extras.consumeMemoryReinjection ? { consumeMemoryReinjection: extras.consumeMemoryReinjection } : {}),
   });
-  return { uc, runner, registry, audit, def };
+  return { uc, runner, registry, audit, def, mappers };
 }
 
 // ── FR1 — happy path ──────────────────────────────────────────────────────
@@ -844,6 +849,7 @@ function buildWithMcp(
   const registry = new InMemoryProjectRegistry();
   const audit = new RecordingAuditLog();
   const extraDeps = mcpServers !== undefined ? { mcpServers } : {};
+  const mappers = makeMappers();
   const uc = new RunInstructionUseCase({
     config: new FakeConfig(),
     sessions: new FakeSessions(),
@@ -851,14 +857,14 @@ function buildWithMcp(
     registry,
     runner,
     agents: new FakeRegistry(def),
-    mappers: makeMappers(),
+    mappers,
     attachments: new FakeAttachments(),
     outbox: new FakeOutbox(),
     tech: new FakeTech(),
     auditLog: audit,
     ...extraDeps,
   });
-  return { uc, runner, registry, audit, def };
+  return { uc, runner, registry, audit, def, mappers };
 }
 
 import type { McpServerConfig } from '../../../../shared/domain/mcp';
@@ -3401,5 +3407,210 @@ describe('RunInstructionUseCase — no volatile content in a frozen system promp
     h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'plan', [], 'remote', true);
     const full = (h.def.buildExtraArgs as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]?.systemPrompt as string;
     for (const phrase of Object.values(VOLATILE)) expect(full).toContain(phrase);
+  });
+});
+
+// ── S-44 T-505: devia-code-graph delivery ────────────────────────────────────
+
+describe('RunInstructionUseCase — devia-code-graph delivery (S-44)', () => {
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-cg-run-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const deviaDir = (): string => path.join(tmpDir, '.devia-app');
+  const projectDir = (): string => path.join(tmpDir, 'proj-a');
+  function projectConfig(): FakeConfig {
+    const cfg = new FakeConfig(deviaDir());
+    cfg.set({ workspaceRoot: tmpDir });
+    return cfg;
+  }
+  /** Deterministic session ids so two runs can be compared byte for byte. */
+  class FixedSessions extends FakeSessions {
+    override newSessionId(): string { return 'sess-fixed'; }
+  }
+  const settingsFile = (): string => path.join(projectDir(), '.claude', 'settings.local.json');
+  const readAllow = (): string[] => {
+    if (!fs.existsSync(settingsFile())) return [];
+    const parsed = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as { permissions?: { allow?: string[] } };
+    return parsed.permissions?.allow ?? [];
+  };
+  const codeGraph = (calls: Array<[string, string | undefined]> = []) =>
+    (projectAbs: string, agentId?: string): McpServerConfig => {
+      calls.push([projectAbs, agentId]);
+      return enabledServer('devia-code-graph');
+    };
+  /** The temp `--mcp-config` file Claude got. */
+  const claudeMcpConfig = (h: Harness): { mcpServers: Record<string, unknown> } => {
+    const args = h.runner.last().req.prepared.args;
+    const file = args[args.indexOf('--mcp-config') + 1] ?? '';
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown> };
+  };
+
+  it('delivers devia-code-graph to Claude via --mcp-config and grants mcp__devia-code-graph', () => {
+    const calls: Array<[string, string | undefined]> = [];
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      kanbanMcpServer: () => enabledServer('devia-kanban'),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      codeGraphMcpServer: codeGraph(calls),
+    });
+    h.uc.execute('proj-a', 'where is add called?', [], makeHandlers(), 'apply');
+
+    expect(calls).toEqual([[projectDir(), 'claude']]);
+    expect(Object.keys(claudeMcpConfig(h).mcpServers)).toEqual(['devia-kanban', 'devia-memory', 'devia-code-graph']);
+    expect(readAllow()).toContain('mcp__devia-code-graph');
+  });
+
+  it("writes the real injector's entry into Claude's --mcp-config verbatim", () => {
+    const injector = new CodeGraphMcpInjector(deviaDir);
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      codeGraphMcpServer: (abs, agentId) => injector.serverConfig(abs, agentId),
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+
+    const server = injector.serverConfig(projectDir(), 'claude');
+    expect(claudeMcpConfig(h).mcpServers['devia-code-graph']).toEqual({
+      command: process.execPath,
+      args: server.args,
+      env: { ELECTRON_RUN_AS_NODE: '1', DEVIA_ACTIVE_AGENT_ID: 'claude' },
+    });
+  });
+
+  it('adds no server and no grant when there is no graph (provider returns null)', () => {
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      codeGraphMcpServer: () => null,
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+
+    expect(Object.keys(claudeMcpConfig(h).mcpServers)).toEqual(['devia-memory']);
+    expect(readAllow()).not.toContain('mcp__devia-code-graph');
+  });
+
+  it('an isolated run asks for the graph of the WORKTREE (its effective cwd), not the base checkout', () => {
+    const calls: Array<[string, string | undefined]> = [];
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      ensureSessionWorktree: () => ({ ok: true, created: true }),
+      codeGraphMcpServer: codeGraph(calls),
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply', [], 'renderer', true);
+
+    const worktreeCwd = h.runner.last().req.cwd;
+    expect(worktreeCwd).toContain('worktrees');
+    expect(calls).toEqual([[worktreeCwd, 'claude']]);
+  });
+
+  it('writes devia-code-graph to a native-config agent in the same single delivery as the other servers', () => {
+    const nativeMcp = nativeDelivery(true);
+    const h = build({ id: 'gemini', name: 'Gemini CLI' }, {
+      config: projectConfig(),
+      kanbanMcpServer: () => enabledServer('devia-kanban'),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      codeGraphMcpServer: codeGraph(),
+      nativeMcp,
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+
+    expect(nativeMcp.deliver).toHaveBeenCalledTimes(1);
+    const servers = nativeMcp.deliver.mock.calls[0]?.[2] as McpServerConfig[];
+    expect(servers.map((s) => s.id)).toEqual(['devia-kanban', 'devia-memory', 'devia-code-graph']);
+    expect(h.runner.last().req.prepared.mcpServerIds).toContain('devia-code-graph');
+  });
+
+  it('delivers devia-code-graph to pi through its per-run extension', () => {
+    const h = build({ id: 'pi', name: 'Pi' }, { config: projectConfig(), codeGraphMcpServer: codeGraph() });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+
+    const args = h.runner.last().req.prepared.args;
+    const ext = args[args.indexOf('-e') + 1] ?? '';
+    expect(fs.readFileSync(ext, 'utf8')).toContain('"devia-code-graph"');
+  });
+
+  it("delivers devia-code-graph to OpenCode through its per-run config", () => {
+    const h = build({ id: 'opencode', name: 'OpenCode' }, { config: projectConfig(), codeGraphMcpServer: codeGraph() });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+
+    const file = h.runner.last().req.prepared.agentEnv?.['OPENCODE_CONFIG'] ?? '';
+    const config = JSON.parse(fs.readFileSync(file, 'utf8')) as { mcp: Record<string, unknown> };
+    expect(Object.keys(config.mcp)).toContain('devia-code-graph');
+  });
+
+  it("hands devia-code-graph to an ACP agent's session with the other Devia servers", () => {
+    const h = build({ id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, { config: projectConfig(), codeGraphMcpServer: codeGraph() });
+    const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+
+    const plan = prepare.mock.calls[0]?.[0];
+    expect(plan?.harness.mcp.devia.map((s) => s.id)).toContain('devia-code-graph');
+    expect(h.runner.last().req.prepared.mcpServerIds).toContain('devia-code-graph');
+  });
+
+  /**
+   * Everything a run hands its agent: the plan, the system prompt, the delivery,
+   * the argv/env/stdin (Devia's temp files inlined by content) and the Claude
+   * settings file. The run id is the only legitimately different value.
+   */
+  function runFingerprint(defOverrides: Partial<RuntimeAgentDef>, extras: BuildExtras): string {
+    fs.rmSync(projectDir(), { recursive: true, force: true });
+    fs.rmSync(deviaDir(), { recursive: true, force: true });
+    fs.mkdirSync(projectDir(), { recursive: true });
+    const h = build(defOverrides, {
+      config: projectConfig(),
+      sessions: new FixedSessions(),
+      kanbanMcpServer: () => enabledServer('devia-kanban'),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      uiMcpServer: uiServer,
+      nativeMcp: nativeDelivery(true),
+      ...extras,
+    });
+    const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
+    // The capability token's expiry is derived from the clock.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    try {
+      h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+    } finally {
+      now.mockRestore();
+    }
+    const req = h.runner.last().req;
+    const inline = (v: string): string =>
+      v.startsWith(deviaDir()) && fs.existsSync(v) && fs.statSync(v).isFile() ? `<file>${fs.readFileSync(v, 'utf8')}` : v;
+    const fingerprint = JSON.stringify({
+      cwd: req.cwd,
+      plan: prepare.mock.calls[0]?.[0],
+      systemPrompt: prepare.mock.calls[0]?.[1],
+      delivery: prepare.mock.calls[0]?.[2],
+      args: req.prepared.args.map(inline),
+      stdin: req.prepared.stdin,
+      env: req.prepared.env,
+      agentEnv: Object.entries(req.prepared.agentEnv ?? {}).map(([k, v]) => [k, inline(v)]),
+      mcpServerIds: req.prepared.mcpServerIds,
+      claudeSettings: fs.existsSync(settingsFile()) ? fs.readFileSync(settingsFile(), 'utf8') : null,
+    });
+    return fingerprint.split(req.runId ?? '<no run id>').join('<run>');
+  }
+
+  const AGENTS: ReadonlyArray<[string, Partial<RuntimeAgentDef>]> = [
+    ['claude', claudeStreamDef],
+    ['gemini (native config)', { id: 'gemini', name: 'Gemini CLI' }],
+    ['pi', { id: 'pi', name: 'Pi' }],
+    ['opencode', { id: 'opencode', name: 'OpenCode' }],
+    ['hermes (ACP)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }],
+  ];
+
+  it.each(AGENTS)('%s: a run without a graph is identical to a run built without the provider', (_name, def) => {
+    const baseline = runFingerprint(def, {});
+    const withoutGraph = runFingerprint(def, { codeGraphMcpServer: () => null });
+    expect(withoutGraph).toBe(baseline);
+    expect(baseline).not.toContain('devia-code-graph');
+  });
+
+  it('the fingerprint does see the server when the graph exists (the comparison is not blind)', () => {
+    const baseline = runFingerprint(claudeStreamDef, {});
+    const withGraph = runFingerprint(claudeStreamDef, { codeGraphMcpServer: codeGraph() });
+    expect(withGraph).not.toBe(baseline);
+    expect(withGraph).toContain('mcp__devia-code-graph');
   });
 });

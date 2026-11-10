@@ -97,7 +97,7 @@ export const geminiAgentDef: RuntimeAgentDef = {
 };
 
 /** Devia's own MCP servers, as Gemini names them (`mcpName`). */
-const DEVIA_MCP_SERVERS = ['devia-kanban', 'devia-memory', 'devia-ui'] as const;
+const DEVIA_MCP_SERVERS = ['devia-kanban', 'devia-memory', 'devia-code-graph', 'devia-ui'] as const;
 
 export const GEMINI_PLAN_POLICY = [
   '# Devia plan mode (generated for one run). Gemini\'s plan mode denies every tool that is not read-only;',
