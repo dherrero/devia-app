@@ -87,6 +87,8 @@ export interface ClaudeRunnerDeps {
    * cwd, or null when that checkout has no graph or agent access is off.
    */
   codeGraphMcpServer?: (projectAbs: string, agentId?: string) => import('../../../shared/domain/mcp').McpServerConfig | null;
+  /** T-508: brief prompt guide for the graph tools, null when no server was registered. */
+  codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
   /**
    * S-25: the bundled `devia-ui` server, which carries every interface tool.
    * Keyed by the PER-RUN rendezvous directory, not by project. How it reaches
@@ -187,6 +189,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     ...(deps.kanbanMcpServer !== undefined && { kanbanMcpServer: deps.kanbanMcpServer }),
     ...(deps.memoryMcpServer !== undefined && { memoryMcpServer: deps.memoryMcpServer }),
     ...(deps.codeGraphMcpServer !== undefined && { codeGraphMcpServer: deps.codeGraphMcpServer }),
+    ...(deps.codeGraphProtocol !== undefined && { codeGraphProtocol: deps.codeGraphProtocol }),
     ...(deps.uiMcpServer !== undefined && { uiMcpServer: deps.uiMcpServer }),
     ...(deps.harnessCatalog !== undefined && { harnessCatalog: deps.harnessCatalog }),
     ...(deps.starterKits !== undefined && { starterKits: deps.starterKits }),

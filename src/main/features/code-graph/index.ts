@@ -10,6 +10,7 @@ import { registerCodeGraphIpc } from './ipc/code-graph.ipc';
 import { CodeGraphMcpInjector } from './mcp-server/code-graph-mcp-injector';
 
 export { createWorktreeGraph } from './application/worktree-graph';
+export { codeGraphProtocol } from './infrastructure/code-graph-protocol';
 export { CODE_GRAPH_SERVER_ID, CodeGraphMcpInjector } from './mcp-server/code-graph-mcp-injector';
 
 /**

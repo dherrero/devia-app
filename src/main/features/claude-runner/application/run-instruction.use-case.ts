@@ -74,6 +74,7 @@ const QUESTION_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
 
 /** Devia's memory server id (its `mem_*` tools). */
 const MEMORY_SERVER_ID = 'devia-memory';
+const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
 
 /** S-2 F3.4: how fresh a previous-agent `mem_session_summary` must be to ride
  *  the handoff brief instead of the compressed/deterministic body. */
@@ -236,6 +237,8 @@ export class RunInstructionUseCase {
      * carries nothing of it.
      */
     codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
+    /** T-508: the brief prompt guide for the graph tools; null when the run has no graph server. */
+    codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
     /**
      * S-25: provider for Devia's bundled `devia-ui` MCP server config, keyed by
      * the PER-RUN rendezvous directory (not by project — unlike the other two
@@ -859,6 +862,11 @@ export class RunInstructionUseCase {
     // persist long plans as kanban specs instead of attempting failing writes.
     // S-39: with the method on, plan mode hands its sequence over to the method's
     // skills instead of ordering "explore, then persist" on its own.
+    // T-508: gated on THIS run's delivery, never on a second graph lookup.
+    const codeGraphHint =
+      this.deps.codeGraphProtocol?.({
+        serverRegistered: codeGraphServer !== undefined && delivery.mcpServerIds.includes(CODE_GRAPH_SERVER_ID),
+      }) ?? null;
     const planHint = buildPlanProtocolHint(requestedMode === 'plan', kit !== null);
     // S-39: the kit's bootstrap and skill index — the same text for every agent.
     const kitHint = kit?.prompt ?? null;
@@ -872,6 +880,7 @@ export class RunInstructionUseCase {
       worktree: worktreeHint || null,
       remote: remoteHint || null,
       uiFallback: uiFallbackHint || null,
+      codeGraph: codeGraphHint || null,
       plan: planHint || null,
     };
     const allBodies = orderedBodies(promptBodies);

@@ -55,7 +55,7 @@ import { buildSubAgentsFeature, SubAgentReader } from '../features/sub-agents';
 import { createHarnessCatalog } from '../features/claude-runner/infrastructure/harness-catalog';
 import { buildSddFeature } from '../features/sdd';
 import { buildMemoryFeature } from '../features/memory';
-import { buildCodeGraphFeature } from '../features/code-graph';
+import { buildCodeGraphFeature, codeGraphProtocol } from '../features/code-graph';
 import { buildStarterKitsFeature } from '../features/starter-kits';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
@@ -433,6 +433,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // S-44: the code-graph server, only for a checkout with a graph the user
       // lets agents use. Delivered by each agent's mapper, like memory.
       codeGraphMcpServer: codeGraphBuilt.codeGraphMcpServer,
+      codeGraphProtocol,
       // S-24: `devia_ask_user` — the question card, now a Devia MCP tool.
       // Keyed by the per-run rendezvous dir, not by project.
       // S-25 F2.6: `devia_notify` reaches the chat relay too. Lazy like

@@ -11,19 +11,20 @@ const all: PromptBodies = {
   worktree: 'WT',
   remote: 'REMOTE',
   uiFallback: 'UIFB',
+  codeGraph: 'CG',
   plan: 'PLAN',
 };
 
 describe('orderedBodies', () => {
   it('keeps the historical order', () => {
     expect(orderedBodies(all)).toEqual([
-      'PACK1', 'PACK2', 'SKILL', 'KIT', 'MEMPROTO', 'MEMCTX', 'HANDOFF', 'WT', 'REMOTE', 'UIFB', 'PLAN',
+      'PACK1', 'PACK2', 'SKILL', 'KIT', 'MEMPROTO', 'MEMCTX', 'HANDOFF', 'WT', 'REMOTE', 'UIFB', 'CG', 'PLAN',
     ]);
   });
 
   it('drops nulls and keeps the rest in order', () => {
     expect(orderedBodies({ ...all, skillRegistry: null, kit: null, plan: null })).toEqual([
-      'PACK1', 'PACK2', 'MEMPROTO', 'MEMCTX', 'HANDOFF', 'WT', 'REMOTE', 'UIFB',
+      'PACK1', 'PACK2', 'MEMPROTO', 'MEMCTX', 'HANDOFF', 'WT', 'REMOTE', 'UIFB', 'CG',
     ]);
   });
 });
@@ -32,14 +33,14 @@ describe('splitBodies', () => {
   it('keeps memoryContext in stable on the first turn', () => {
     expect(splitBodies(all, { firstTurn: true })).toEqual({
       stable: ['PACK1', 'PACK2', 'SKILL', 'KIT', 'MEMPROTO', 'MEMCTX', 'HANDOFF'],
-      turn: ['WT', 'REMOTE', 'UIFB', 'PLAN'],
+      turn: ['WT', 'REMOTE', 'UIFB', 'CG', 'PLAN'],
     });
   });
 
   it('moves memoryContext to turn on a resumed turn', () => {
     expect(splitBodies(all, { firstTurn: false })).toEqual({
       stable: ['PACK1', 'PACK2', 'SKILL', 'KIT', 'MEMPROTO', 'HANDOFF'],
-      turn: ['MEMCTX', 'WT', 'REMOTE', 'UIFB', 'PLAN'],
+      turn: ['MEMCTX', 'WT', 'REMOTE', 'UIFB', 'CG', 'PLAN'],
     });
   });
 

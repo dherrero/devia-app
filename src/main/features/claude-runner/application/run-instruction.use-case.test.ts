@@ -36,6 +36,7 @@ import {
 } from '../../../shared/ui-rendezvous';
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
 import { UiMcpInjector, type UiServerHarness } from '../../ui-tools';
+import { codeGraphProtocol } from '../../code-graph/infrastructure/code-graph-protocol';
 import { CodeGraphMcpInjector } from '../../code-graph';
 import type { StarterKitsPort } from '../../../shared/ports';
 import type { HarnessCatalog } from '../domain/ports';
@@ -308,6 +309,7 @@ interface BuildExtras {
   kanbanMcpServer?: (projectAbs: string) => McpServerConfig;
   memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
   codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
+  codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
   saveMemoryPrompt?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   saveMemoryHandoff?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   handoffSummary?: (identity: string, sessionId: string) => string | null;
@@ -364,6 +366,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.kanbanMcpServer ? { kanbanMcpServer: extras.kanbanMcpServer } : {}),
     ...(extras.memoryMcpServer ? { memoryMcpServer: extras.memoryMcpServer } : {}),
     ...(extras.codeGraphMcpServer ? { codeGraphMcpServer: extras.codeGraphMcpServer } : {}),
+    ...(extras.codeGraphProtocol ? { codeGraphProtocol: extras.codeGraphProtocol } : {}),
     ...(extras.saveMemoryPrompt ? { saveMemoryPrompt: extras.saveMemoryPrompt } : {}),
     ...(extras.saveMemoryHandoff ? { saveMemoryHandoff: extras.saveMemoryHandoff } : {}),
     ...(extras.handoffSummary ? { handoffSummary: extras.handoffSummary } : {}),
@@ -3633,9 +3636,69 @@ describe('RunInstructionUseCase — devia-code-graph delivery (S-44)', () => {
 
   it.each(AGENTS)('%s: a run without a graph is identical to a run built without the provider', (_name, def, mode) => {
     const baseline = runFingerprint(def, {}, mode);
-    const withoutGraph = runFingerprint(def, { codeGraphMcpServer: () => null }, mode);
+    const withoutGraph = runFingerprint(def, { codeGraphMcpServer: () => null, codeGraphProtocol }, mode);
+    const withProtocolOnly = runFingerprint(def, { codeGraphProtocol }, mode);
     expect(withoutGraph).toBe(baseline);
+    expect(withProtocolOnly).toBe(baseline);
+    expect(baseline).not.toContain('graph_explore');
     expect(baseline).not.toContain('devia-code-graph');
+  });
+
+  const GUIDE = 'graph_explore';
+  const guideRun = (def: Partial<RuntimeAgentDef>, extras: BuildExtras, origin: 'renderer' | 'remote' = 'renderer', isolate = false) => {
+    const h = build(def, { config: projectConfig(), codeGraphProtocol, ...extras });
+    const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply', [], origin, isolate);
+    return { h, plan: prepare.mock.calls[0]?.[0], system: prepare.mock.calls[0]?.[1] ?? '' };
+  };
+
+  it('Claude with the graph delivered gets the guide in the turn context, not in the frozen system prompt', () => {
+    const { plan, system } = guideRun(claudeStreamDef, { codeGraphMcpServer: codeGraph() });
+    expect(plan?.turnContext).toContain(GUIDE);
+    expect(system).not.toContain(GUIDE);
+  });
+
+  it.each([
+    ['pi', { id: 'pi', name: 'Pi' }],
+    ['hermes', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }],
+  ] as const)('%s with the graph delivered gets the guide in the system prompt', (_n, def) => {
+    const { plan, system } = guideRun(def, { codeGraphMcpServer: codeGraph() });
+    expect(system).toContain(GUIDE);
+    expect(plan?.turnContext).toBeUndefined();
+  });
+
+  it('no guide when agent access is off or the checkout has no graph (provider returns null)', () => {
+    for (const def of [claudeStreamDef, { id: 'pi', name: 'Pi' }]) {
+      const { plan, system } = guideRun(def, { codeGraphMcpServer: () => null });
+      expect(system).not.toContain(GUIDE);
+      expect(plan?.turnContext ?? '').not.toContain(GUIDE);
+    }
+  });
+
+  it('a worktree run whose worktree has no graph gets no guide even if the base checkout has one', () => {
+    const { plan, system } = guideRun(
+      claudeStreamDef,
+      {
+        ensureSessionWorktree: () => ({ ok: true, created: true }),
+        codeGraphMcpServer: (abs) => (abs === projectDir() ? enabledServer('devia-code-graph') : null),
+      },
+      'renderer',
+      true,
+    );
+    expect(plan?.turnContext).toBeDefined();
+    expect(plan?.turnContext).not.toContain(GUIDE);
+    expect(system).not.toContain(GUIDE);
+  });
+
+  it('a worktree run with its own graph gets the guide in the turn context', () => {
+    const { plan } = guideRun(claudeStreamDef, { ensureSessionWorktree: () => ({ ok: true, created: true }), codeGraphMcpServer: codeGraph() },
+      'renderer', true);
+    expect(plan?.turnContext).toContain(GUIDE);
+  });
+
+  it('a remote run carries the guide like the other blocks (turn context for Claude)', () => {
+    const { plan } = guideRun(claudeStreamDef, { codeGraphMcpServer: codeGraph() }, 'remote');
+    expect(plan?.turnContext).toContain(GUIDE);
   });
 
   it('the gemini rows really compare the plan-mode policy and the written native config', () => {
