@@ -7,21 +7,24 @@ import { ButtonComponent, IconComponent, SpinnerComponent, TooltipDirective } fr
 import { LucideNetwork, LucideX } from '@lucide/angular';
 
 import { AppStateService } from '../../core/services/app-state.service';
+import { CodeGraphEmptyStateComponent } from './components/empty-state/empty-state.component';
+import { CodeGraphToolbarComponent } from './components/graph-toolbar/graph-toolbar.component';
+import { CodeGraphIndexProgressComponent } from './components/index-progress/index-progress.component';
 import { CodeGraphStateService } from './services/code-graph-state.service';
 
 type CodeGraphView =
   | 'no-project' | 'loading' | 'load-error' | 'unsupported'
   | 'none' | 'indexing' | 'graph' | 'error';
 
-/**
- * Code graph screen (S-44), routed full-screen like the Kanban board. Each body
- * slot is a placeholder that T-509/T-510/T-511 replace with the real content.
- */
+/** Code graph screen (S-44), routed full-screen like the Kanban board. */
 @Component({
   selector: 'ds-code-graph-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent, IconComponent, SpinnerComponent, TooltipDirective, TranslateModule],
+  imports: [
+    ButtonComponent, IconComponent, SpinnerComponent, TooltipDirective, TranslateModule,
+    CodeGraphEmptyStateComponent, CodeGraphIndexProgressComponent, CodeGraphToolbarComponent,
+  ],
   templateUrl: './code-graph-page.component.html',
   styleUrl: './code-graph-page.component.scss',
 })
@@ -40,6 +43,8 @@ export default class CodeGraphPageComponent {
     if (this.graph.loading()) return 'loading';
     const status = this.graph.status();
     if (!status) return this.graph.error() ? 'load-error' : 'loading';
+    // Re-indexing an unsupported project keeps the flag until the job ends: progress wins.
+    if (status.state === 'indexing') return 'indexing';
     if (status.unsupported) return 'unsupported';
     if (status.state === 'ready' || status.state === 'stale') return 'graph';
     return status.state;
@@ -51,11 +56,6 @@ export default class CodeGraphPageComponent {
       untracked(() => void (project ? this.graph.open(project) : this.graph.close()));
     });
     inject(DestroyRef).onDestroy(() => void this.graph.close());
-  }
-
-  retry(): void {
-    const project = this.project();
-    if (project) void this.graph.open(project);
   }
 
   back(): void {

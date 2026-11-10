@@ -1,0 +1,20 @@
+@if (view(); as e) {
+  <dv-alert variant="danger" class="cg-action-error" data-testid="cg-action-error">
+    <div class="cg-action-error__row">
+      <div class="cg-action-error__text">
+        <p class="cg-action-error__message">{{ e.key | translate }}</p>
+        @if (e.detail) {
+          <p class="cg-action-error__detail">{{ e.detail }}</p>
+        }
+      </div>
+      <dv-button iconOnly
+                 variant="ghost"
+                 size="sm"
+                 data-testid="cg-dismiss-error"
+                 [ariaLabel]="'codeGraph.errors.dismiss' | translate"
+                 (clicked)="graph.dismissError()">
+        <dv-icon [icon]="LucideX" size="sm" />
+      </dv-button>
+    </div>
+  </dv-alert>
+}

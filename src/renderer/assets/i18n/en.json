@@ -1038,6 +1038,75 @@
       "stale": "The code graph is out of date.",
       "error": "The code graph could not be loaded.",
       "unsupported": "This project has no languages supported by the code graph."
+    },
+    "empty": {
+      "title": "Explore this project as a code graph",
+      "body": "Devia analyses the code on your machine and builds a map of files, classes and functions and how they relate. Everything stays local: nothing is sent and no tokens are spent.",
+      "languages": "Supported languages",
+      "index": "Index this project"
+    },
+    "unsupported": {
+      "title": "No code to index",
+      "body": "This project has no code in a supported language (TypeScript/JavaScript, Python, Java, Dart, Go).",
+      "hint": "If you add code in one of these languages later, index it again.",
+      "reindex": "Index again"
+    },
+    "failed": {
+      "title": "The project could not be indexed",
+      "body": "Indexing ended with an error. Your code was not changed; you can try again.",
+      "retry_index": "Retry indexing",
+      "reload": "Reload status"
+    },
+    "progress": {
+      "starting": "Getting ready to index…",
+      "phase": {
+        "discover": "Finding files",
+        "parse": "Analysing the code",
+        "resolve": "Resolving references",
+        "finalize": "Saving the graph"
+      },
+      "files": "{{done}} of {{total}} files",
+      "aria": "Indexing progress",
+      "cancel": "Cancel"
+    },
+    "stats": {
+      "nodes": "nodes",
+      "edges": "edges",
+      "files": "files"
+    },
+    "toolbar": {
+      "aria": "Code graph actions",
+      "up_to_date": "Up to date",
+      "stale": "Out of date",
+      "stale_reason": {
+        "commit": "the project moved to another commit",
+        "config": "the resolution settings changed: a re-index is needed",
+        "dirty": "there are unsynced changes"
+      },
+      "update": "Update",
+      "update_hint": "Sync the graph with the project's changes",
+      "languages": "Detected languages",
+      "indexed_at": "Indexed {{time}}",
+      "agent_access": "Available to agents",
+      "agent_access_hint": "Agents can query this graph in their next runs",
+      "auto_update": "Update automatically",
+      "auto_update_hint": "Sync the graph when the project's files change",
+      "watch_unavailable": "Automatic updates are unavailable",
+      "watch_unavailable_hint": "Not every file in the project can be watched. Use Update to sync the graph.",
+      "reset": "Reset graph",
+      "reset_hint": "Delete this project's graph"
+    },
+    "reset_dialog": {
+      "title": "Reset the code graph?",
+      "message": "This project's graph data will be deleted and you will be back at the start screen. Your code is not changed and you can index it again whenever you like.",
+      "confirm": "Reset",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "action": "The code graph action could not be completed.",
+      "not_created": "This project no longer has a graph. Index it again.",
+      "watch_limit": "Too many projects are being watched at once; automatic updates for this one are paused.",
+      "dismiss": "Dismiss"
     }
   }
 }

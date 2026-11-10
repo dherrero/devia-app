@@ -172,7 +172,8 @@ describe('round trip against the real files', () => {
     // 269: +4 for the auto-continue switch and banner (es/en only).
     // 293: +24 for the starter kit settings tab and first-run card (es/en only).
     // 303: +10 for the code graph screen (es/en only; T-513 translates).
-    expect(Object.keys(missing).length).toBe(303);
+    // 352: +49 for the code graph empty state, progress and toolbar (es/en only; T-513 translates).
+    expect(Object.keys(missing).length).toBe(352);
   });
 
   it('extracts nothing for the complete language', () => {

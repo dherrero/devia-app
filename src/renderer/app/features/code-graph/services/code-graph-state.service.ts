@@ -105,6 +105,10 @@ export class CodeGraphStateService {
     await this.run((project) => this.api.codeGraphSetAutoUpdate(project, on), true);
   }
 
+  dismissError(): void {
+    this._error.set(null);
+  }
+
   private async runJob(call: (project: string) => Promise<CodeGraphStatus>, optimistic: boolean): Promise<void> {
     const project = this.current;
     if (project === null || this._busy()) return;

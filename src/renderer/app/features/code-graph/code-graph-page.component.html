@@ -31,52 +31,26 @@
       </div>
     }
     @case ('load-error') {
-      <section class="cg-slot" data-testid="cg-error-slot">
-        <p class="cg-message">{{ 'codeGraph.state.error' | translate }}</p>
-        <p class="cg-detail">{{ graph.error() }}</p>
-        <dv-button variant="secondary" size="sm" data-testid="cg-retry" (clicked)="retry()">
-          {{ 'codeGraph.retry' | translate }}
-        </dv-button>
-      </section>
+      <ds-cg-empty-state variant="load-error" />
     }
     @case ('error') {
-      <section class="cg-slot" data-testid="cg-error-slot">
-        <p class="cg-message">{{ 'codeGraph.state.error' | translate }}</p>
-        <code class="cg-raw">error</code>
-        @if (graph.error(); as message) {
-          <p class="cg-detail">{{ message }}</p>
-        }
-        <dv-button variant="secondary" size="sm" data-testid="cg-retry" (clicked)="retry()">
-          {{ 'codeGraph.retry' | translate }}
-        </dv-button>
-      </section>
+      <ds-cg-empty-state variant="failed" />
     }
     @case ('unsupported') {
-      <!-- T-509 -->
-      <section class="cg-slot" data-testid="cg-unsupported-slot">
-        <p class="cg-message">{{ 'codeGraph.state.unsupported' | translate }}</p>
-        <code class="cg-raw">unsupported</code>
-      </section>
+      <ds-cg-empty-state variant="unsupported" />
     }
     @case ('none') {
-      <!-- T-509 -->
-      <section class="cg-slot" data-testid="cg-empty-slot">
-        <p class="cg-message">{{ 'codeGraph.state.none' | translate }}</p>
-        <code class="cg-raw">none</code>
-      </section>
+      <ds-cg-empty-state variant="none" />
     }
     @case ('indexing') {
-      <!-- T-509 -->
-      <section class="cg-slot" data-testid="cg-progress-slot">
-        <p class="cg-message">{{ 'codeGraph.state.indexing' | translate }}</p>
-        <code class="cg-raw">indexing</code>
-      </section>
+      <ds-cg-index-progress />
     }
     @case ('graph') {
-      <!-- T-510 / T-511 -->
+      <ds-cg-toolbar />
+      <!-- Placeholder: T-510 mounts the graph view here. -->
       <section class="cg-slot" data-testid="cg-graph-slot">
+        <dv-icon class="cg-slot-icon" [icon]="LucideNetwork" size="lg" />
         <p class="cg-message">{{ 'codeGraph.state.' + graph.status()?.state | translate }}</p>
-        <code class="cg-raw">{{ graph.status()?.state }}</code>
       </section>
     }
   }

@@ -2,128 +2,201 @@ import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { TranslateModule } from '@ngx-translate/core';
+import { DialogService } from '@devia/ui';
+import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { CodeGraphProgressPayload, CodeGraphStatusChangedPayload } from '../../../../shared/contracts/events';
 import type { CodeGraphStatus } from '../../../../shared/domain/code-graph';
 import { AppStateService } from '../../core/services/app-state.service';
+import { ElectronApiService } from '../../core/services/electron-api.service';
 import CodeGraphPageComponent from './code-graph-page.component';
 import { CodeGraphStateService } from './services/code-graph-state.service';
+import { graphStatus } from './testing/fake-code-graph-state';
 
-function status(over: Partial<CodeGraphStatus> = {}): CodeGraphStatus {
+function makeApi() {
+  const progressListeners = new Set<(e: CodeGraphProgressPayload) => void>();
+  const statusListeners = new Set<(e: CodeGraphStatusChangedPayload) => void>();
   return {
-    state: 'none',
-    nodeCount: 0,
-    edgeCount: 0,
-    fileCount: 0,
-    languages: {},
-    agentAccess: false,
-    autoUpdate: false,
-    ...over,
+    emitProgress: (e: CodeGraphProgressPayload) => progressListeners.forEach((cb) => cb(e)),
+    emitStatus: (e: CodeGraphStatusChangedPayload) => statusListeners.forEach((cb) => cb(e)),
+    codeGraphStatus: vi.fn<(p: string) => Promise<CodeGraphStatus>>(() => Promise.resolve(graphStatus())),
+    codeGraphIndex: vi.fn<(p: string) => Promise<CodeGraphStatus>>(() => Promise.resolve(graphStatus({ state: 'ready' }))),
+    codeGraphUpdate: vi.fn<(p: string) => Promise<CodeGraphStatus>>(() => Promise.resolve(graphStatus({ state: 'ready' }))),
+    codeGraphCancel: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
+    codeGraphReset: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
+    codeGraphSetAgentAccess: vi.fn<(p: string, on: boolean) => Promise<void>>(() => Promise.resolve()),
+    codeGraphSetAutoUpdate: vi.fn<(p: string, on: boolean) => Promise<void>>(() => Promise.resolve()),
+    codeGraphWatch: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
+    codeGraphUnwatch: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
+    onCodeGraphProgress: vi.fn((cb: (e: CodeGraphProgressPayload) => void) => {
+      progressListeners.add(cb);
+      return () => progressListeners.delete(cb);
+    }),
+    onCodeGraphStatusChanged: vi.fn((cb: (e: CodeGraphStatusChangedPayload) => void) => {
+      statusListeners.add(cb);
+      return () => statusListeners.delete(cb);
+    }),
   };
 }
 
-function makeGraphState() {
-  return {
-    status: signal<CodeGraphStatus | null>(null),
-    loading: signal(false),
-    error: signal<string | null>(null),
-    open: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
-    close: vi.fn(() => Promise.resolve()),
-  };
-}
-
-describe('CodeGraphPageComponent (S-44 T-506)', () => {
+describe('CodeGraphPageComponent', () => {
   let fixture: ComponentFixture<CodeGraphPageComponent>;
-  let graph: ReturnType<typeof makeGraphState>;
+  let api: ReturnType<typeof makeApi>;
+  let graph: CodeGraphStateService;
   const selectedProject = signal<string | null>('proj-a');
   const navigateByUrl = vi.fn(() => Promise.resolve(true));
 
+  async function settle(): Promise<void> {
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  async function mount(initial: CodeGraphStatus | Error): Promise<void> {
+    if (initial instanceof Error) api.codeGraphStatus.mockRejectedValueOnce(initial);
+    else api.codeGraphStatus.mockResolvedValueOnce(initial);
+    fixture = TestBed.createComponent(CodeGraphPageComponent);
+    fixture.detectChanges();
+    await settle();
+  }
+
   beforeEach(async () => {
-    graph = makeGraphState();
+    api = makeApi();
     selectedProject.set('proj-a');
     navigateByUrl.mockClear();
     await TestBed.configureTestingModule({
       imports: [CodeGraphPageComponent, TranslateModule.forRoot()],
       providers: [
         { provide: AppStateService, useValue: { selectedProject } },
-        { provide: CodeGraphStateService, useValue: graph },
+        { provide: ElectronApiService, useValue: api },
+        { provide: DialogService, useValue: { confirm: vi.fn(() => of(true)) } },
         { provide: Router, useValue: { navigateByUrl } },
       ],
     }).compileComponents();
-    fixture = TestBed.createComponent(CodeGraphPageComponent);
-    fixture.detectChanges();
+    graph = TestBed.inject(CodeGraphStateService);
   });
 
   const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
-  const slot = (id: string): HTMLElement | null => host().querySelector(`[data-testid="${id}"]`);
+  const byId = (id: string): HTMLElement | null => host().querySelector(`[data-testid="${id}"]`);
+  const button = (id: string): HTMLButtonElement | null =>
+    host().querySelector<HTMLButtonElement>(`[data-testid="${id}"] button`);
 
-  it('opens the selected project on init', () => {
-    expect(graph.open).toHaveBeenCalledTimes(1);
-    expect(graph.open).toHaveBeenCalledWith('proj-a');
-  });
-
-  it('re-opens when the selected project changes', () => {
+  it('opens the selected project on init and re-opens on project change', async () => {
+    await mount(graphStatus());
+    expect(api.codeGraphStatus).toHaveBeenCalledWith('proj-a');
     selectedProject.set('proj-b');
     fixture.detectChanges();
-    expect(graph.open).toHaveBeenLastCalledWith('proj-b');
-    expect(graph.open).toHaveBeenCalledTimes(2);
+    await settle();
+    expect(api.codeGraphStatus).toHaveBeenLastCalledWith('proj-b');
   });
 
-  it('closes the graph state on destroy', () => {
+  it('stops watching the project on destroy', async () => {
+    await mount(graphStatus());
     fixture.destroy();
-    expect(graph.close).toHaveBeenCalledTimes(1);
+    expect(api.codeGraphUnwatch).toHaveBeenCalledWith('proj-a');
   });
 
-  it('shows the select-project message and closes when no project is selected', () => {
+  it('shows the select-project message when no project is selected', async () => {
     selectedProject.set(null);
-    fixture.detectChanges();
-    expect(slot('cg-no-project')?.textContent).toContain('empty_state.select_project');
-    expect(graph.close).toHaveBeenCalled();
+    await mount(graphStatus());
+    expect(byId('cg-no-project')?.textContent).toContain('empty_state.select_project');
   });
 
-  it('shows the loading state during the first status fetch', () => {
-    graph.loading.set(true);
+  it('none: renders the empty state whose button indexes the project', async () => {
+    await mount(graphStatus());
+    expect(host().querySelector('ds-cg-empty-state')).not.toBeNull();
+    button('cg-index')?.click();
+    expect(api.codeGraphIndex).toHaveBeenCalledWith('proj-a');
+  });
+
+  it('indexing: renders the progress view with the pushed progress', async () => {
+    await mount(graphStatus({ state: 'indexing' }));
+    api.emitProgress({ project: 'proj-a', progress: { phase: 'parse', filesDone: 5, filesTotal: 10, nodes: 1, edges: 2 } });
     fixture.detectChanges();
-    expect(slot('cg-loading')).not.toBeNull();
+    expect(host().querySelector('ds-cg-index-progress')).not.toBeNull();
+    expect(host().querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('50');
+    expect(button('cg-index')).toBeNull();
+  });
+
+  it('clicking index switches to the progress view while the job runs', async () => {
+    await mount(graphStatus());
+    api.codeGraphIndex.mockReturnValueOnce(new Promise<CodeGraphStatus>(() => undefined));
+    button('cg-index')?.click();
+    fixture.detectChanges();
+    expect(host().querySelector('ds-cg-index-progress')).not.toBeNull();
+  });
+
+  it.each(['ready', 'stale'] as const)('%s: mounts the toolbar above the graph slot', async (state) => {
+    await mount(graphStatus({ state }));
+    const toolbar = host().querySelector('ds-cg-toolbar');
+    const slotEl = byId('cg-graph-slot');
+    expect(toolbar).not.toBeNull();
+    expect(slotEl).not.toBeNull();
+    expect(toolbar?.compareDocumentPosition(slotEl as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('unsupported: renders the unsupported variant with no toolbar', async () => {
+    await mount(graphStatus({ state: 'ready', unsupported: true }));
+    expect(host().textContent).toContain('codeGraph.unsupported.body');
+    expect(host().querySelector('ds-cg-toolbar')).toBeNull();
+    expect(byId('cg-graph-slot')).toBeNull();
+  });
+
+  it('re-indexing an unsupported project shows the progress view', async () => {
+    await mount(graphStatus({ state: 'ready', unsupported: true }));
+    api.codeGraphIndex.mockReturnValueOnce(new Promise<CodeGraphStatus>(() => undefined));
+    button('cg-reindex')?.click();
+    fixture.detectChanges();
+    expect(host().querySelector('ds-cg-index-progress')).not.toBeNull();
+  });
+
+  it('error: the retry re-indexes the project', async () => {
+    await mount(graphStatus({ state: 'error' }));
+    button('cg-retry-index')?.click();
+    expect(api.codeGraphIndex).toHaveBeenCalledWith('proj-a');
+  });
+
+  it('a failed first load shows the error with a retry that opens again', async () => {
+    await mount(new Error("Error invoking remote method 'code-graph:status': Error: Code graph operation failed"));
+    expect(host().textContent).toContain('codeGraph.state.error');
+    expect(host().textContent).not.toContain('Error invoking remote method');
+    button('cg-retry')?.click();
+    await settle();
+    expect(api.codeGraphStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('an action failure with an existing status is displayed near the toolbar', async () => {
+    await mount(graphStatus({ state: 'ready' }));
+    api.codeGraphSetAgentAccess.mockRejectedValueOnce(
+      new Error("Error invoking remote method 'code-graph:set-agent-access': Error: CODE_GRAPH_NOT_CREATED"),
+    );
+    button('cg-agent-access')?.click();
+    await settle();
+    expect(graph.error()).toBe('CODE_GRAPH_NOT_CREATED');
+    expect(byId('cg-action-error')?.textContent).toContain('codeGraph.errors.not_created');
   });
 
   it.each([
-    ['none', 'cg-empty-slot'],
-    ['indexing', 'cg-progress-slot'],
-    ['ready', 'cg-graph-slot'],
-    ['stale', 'cg-graph-slot'],
-    ['error', 'cg-error-slot'],
-  ] as const)('renders the slot for state %s', (state, testId) => {
-    graph.status.set(status({ state }));
-    fixture.detectChanges();
-    expect(slot(testId)?.textContent).toContain(state);
-    expect(host().querySelectorAll('section[data-testid]').length).toBe(1);
+    graphStatus(),
+    graphStatus({ state: 'indexing' }),
+    graphStatus({ state: 'ready' }),
+    graphStatus({ state: 'stale', staleReason: 'dirty' }),
+    graphStatus({ state: 'error' }),
+    graphStatus({ state: 'ready', unsupported: true }),
+  ])('never prints raw state text (%o)', async (s) => {
+    await mount(s);
+    expect(host().querySelector('.cg-raw')).toBeNull();
+    expect(host().querySelector('code')).toBeNull();
   });
 
-  it('renders the unsupported slot when the project is unsupported', () => {
-    graph.status.set(status({ unsupported: true }));
-    fixture.detectChanges();
-    expect(slot('cg-unsupported-slot')).not.toBeNull();
-    expect(slot('cg-empty-slot')).toBeNull();
-  });
-
-  it('a failed first load shows the error slot with the message and a retry that opens again', () => {
-    graph.error.set('Code graph operation failed');
-    fixture.detectChanges();
-    const errorSlot = slot('cg-error-slot');
-    expect(errorSlot?.textContent).toContain('Code graph operation failed');
-    const retry = errorSlot?.querySelector<HTMLButtonElement>('[data-testid="cg-retry"] button');
-    retry?.click();
-    expect(graph.open).toHaveBeenCalledTimes(2);
-    expect(graph.open).toHaveBeenLastCalledWith('proj-a');
-  });
-
-  it('the back button navigates to /', () => {
-    host().querySelector<HTMLButtonElement>('[data-testid="cg-back"] button')?.click();
+  it('the back button navigates to /', async () => {
+    await mount(graphStatus());
+    button('cg-back')?.click();
     expect(navigateByUrl).toHaveBeenCalledWith('/');
   });
 
-  it('shows the title in the header', () => {
+  it('shows the title in the header', async () => {
+    await mount(graphStatus());
     expect(host().querySelector('header')?.textContent).toContain('codeGraph.title');
   });
 });

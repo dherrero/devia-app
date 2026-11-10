@@ -297,6 +297,16 @@ describe('CodeGraphStateService (S-44 T-506)', () => {
     expect(svc.error()).toContain('Code graph operation failed');
   });
 
+  it('dismissError() clears an action failure and keeps the status', async () => {
+    await svc.open('proj-a');
+    api.codeGraphSetAutoUpdate.mockRejectedValueOnce(ipcError('CODE_GRAPH_NOT_CREATED'));
+    await svc.setAutoUpdate(true);
+    expect(svc.error()).toBe('CODE_GRAPH_NOT_CREATED');
+    svc.dismissError();
+    expect(svc.error()).toBeNull();
+    expect(svc.status()?.state).toBe('none');
+  });
+
   it('actions are no-ops without an open project', async () => {
     await svc.index();
     await svc.update();

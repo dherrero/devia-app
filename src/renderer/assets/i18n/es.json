@@ -1038,6 +1038,75 @@
       "stale": "El grafo de código está desactualizado.",
       "error": "No se pudo cargar el grafo de código.",
       "unsupported": "Este proyecto no tiene lenguajes compatibles con el grafo de código."
+    },
+    "empty": {
+      "title": "Explora este proyecto como un grafo de código",
+      "body": "Devia analiza el código en tu equipo y crea un mapa de ficheros, clases y funciones con sus relaciones. Todo es local: no se envía nada ni se gastan tokens.",
+      "languages": "Lenguajes compatibles",
+      "index": "Indexar este proyecto"
+    },
+    "unsupported": {
+      "title": "No hay código que indexar",
+      "body": "Este proyecto no tiene código en lenguajes soportados (TypeScript/JavaScript, Python, Java, Dart, Go).",
+      "hint": "Si más adelante añades código en alguno de estos lenguajes, vuelve a indexarlo.",
+      "reindex": "Volver a indexar"
+    },
+    "failed": {
+      "title": "No se pudo indexar el proyecto",
+      "body": "La indexación terminó con un error. Tu código no se ha modificado; puedes volver a intentarlo.",
+      "retry_index": "Reintentar indexado",
+      "reload": "Recargar estado"
+    },
+    "progress": {
+      "starting": "Preparando la indexación…",
+      "phase": {
+        "discover": "Buscando ficheros",
+        "parse": "Analizando el código",
+        "resolve": "Resolviendo referencias",
+        "finalize": "Guardando el grafo"
+      },
+      "files": "{{done}} de {{total}} ficheros",
+      "aria": "Progreso de la indexación",
+      "cancel": "Cancelar"
+    },
+    "stats": {
+      "nodes": "nodos",
+      "edges": "aristas",
+      "files": "ficheros"
+    },
+    "toolbar": {
+      "aria": "Acciones del grafo de código",
+      "up_to_date": "Actualizado",
+      "stale": "Desactualizado",
+      "stale_reason": {
+        "commit": "el proyecto cambió de commit",
+        "config": "cambió la configuración de resolución: hace falta reindexar",
+        "dirty": "hay cambios sin sincronizar"
+      },
+      "update": "Actualizar",
+      "update_hint": "Sincroniza el grafo con los cambios del proyecto",
+      "languages": "Lenguajes detectados",
+      "indexed_at": "Indexado {{time}}",
+      "agent_access": "Activo para agentes",
+      "agent_access_hint": "Los agentes pueden consultar este grafo en sus próximas ejecuciones",
+      "auto_update": "Actualizar automáticamente",
+      "auto_update_hint": "Sincroniza el grafo cuando cambian los ficheros del proyecto",
+      "watch_unavailable": "La actualización automática no está disponible",
+      "watch_unavailable_hint": "No se pueden vigilar todos los ficheros del proyecto. Usa Actualizar para sincronizar el grafo.",
+      "reset": "Reiniciar grafo",
+      "reset_hint": "Borra el grafo de este proyecto"
+    },
+    "reset_dialog": {
+      "title": "¿Reiniciar el grafo de código?",
+      "message": "Se borrarán los datos del grafo de este proyecto y volverás a la pantalla inicial. Tu código no se modifica y puedes volver a indexarlo cuando quieras.",
+      "confirm": "Reiniciar",
+      "cancel": "Cancelar"
+    },
+    "errors": {
+      "action": "No se pudo completar la acción en el grafo de código.",
+      "not_created": "Este proyecto ya no tiene grafo. Vuelve a indexarlo.",
+      "watch_limit": "Hay demasiados proyectos vigilados a la vez; la actualización automática de este está en pausa.",
+      "dismiss": "Cerrar aviso"
     }
   }
 }
