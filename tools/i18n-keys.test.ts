@@ -178,7 +178,10 @@ describe('round trip against the real files', () => {
     // 413: +55 for the interactive graph canvas (es/en only; T-513 translates).
     // 417: +4 for the graph canvas reload announcement and legend rows (es/en only; T-513 translates).
     // 488: +71 for the graph search, filters and node detail panel (es/en only; T-513 translates).
-    expect(Object.keys(missing).length).toBe(488);
+    // 293: T-513 translated every codeGraph key into the nine locales (-195); what is
+    // left is the pre-existing S-27 backlog, none of it under codeGraph.
+    expect(Object.keys(missing).length).toBe(293);
+    expect(Object.keys(missing).filter((key) => key.startsWith('codeGraph.'))).toEqual([]);
   });
 
   it('extracts nothing for the complete language', () => {

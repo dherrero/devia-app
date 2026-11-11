@@ -37,6 +37,7 @@ const COMPLETE_LANGUAGES: readonly string[] = ['es'];
 const PROTECTED_NAMESPACES: readonly string[] = [
   'app',
   'bubble_progress',
+  'codeGraph',
   'diff_viewer',
   'empty_state',
   'error_card',
