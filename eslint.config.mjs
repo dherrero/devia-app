@@ -82,7 +82,18 @@ const tsRules = {
 
 export default [
   {
-    ignores: ['dist/**', 'release/**', 'coverage/**', 'node_modules/**', '.angular/**', 'tmp/**', '**/__fixtures__/**'],
+    // tools/code-graph/fixtures: sample repos the parity oracle indexes; their code is
+    // input data written to exercise the extractors, not code of this project.
+    ignores: [
+      'dist/**',
+      'release/**',
+      'coverage/**',
+      'node_modules/**',
+      '.angular/**',
+      'tmp/**',
+      '**/__fixtures__/**',
+      'tools/code-graph/fixtures/**',
+    ],
   },
   {
     // The old eslintrc did not report stale disable comments; keep it that way.
