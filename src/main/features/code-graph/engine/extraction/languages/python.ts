@@ -260,6 +260,23 @@ function addImport(
       },
       ctx.module,
     );
+    // A module-level `from x import y [as z]` makes `z` importable from this module (the
+    // package __init__ re-export idiom), so it is stored like a TS re-export for the resolver.
+    const imported = meta['imported'];
+    if (typeof imported === 'string') {
+      const star = imported === '*';
+      const name = star ? '*' : String(meta['binding'] ?? imported);
+      b.addSymbol(
+        {
+          kind: 'export',
+          name,
+          syntax: at,
+          isExported: true,
+          metadata: star ? { source: spec } : { source: spec, imported },
+        },
+        ctx.module,
+      );
+    }
   }
   b.addRef(b.file.id, spec, 'imports', at, meta);
 }

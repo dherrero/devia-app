@@ -415,13 +415,16 @@ class ResolutionRun {
         if (hits.length === 1 && hits[0])
           return { kind: 'symbol', node: hits[0] };
       } else if (typeof source === 'string') {
-        const next = resolverFor(e.language)?.resolveImport(
-          file,
-          source,
-          this.ctx,
-        );
-        if (next === undefined) return undefined;
+        const resolver = resolverFor(e.language);
         const imported = e.metadata?.['imported'];
+        const submodule =
+          typeof imported === 'string'
+            ? resolver?.resolveSubmodule?.(file, source, imported, this.ctx)
+            : undefined;
+        if (submodule !== undefined && this.index.fileNodes.has(submodule))
+          return { kind: 'namespace', files: [submodule] };
+        const next = resolver?.resolveImport(file, source, this.ctx);
+        if (next === undefined) return undefined;
         if (typeof imported !== 'string')
           return { kind: 'namespace', files: [next] };
         return this.findExport(next, imported, depth + 1, seen);

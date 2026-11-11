@@ -193,4 +193,34 @@ describe('python import resolution', () => {
       h.fileId('pkg/mod.py'),
     ]);
   });
+
+  it('follows a name re-exported by a package __init__, whatever the file order', async () => {
+    await h.addFiles({
+      'app/svc.py':
+        'from ..shop import create_user, make\nfrom ..shop.sub import everything\n\ndef run():\n    create_user()\n    make()\n    everything()\n',
+      'shop/__init__.py': 'from .user import create_user\nfrom .user import build as make\n',
+      'shop/user.py': 'def create_user():\n    pass\n\ndef build():\n    pass\n',
+      'shop/sub/__init__.py': 'from .impl import *\n',
+      'shop/sub/impl.py': 'def everything():\n    pass\n',
+      'app/__init__.py': '',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.sym('app/svc.py', 'run').id, 'calls').sort()).toEqual(
+      [
+        h.sym('shop/user.py', 'create_user').id,
+        h.sym('shop/user.py', 'build').id,
+        h.sym('shop/sub/impl.py', 'everything').id,
+      ].sort(),
+    );
+  });
+
+  it('does not treat an import inside a function as a module re-export', async () => {
+    await h.addFiles({
+      'main.py': 'from shop import helper\n\ndef run():\n    helper()\n',
+      'shop/__init__.py': 'def setup():\n    from .impl import helper\n',
+      'shop/impl.py': 'def helper():\n    pass\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.sym('main.py', 'run').id, 'calls')).toEqual([]);
+  });
 });
