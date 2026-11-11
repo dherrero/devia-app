@@ -67,6 +67,8 @@ interface Ctx {
   communities(): Map<string, number>;
   hubs(): Hub[];
   hubFlags(): Set<string>;
+  /** Generated file paths, read once per request (a sync can change them). */
+  generatedFiles(): Set<string>;
 }
 
 const emptyPage = (): GraphViewPage => ({ nodes: [], edges: [], total: 0, hasMore: false });
@@ -269,12 +271,14 @@ export class GraphViewUseCase {
       const q = new GraphQueries(db);
       const entry = this.entryFor(projectAbs, version);
       const hubs = (): Hub[] => (entry.hubs ??= readHubs(q));
+      let generated: Set<string> | undefined;
       return fn({
         q,
         entry,
         communities: () => (entry.communities ??= readCommunities(q)),
         hubs,
         hubFlags: () => (entry.hubFlags ??= new Set(hubs().slice(0, HUB_FLAGS).map((h) => h.nodeId))),
+        generatedFiles: () => (generated ??= q.generatedFilePaths()),
       });
     } finally {
       try {
@@ -339,6 +343,7 @@ export class GraphViewUseCase {
       if (parent !== undefined) n.parentId = dirId(parent);
       if (r.language !== undefined) n.language = r.language;
       if (r.isTest === true) n.isTest = true;
+      if (r.generated === true) n.generated = true;
       const community = r.isDir ? dominant.get(r.path) : communities.get(r.path);
       if (community !== undefined) n.community = community;
       return n;
@@ -367,6 +372,7 @@ export class GraphViewUseCase {
     }
     if (parentId !== undefined) o.parentId = parentId;
     if (n.isTest === true) o.isTest = true;
+    if (ctx.generatedFiles().has(n.filePath)) o.generated = true;
     const community = ctx.communities().get(n.filePath);
     if (community !== undefined) o.community = community;
     if (!isFile && ctx.hubFlags().has(n.id)) o.hub = true;
@@ -522,6 +528,8 @@ export class GraphViewUseCase {
   private symbolDetail(ctx: Ctx, node: GraphNode): GraphSymbolDetail {
     const impact = getImpact(ctx.q, node.id);
     const files = impact?.files ?? [];
+    const listed = files.slice(0, DETAIL_IMPACT_FILES);
+    const fileIds = ctx.q.fileNodeIds(listed);
     const out: GraphSymbolDetail = {
       kind: 'symbol',
       node,
@@ -529,7 +537,11 @@ export class GraphViewUseCase {
       callers: getCallers(ctx.q, node.id, { limit: DETAIL_NODES }).map((h) => h.node),
       callees: getCallees(ctx.q, node.id, { limit: DETAIL_NODES }).map((h) => h.node),
       impact: {
-        files: files.slice(0, DETAIL_IMPACT_FILES),
+        files: listed,
+        refs: listed.flatMap((p) => {
+          const id = fileIds.get(p);
+          return id === undefined ? [] : [{ id, path: p }];
+        }),
         count: files.length,
         truncated: (impact?.truncated ?? false) || files.length > DETAIL_IMPACT_FILES,
       },

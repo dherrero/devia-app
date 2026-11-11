@@ -6,9 +6,11 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { AlertComponent, ButtonComponent, IconComponent, SpinnerComponent } from '@devia/ui';
 import { LucideMaximize, LucideRotateCcw, LucideX, LucideZoomIn, LucideZoomOut } from '@lucide/angular';
 
-import type { GraphOverviewNode } from '../../../../../../shared/domain/code-graph';
-import { GRAPH_RENDERER_FACTORY, type GraphRenderer } from '../../services/graph-renderer';
-import { GraphViewStore, isMoreNode, type GraphViewChange, type ViewNode } from '../../services/graph-view.store';
+import { EDGE_KINDS, NODE_KINDS, type GraphOverviewNode } from '../../../../../../shared/domain/code-graph';
+import { GRAPH_RENDERER_FACTORY, type GraphFilters, type GraphRenderer } from '../../services/graph-renderer';
+import {
+  GraphViewStore, isMoreNode, type GraphViewChange, type GraphViewFilters, type ViewEdgeKind, type ViewNode, type ViewNodeKind,
+} from '../../services/graph-view.store';
 import { describeCodeGraphError } from '../../utils/code-graph-error';
 import { COMMUNITY_PALETTE, shapeLegend } from '../../utils/graph-style';
 import { pluralKey } from '../../utils/plural';
@@ -20,6 +22,20 @@ const LEGEND_SHAPES = shapeLegend().map((entry) => ({
   shape: entry.shape,
   label: entry.kind === null ? 'codeGraph.canvas.legend.symbol' : `codeGraph.canvas.kind.${entry.kind}`,
 }));
+
+const VIEW_NODE_KINDS: readonly ViewNodeKind[] = ['dir', ...NODE_KINDS];
+const VIEW_EDGE_KINDS: readonly ViewEdgeKind[] = [...EDGE_KINDS, 'aggregate'];
+
+/** The store lists what stays visible; the renderer wants what to hide. */
+export function rendererFilters(filters: GraphViewFilters): GraphFilters {
+  const { nodeKinds, edgeKinds } = filters;
+  return {
+    hideTests: !filters.showTests,
+    hideGenerated: !filters.showGenerated,
+    hiddenKinds: new Set(nodeKinds === undefined ? [] : VIEW_NODE_KINDS.filter((k) => !nodeKinds.includes(k))),
+    hiddenEdgeKinds: new Set(edgeKinds === undefined ? [] : VIEW_EDGE_KINDS.filter((k) => !edgeKinds.includes(k))),
+  };
+}
 
 let nextId = 0;
 
@@ -64,6 +80,8 @@ export class GraphCanvasComponent {
   readonly shapes = LEGEND_SHAPES;
 
   private renderer: GraphRenderer | null = null;
+  /** The last burst/layout the renderer is running: a reveal centres the camera once it has landed. */
+  private layout: Promise<void> = Promise.resolve();
   private destroyed = false;
   private readonly cleanups: (() => void)[] = [];
 
@@ -90,6 +108,7 @@ export class GraphCanvasComponent {
   });
 
   readonly hasGraph = computed(() => this.store.nodes().length > 0);
+  readonly shownCount = computed(() => this.store.visibleNodes().length + this.store.visibleEdges().length);
   readonly loadFailed = computed(() => this.store.error() !== null && !this.hasGraph());
   readonly actionError = computed(() => (this.hasGraph() ? describeCodeGraphError(this.store.error()) : null));
   readonly showSkeleton = computed(() => !this.loadFailed() && !this.store.empty() && (!this.hasGraph() || !this.ready()));
@@ -103,6 +122,10 @@ export class GraphCanvasComponent {
     effect(() => {
       const id = this.store.selectedId();
       untracked(() => this.renderer?.select(id));
+    });
+    effect(() => {
+      const filters = rendererFilters(this.store.filters());
+      untracked(() => this.renderer?.setFilters(filters));
     });
     afterNextRender(() => void this.init());
     inject(DestroyRef).onDestroy(() => this.teardown());
@@ -242,17 +265,27 @@ export class GraphCanvasComponent {
     const renderer = this.renderer;
     if (!renderer) return;
     switch (change.type) {
+      case 'focus': {
+        const id = change.id;
+        const node = this.nodeById().get(id) ?? this.store.nodes().find((x) => x.id === id);
+        renderer.select(this.store.selectedId());
+        void this.layout.then(() => {
+          if (this.renderer === renderer) renderer.focus(id);
+        });
+        if (node) this.announceSelection(node);
+        return;
+      }
       case 'reset':
-        void renderer.setElements(change.nodes, change.edges);
+        this.layout = renderer.setElements(change.nodes, change.edges);
         renderer.select(this.store.selectedId());
         return;
       case 'reload':
-        void renderer.setElements(change.nodes, change.edges, { preserve: true });
+        this.layout = renderer.setElements(change.nodes, change.edges, { preserve: true });
         renderer.select(this.store.selectedId());
         this.announce('codeGraph.canvas.updated', {});
         return;
       case 'explode': {
-        void renderer.explode(change.parentId, change.nodes, change.edges);
+        this.layout = renderer.explode(change.parentId, change.nodes, change.edges);
         const count = change.nodes.filter((node) => !isMoreNode(node)).length;
         this.announce('codeGraph.canvas.expanded', { label: change.parent.label, count }, count);
         if (this.store.selectedId() === change.parentId) this.store.select(null);
@@ -265,7 +298,7 @@ export class GraphCanvasComponent {
         return;
       case 'append': {
         renderer.removeNode(change.removedId);
-        void renderer.addNodes(change.parentId, change.nodes, change.edges);
+        this.layout = renderer.addNodes(change.parentId, change.nodes, change.edges);
         const count = change.nodes.filter((node) => !isMoreNode(node)).length;
         this.announce('codeGraph.canvas.more_loaded', { count }, count);
         return;
@@ -285,6 +318,7 @@ export class GraphCanvasComponent {
     const surface = this.surface().nativeElement;
     this.renderer = renderer;
     renderer.mount(surface);
+    renderer.setFilters(rendererFilters(this.store.filters()));
     this.cleanups.push(
       renderer.onSelect((id) => this.onRendererSelect(id)),
       renderer.onExpandRequest((id) => void this.activate(id)),
@@ -293,7 +327,7 @@ export class GraphCanvasComponent {
     );
     this.observe(surface, renderer);
     if (this.hasGraph()) {
-      void renderer.setElements(this.store.nodes(), this.store.edges());
+      this.layout = renderer.setElements(this.store.nodes(), this.store.edges());
       renderer.select(this.store.selectedId());
     }
     this.ready.set(true);

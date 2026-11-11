@@ -123,6 +123,8 @@ export interface GraphOverviewNode {
   symbolCount?: number;
   fileCount?: number;
   isTest?: boolean;
+  /** A generated file, a file's symbols, or a directory holding only generated files. */
+  generated?: boolean;
   exported?: boolean;
   line?: number;
 }
@@ -159,6 +161,8 @@ export interface GraphExpandOptions {
 export interface GraphImpactSummary {
   /** Impacted files in impact order (the node's own file first). */
   files: string[];
+  /** `files` that have a file node, in the same order, to reveal them in the view. */
+  refs: GraphFileRef[];
   /** Number of impacted files before the list was capped. */
   count: number;
   truncated: boolean;

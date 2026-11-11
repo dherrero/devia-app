@@ -32,5 +32,12 @@
 }
 .cg-message { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--dv-fg); }
 .cg-graph { flex: 1 1 auto; min-height: 0; display: flex; }
-.cg-side { flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; }
-.cg-side:empty { display: none; }
+.cg-search { margin-left: auto; }
+.cg-side {
+  flex: 0 0 auto; width: clamp(16rem, 24vw, 22rem); min-height: 0;
+  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 0.75rem; overflow-y: auto;
+  border-left: 1px solid var(--dv-bor); background: var(--dv-surf);
+}
+.cg-side__filters { flex: 0 0 auto; padding-bottom: 0.75rem; border-bottom: 1px solid var(--dv-bor); }
+.cg-side__detail { flex: 1 1 auto; min-height: 0; }

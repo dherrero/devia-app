@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 
 import {
   GRAPH_EXPAND_LIMIT, type GraphOverviewNode, type GraphViewEdge, type GraphViewPage,
@@ -14,6 +14,10 @@ export const VISIBLE_ELEMENT_CAP = 8000;
 export const VISIBLE_IDS_LIMIT = 2000;
 
 const COLLAPSED_NOTICE = 'codeGraph.canvas.collapsed_notice';
+const NOT_FOUND_NOTICE = 'codeGraph.reveal.not_found';
+const FILTERED_NOTICE = 'codeGraph.reveal.filtered';
+/** Pages of one level a reveal may load to reach its ancestor (500 nodes each). */
+const REVEAL_MAX_PAGES = 20;
 
 /** Placeholder for the rest of a paged level; activating it calls `showMore(parentId, offset)`. */
 export interface MoreNode {
@@ -26,6 +30,32 @@ export interface MoreNode {
 }
 
 export type ViewNode = GraphOverviewNode | MoreNode;
+export type ViewNodeKind = GraphOverviewNode['kind'];
+export type ViewEdgeKind = GraphViewEdge['kind'];
+
+/**
+ * What the view hides (S-44 T-511). `nodeKinds`/`edgeKinds` list what stays
+ * visible (absent: every kind). Hiding never drops anything from the model.
+ */
+export interface GraphViewFilters {
+  nodeKinds?: readonly ViewNodeKind[];
+  edgeKinds?: readonly ViewEdgeKind[];
+  showTests: boolean;
+  showGenerated: boolean;
+}
+
+export const DEFAULT_FILTERS: GraphViewFilters = { showTests: true, showGenerated: true };
+
+export function isNodeFiltered(node: ViewNode, filters: GraphViewFilters): boolean {
+  if (isMoreNode(node)) return false;
+  if (!filters.showTests && node.isTest === true) return true;
+  if (!filters.showGenerated && node.generated === true) return true;
+  return filters.nodeKinds !== undefined && !filters.nodeKinds.includes(node.kind);
+}
+
+export function isEdgeKindFiltered(kind: ViewEdgeKind, filters: GraphViewFilters): boolean {
+  return filters.edgeKinds !== undefined && !filters.edgeKinds.includes(kind);
+}
 
 export interface GraphViewNotice {
   key: string;
@@ -57,7 +87,9 @@ export type GraphViewChange =
     removedId: string;
     nodes: readonly ViewNode[];
     edges: readonly GraphViewEdge[];
-  };
+  }
+  /** A reveal landed: centre the camera on the node. */
+  | { type: 'focus'; id: string };
 
 export function isMoreNode(node: ViewNode): node is MoreNode {
   return node.kind === 'more';
@@ -131,6 +163,9 @@ export class GraphViewStore {
   private readonly _edgesTruncated = signal(false);
   private readonly _empty = signal(false);
   private readonly _reloading = signal(false);
+  private readonly _filters = signal<GraphViewFilters>(DEFAULT_FILTERS);
+  private readonly _projectKey = signal<string | null>(null);
+  private readonly _revision = signal<string | number | undefined>(undefined);
 
   readonly nodes = this._nodes.asReadonly();
   readonly edges = this._edges.asReadonly();
@@ -143,6 +178,25 @@ export class GraphViewStore {
   readonly edgesTruncated = this._edgesTruncated.asReadonly();
   readonly empty = this._empty.asReadonly();
   readonly reloading = this._reloading.asReadonly();
+  readonly filters = this._filters.asReadonly();
+  /** The project the view shows (null before the first load and after reset). */
+  readonly projectKey = this._projectKey.asReadonly();
+  readonly shownRevision = this._revision.asReadonly();
+  readonly visibleNodes = computed(() => {
+    const filters = this._filters();
+    return this._nodes().filter((node) => !isNodeFiltered(node, filters));
+  });
+  readonly visibleEdges = computed(() => {
+    const filters = this._filters();
+    const shown = new Set(this.visibleNodes().map((node) => node.id));
+    return this._edges().filter(
+      (edge) => !isEdgeKindFiltered(edge.kind, filters) && shown.has(edge.source) && shown.has(edge.target),
+    );
+  });
+  /** Nodes plus edges on screen that the filters hide. */
+  readonly hiddenCount = computed(
+    () => this._nodes().length - this.visibleNodes().length + this._edges().length - this.visibleEdges().length,
+  );
 
   private project: string | null = null;
   /** The graph revision last requested through show() (opaque: changes when the graph on disk changed). */
@@ -159,6 +213,7 @@ export class GraphViewStore {
   private pendingLoad: Promise<void> | null = null;
   private target: ReloadTarget | null = null;
   private listeners = new Set<(change: GraphViewChange) => void>();
+  private revealSeq = 0;
 
   onChange(cb: (change: GraphViewChange) => void): () => void {
     this.listeners.add(cb);
@@ -177,6 +232,7 @@ export class GraphViewStore {
     const keepView = this.project === project && (this.nodeMap.size > 0 || this.target !== null);
     const run = keepView ? this.reload(project) : this.loadOverview(project);
     this.revision = revision;
+    this._revision.set(revision);
     const pending = run.finally(() => {
       if (this.pendingLoad === pending) this.pendingLoad = null;
     });
@@ -187,6 +243,7 @@ export class GraphViewStore {
   async loadOverview(project: string): Promise<void> {
     this.clear();
     this.project = project;
+    this._projectKey.set(project);
     const token = this.generation;
     this._loading.set(true);
     try {
@@ -239,19 +296,96 @@ export class GraphViewStore {
     if (id !== null) this.touchOwnerOf(id);
   }
 
-  async revealNode(id: string, ancestors: readonly string[]): Promise<void> {
+  /**
+   * Brings `id` on screen, selects it and asks the renderer to centre it.
+   * `ancestors` (outermost first, as search results and details carry them)
+   * saves a detail request. Each missing level is exploded in order, loading
+   * further pages of a level when the next ancestor is not in the first one;
+   * nothing on screen is re-laid out and the element cap still applies (the
+   * chain being revealed is never collapsed to make room). A newer reveal, a
+   * reset or another project cancels this one; an unknown node ends in a notice.
+   */
+  async revealNode(id: string, ancestors?: readonly string[]): Promise<void> {
+    const seq = ++this.revealSeq;
+    if (this.pendingLoad) {
+      await this.pendingLoad;
+      if (seq !== this.revealSeq) return;
+    }
+    const project = this.project;
+    if (project === null || this._reloading()) return;
     const token = this.generation;
-    for (const ancestor of ancestors) {
-      if (token !== this.generation) return;
+    const live = () => seq === this.revealSeq && token === this.generation;
+    if (this.nodeMap.has(id) || this.expansions.has(id)) {
+      this.landReveal(id);
+      return;
+    }
+    let chain = ancestors;
+    if (chain === undefined) {
+      try {
+        const detail = await this.api.codeGraphNodeDetail(project, id);
+        if (!live()) return;
+        if (!detail) {
+          this._notice.set({ key: NOT_FOUND_NOTICE, params: {} });
+          return;
+        }
+        chain = detail.ancestors;
+      } catch (err) {
+        if (live()) this._error.set(messageOf(err));
+        return;
+      }
+    }
+    let parent: string | null = null;
+    for (const ancestor of chain) {
       if (this.expansions.has(ancestor)) {
         this.touch(ancestor);
-        continue;
+      } else {
+        if (!this.nodeMap.has(ancestor)) await this.pageUntil(parent, ancestor, live);
+        if (!live()) return;
+        if (!this.nodeMap.has(ancestor)) break;
+        await this.expand(ancestor);
+        if (!live()) return;
+        if (!this.expansions.has(ancestor)) break;
       }
-      if (!this.nodeMap.has(ancestor)) break;
-      await this.expand(ancestor);
+      parent = ancestor;
     }
-    if (token !== this.generation) return;
-    if (this.nodeMap.has(id)) this.select(id);
+    if (!this.nodeMap.has(id)) await this.pageUntil(parent, id, live);
+    if (!live()) return;
+    if (this.nodeMap.has(id)) this.landReveal(id);
+    else this._notice.set({ key: NOT_FOUND_NOTICE, params: {} });
+  }
+
+  /** Loads the next pages of `parentId`'s level (null: the root) until `id` is on screen or the level ends. */
+  private async pageUntil(parentId: string | null, id: string, live: () => boolean): Promise<void> {
+    for (let i = 0; i < REVEAL_MAX_PAGES && !this.nodeMap.has(id); i++) {
+      const more = this.moreNodeOf(parentId);
+      if (!more) return;
+      await this.showMore(parentId, more.offset);
+      if (!live()) return;
+    }
+  }
+
+  private moreNodeOf(parentId: string | null): MoreNode | null {
+    for (const node of this.nodeMap.values()) {
+      if (isMoreNode(node) && (node.parentId ?? null) === parentId) return node;
+    }
+    return null;
+  }
+
+  private landReveal(id: string): void {
+    this.select(id);
+    const expansion = this.expansions.get(id);
+    const onScreen = expansion ? [...expansion.children].find((child) => this.nodeMap.has(child)) : id;
+    const node = this.nodeMap.get(id);
+    if (node && isNodeFiltered(node, this._filters())) this._notice.set({ key: FILTERED_NOTICE, params: {} });
+    if (onScreen !== undefined) this.emit({ type: 'focus', id: onScreen });
+  }
+
+  /** Changes what the view hides. Nothing is reloaded or dropped; the filters outlive reloads and project switches. */
+  setFilters(filters: GraphViewFilters): void {
+    const next: GraphViewFilters = { showTests: filters.showTests, showGenerated: filters.showGenerated };
+    if (filters.nodeKinds !== undefined) next.nodeKinds = [...filters.nodeKinds];
+    if (filters.edgeKinds !== undefined) next.edgeKinds = [...filters.edgeKinds];
+    this._filters.set(next);
   }
 
   /**
@@ -308,6 +442,7 @@ export class GraphViewStore {
 
   reset(): void {
     this.revision = undefined;
+    this._revision.set(undefined);
     this.pendingLoad = null;
     this.target = null;
     this._reloading.set(false);
@@ -338,6 +473,7 @@ export class GraphViewStore {
   private restart(project: string | null): void {
     this.generation++;
     this.project = project;
+    this._projectKey.set(project);
     this.nodeMap = new Map();
     this.edgeMap = new Map();
     this.expansions = new Map();

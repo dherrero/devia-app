@@ -555,4 +555,56 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
       expect(factory.mock.calls[0]?.[0].reducedMotion).toBe(false);
     });
   });
+  describe('filters and reveal (T-511)', () => {
+    it('hands the store filters to the renderer as hidden sets, without reloading', async () => {
+      await mount();
+      api.codeGraphOverview.mockClear();
+      store.setFilters({ nodeKinds: ['file'], edgeKinds: ['calls'], showTests: false, showGenerated: true });
+      await settle();
+      const [, filters] = renderer.callsOf('setFilters').at(-1) ?? [];
+      const f = filters as { hideTests: boolean; hideGenerated: boolean; hiddenKinds: Set<string>; hiddenEdgeKinds: Set<string> };
+      expect(f.hideTests).toBe(true);
+      expect(f.hideGenerated).toBe(false);
+      expect(f.hiddenKinds.has('dir')).toBe(true);
+      expect(f.hiddenKinds.has('file')).toBe(false);
+      expect(f.hiddenKinds.size).toBe(NODE_KINDS.length);
+      expect(f.hiddenEdgeKinds.has('imports')).toBe(true);
+      expect(f.hiddenEdgeKinds.has('aggregate')).toBe(true);
+      expect(f.hiddenEdgeKinds.has('calls')).toBe(false);
+      expect(api.codeGraphOverview).not.toHaveBeenCalled();
+    });
+
+    it('applies filters set before the renderer existed', async () => {
+      store.setFilters({ showTests: false, showGenerated: false });
+      await mount();
+      const [, filters] = renderer.callsOf('setFilters').at(-1) ?? [];
+      expect(filters).toMatchObject({ hideTests: true, hideGenerated: true });
+      expect(renderer.calls.findIndex((c) => c[0] === 'setFilters')).toBeLessThan(renderer.calls.findIndex((c) => c[0] === 'setElements'));
+    });
+
+    it('counts only what the filters leave visible', async () => {
+      await mount();
+      store.setFilters({ nodeKinds: ['dir'], edgeKinds: ['calls'], showTests: true, showGenerated: true });
+      fixture.detectChanges();
+      expect(text(byId('cg-canvas-count'))).toBe('3 elementos visibles');
+    });
+
+    it('a reveal centres the camera on the node once its level has burst out', async () => {
+      await mount();
+      await store.revealNode('f:a', ['dir:src']);
+      await settle();
+      const names = renderer.calls.map((c) => c[0]);
+      expect(names.lastIndexOf('focus')).toBeGreaterThan(names.lastIndexOf('explode'));
+      expect(renderer.callsOf('focus').at(-1)).toEqual(['focus', 'f:a']);
+      expect(renderer.callsOf('select').at(-1)).toEqual(['select', 'f:a']);
+      expect(live()).toContain('a.ts');
+    });
+
+    it('shows the reveal notice in the status area', async () => {
+      await mount();
+      await store.revealNode('ghost', []);
+      fixture.detectChanges();
+      expect(text(byId('cg-canvas-notice'))).toContain('ya no está en el grafo');
+    });
+  });
 });

@@ -42,6 +42,8 @@ function makeApi() {
     codeGraphUnwatch: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
     codeGraphOverview: vi.fn<(p: string) => Promise<GraphViewPage>>(() => Promise.resolve(overview(['src', 'lib']))),
     codeGraphExpand: vi.fn<(p: string, id: string) => Promise<GraphViewPage>>(() => Promise.resolve(overview([]))),
+    codeGraphNodeDetail: vi.fn(() => Promise.resolve(undefined)),
+    codeGraphSearch: vi.fn(() => Promise.resolve([])),
     onCodeGraphProgress: vi.fn((cb: (e: CodeGraphProgressPayload) => void) => {
       progressListeners.add(cb);
       return () => progressListeners.delete(cb);
@@ -90,7 +92,7 @@ describe('CodeGraphPageComponent', () => {
     await TestBed.configureTestingModule({
       imports: [CodeGraphPageComponent, TranslateModule.forRoot()],
       providers: [
-        { provide: AppStateService, useValue: { selectedProject } },
+        { provide: AppStateService, useValue: { selectedProject, config: signal({ workspaceRoot: '/ws' }) } },
         { provide: ElectronApiService, useValue: api },
         { provide: DialogService, useValue: { confirm: vi.fn(() => of(true)) } },
         { provide: Router, useValue: { navigateByUrl } },
@@ -157,7 +159,7 @@ describe('CodeGraphPageComponent', () => {
     expect(host().querySelector('ds-cg-index-progress')).not.toBeNull();
   });
 
-  it.each(['ready', 'stale'] as const)('%s: mounts the graph canvas below the toolbar, with an empty side column', async (state) => {
+  it.each(['ready', 'stale'] as const)('%s: mounts the graph canvas below the toolbar, with the filters and node detail beside it', async (state) => {
     await mount(graphStatus({ state }));
     await flush();
     const toolbar = host().querySelector('ds-cg-toolbar');
@@ -167,10 +169,54 @@ describe('CodeGraphPageComponent', () => {
     expect(canvas).not.toBeNull();
     expect(toolbar?.compareDocumentPosition(canvas as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     const side = byId('cg-side');
-    expect(side).not.toBeNull();
-    expect(side?.textContent?.trim()).toBe('');
+    expect(side?.querySelector('ds-cg-filters')).not.toBeNull();
+    expect(side?.querySelector('ds-cg-node-detail')).not.toBeNull();
+    expect(canvas?.compareDocumentPosition(side as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(host().querySelector('header ds-cg-search')).not.toBeNull();
     expect(api.codeGraphOverview).toHaveBeenCalledWith('proj-a');
     expect(renderers.at(-1)?.callsOf('setElements').length).toBeGreaterThan(0);
+  });
+
+  describe('Mod+F (T-511)', () => {
+    const press = (init: KeyboardEventInit): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', { key: 'f', bubbles: true, cancelable: true, ...init });
+      window.dispatchEvent(event);
+      fixture.detectChanges();
+      return event;
+    };
+    const searchInput = (): HTMLInputElement | null => host().querySelector('[data-testid="cg-search-input"]');
+
+    it.each([{ metaKey: true }, { ctrlKey: true }])('focuses the graph search (%o)', async (mod) => {
+      await mount(graphStatus({ state: 'ready' }));
+      await flush();
+      document.body.appendChild(host());
+      const event = press(mod);
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(searchInput());
+    });
+
+    it('leaves plain F, Shift/Alt chords and other views alone', async () => {
+      await mount(graphStatus({ state: 'ready' }));
+      await flush();
+      document.body.appendChild(host());
+      expect(press({}).defaultPrevented).toBe(false);
+      expect(press({ metaKey: true, shiftKey: true }).defaultPrevented).toBe(false);
+      expect(press({ ctrlKey: true, altKey: true }).defaultPrevented).toBe(false);
+      expect(document.activeElement).not.toBe(searchInput());
+    });
+
+    it('does nothing while there is no graph to search', async () => {
+      await mount(graphStatus());
+      expect(searchInput()).toBeNull();
+      expect(press({ metaKey: true }).defaultPrevented).toBe(false);
+    });
+
+    it('stops listening once the page is gone (outside /graph)', async () => {
+      await mount(graphStatus({ state: 'ready' }));
+      await flush();
+      fixture.destroy();
+      expect(press({ metaKey: true }).defaultPrevented).toBe(false);
+    });
   });
 
   it('provides the graph view store at the page level', async () => {

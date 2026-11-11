@@ -9,8 +9,11 @@ import { LucideNetwork, LucideX } from '@lucide/angular';
 import { AppStateService } from '../../core/services/app-state.service';
 import { CodeGraphEmptyStateComponent } from './components/empty-state/empty-state.component';
 import { GraphCanvasComponent } from './components/graph-canvas/graph-canvas.component';
+import { GraphFiltersComponent } from './components/graph-filters/graph-filters.component';
+import { GraphSearchComponent } from './components/graph-search/graph-search.component';
 import { CodeGraphToolbarComponent } from './components/graph-toolbar/graph-toolbar.component';
 import { CodeGraphIndexProgressComponent } from './components/index-progress/index-progress.component';
+import { NodeDetailComponent } from './components/node-detail/node-detail.component';
 import { CodeGraphStateService } from './services/code-graph-state.service';
 import { GraphViewStore } from './services/graph-view.store';
 
@@ -26,7 +29,10 @@ type CodeGraphView =
   imports: [
     ButtonComponent, IconComponent, SpinnerComponent, TooltipDirective, TranslateModule,
     CodeGraphEmptyStateComponent, CodeGraphIndexProgressComponent, CodeGraphToolbarComponent, GraphCanvasComponent,
+    GraphFiltersComponent, GraphSearchComponent, NodeDetailComponent,
   ],
+  // Mod+F belongs to this page only: the listener lives and dies with the /graph route.
+  host: { '(window:keydown)': 'onWindowKeydown($event)' },
   // Page-level so the explored view survives the canvas being re-created around a re-index.
   providers: [GraphViewStore],
   templateUrl: './code-graph-page.component.html',
@@ -58,6 +64,7 @@ export default class CodeGraphPageComponent {
 
   private readonly emptyState = viewChild(CodeGraphEmptyStateComponent);
   private readonly progress = viewChild(CodeGraphIndexProgressComponent);
+  private readonly search = viewChild(GraphSearchComponent);
   private previousView: CodeGraphView | null = null;
 
   readonly view = computed<CodeGraphView>(() => {
@@ -103,6 +110,15 @@ export default class CodeGraphPageComponent {
       },
       { injector: this.injector },
     );
+  }
+
+  onWindowKeydown(event: KeyboardEvent): void {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+    if (event.key.toLowerCase() !== 'f') return;
+    const search = this.search();
+    if (!search) return;
+    event.preventDefault();
+    search.focus();
   }
 
   back(): void {

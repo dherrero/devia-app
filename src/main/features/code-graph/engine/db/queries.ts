@@ -201,6 +201,8 @@ export interface ViewChildRow {
   fileId?: string;
   language?: CodeGraphLanguage;
   isTest?: boolean;
+  /** A generated file, or a directory whose files are all generated. */
+  generated?: boolean;
 }
 
 export interface ViewEdgeRow {
@@ -577,6 +579,12 @@ export class GraphQueries {
     return new Set(rows.map((r) => r.path));
   }
 
+  /** Paths of files flagged as generated. */
+  generatedFilePaths(): Set<string> {
+    const rows = this.stmt('SELECT path FROM files WHERE generated = 1').all() as unknown as { path: string }[];
+    return new Set(rows.map((r) => r.path));
+  }
+
   /** Paths of files flagged as tests or generated. */
   excludedFilePaths(): Set<string> {
     const rows = this.stmt(
@@ -822,7 +830,7 @@ export class GraphQueries {
     // SQL counts characters and JS UTF-16 units: the prefix length must come from SQL.
     const rows = this.stmt(
       `WITH p(plen) AS (SELECT CASE WHEN ?1 = '' THEN 0 ELSE length(?1) + 1 END)
-       SELECT key, is_dir, files, symbols, fid, language, is_test,
+       SELECT key, is_dir, files, symbols, fid, language, is_test, generated,
          CASE WHEN is_dir THEN children
               ELSE (SELECT COUNT(*) FROM edges c WHERE c.source = fid AND c.kind = 'contains') END AS children
        FROM (
@@ -832,9 +840,10 @@ export class GraphQueries {
                 SUM(MAX(node_count - 1, 0)) AS symbols,
                 COUNT(DISTINCT CASE WHEN slash > 0 THEN substr(path, plen + slash + 1,
                   instr(substr(path, plen + slash + 1) || '/', '/') - 1) END) AS children,
-                MAX(fid) AS fid, MAX(language) AS language, MAX(is_test) AS is_test
+                MAX(fid) AS fid, MAX(language) AS language, MAX(is_test) AS is_test,
+                MIN(generated) AS generated
          FROM (
-           SELECT f.path, f.node_count, f.language, f.is_test, n.id AS fid, p.plen,
+           SELECT f.path, f.node_count, f.language, f.is_test, f.generated, n.id AS fid, p.plen,
                   instr(substr(f.path, p.plen + 1), '/') AS slash
            FROM p CROSS JOIN files f JOIN nodes n ON n.file_path = f.path AND n.kind = 'file'
            ${dir === '' ? '' : 'WHERE f.path >= ?2 AND f.path < ?3'}
@@ -850,6 +859,7 @@ export class GraphQueries {
       fid: string;
       language: string;
       is_test: number;
+      generated: number;
     }[];
     const out = rows.map((r) => {
       const row: ViewChildRow = {
@@ -859,6 +869,7 @@ export class GraphQueries {
         symbolCount: r.symbols,
         childCount: r.children,
       };
+      if (r.generated === 1) row.generated = true;
       if (r.is_dir !== 1) {
         row.fileId = r.fid;
         row.language = r.language as CodeGraphLanguage;

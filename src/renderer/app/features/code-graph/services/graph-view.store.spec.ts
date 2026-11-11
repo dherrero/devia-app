@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
-  GraphExpandOptions, GraphOverviewNode, GraphOverviewOptions, GraphViewEdge, GraphViewPage,
+  GraphExpandOptions, GraphNodeDetail, GraphOverviewNode, GraphOverviewOptions, GraphViewEdge, GraphViewPage,
 } from '../../../../../shared/domain/code-graph';
 import { ElectronApiService } from '../../../core/services/electron-api.service';
 import {
@@ -103,6 +103,22 @@ function makeApi(graph: { overview: (o?: GraphOverviewOptions) => GraphViewPage;
   return {
     codeGraphOverview: vi.fn((_p: string, o?: GraphOverviewOptions) => Promise.resolve(graph.overview(o))),
     codeGraphExpand: vi.fn((_p: string, id: string, o?: GraphExpandOptions) => Promise.resolve(graph.expand(id, o))),
+    codeGraphNodeDetail: vi.fn<(p: string, id: string) => Promise<GraphNodeDetail | undefined>>(() => Promise.resolve(undefined)),
+  };
+}
+
+/** A symbol detail carrying only what revealNode reads. */
+function detailWith(id: string, ancestors: string[]): GraphNodeDetail {
+  return {
+    kind: 'symbol',
+    node: {
+      id, kind: 'function', name: id, qualifiedName: id, filePath: 'a1', language: 'typescript',
+      startLine: 1, endLine: 2, isExported: true,
+    },
+    ancestors,
+    callers: [],
+    callees: [],
+    impact: { files: [], refs: [], count: 0, truncated: false },
   };
 }
 
@@ -524,6 +540,233 @@ describe('GraphViewStore (S-44 T-510)', () => {
       expect(api.codeGraphExpand).toHaveBeenCalledTimes(1);
       expect(store.selectedId()).toBeNull();
       expect(store.nodes()).toEqual([]);
+    });
+  });
+
+  describe('revealNode (T-511)', () => {
+    it('without ancestors, asks the detail for them and expands dir then file in order, then selects and focuses', async () => {
+      const api = makeApi(smallGraph());
+      api.codeGraphNodeDetail.mockResolvedValueOnce(detailWith('s1', ['dir:A', 'a1']));
+      const store = setup(api);
+      await store.loadOverview(P);
+      const changes: GraphViewChange[] = [];
+      store.onChange((c) => changes.push(c));
+
+      await store.revealNode('s1');
+
+      expect(api.codeGraphNodeDetail).toHaveBeenCalledWith(P, 's1');
+      expect(api.codeGraphExpand.mock.calls.map((c) => c[1])).toEqual(['dir:A', 'a1']);
+      expect(store.selectedId()).toBe('s1');
+      expect(changes.map((c) => c.type)).toEqual(['explode', 'explode', 'focus']);
+      expect(changes.at(-1)).toEqual({ type: 'focus', id: 's1' });
+    });
+
+    it('selects and focuses a node already on screen without calling the API', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      const changes: GraphViewChange[] = [];
+      store.onChange((c) => changes.push(c));
+
+      await store.revealNode('dir:B');
+
+      expect(api.codeGraphNodeDetail).not.toHaveBeenCalled();
+      expect(api.codeGraphExpand).not.toHaveBeenCalled();
+      expect(store.selectedId()).toBe('dir:B');
+      expect(changes).toEqual([{ type: 'focus', id: 'dir:B' }]);
+    });
+
+    it('keeps the positions of what is on screen: only explodes, never resets', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      const changes: GraphViewChange[] = [];
+      store.onChange((c) => changes.push(c));
+      await store.revealNode('s1', ['dir:A', 'a1']);
+      expect(changes.some((c) => c.type === 'reset' || c.type === 'reload')).toBe(false);
+      expect(ids(store)).toEqual(['s1', 'a2', 'dir:B', 'dir:C']);
+    });
+
+    it('a node the graph does not know shows a notice and changes nothing', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      store.select('dir:B');
+
+      await store.revealNode('ghost');
+
+      expect(store.selectedId()).toBe('dir:B');
+      expect(store.notice()).toEqual({ key: 'codeGraph.reveal.not_found', params: {} });
+      expect(store.error()).toBeNull();
+      expect(api.codeGraphExpand).not.toHaveBeenCalled();
+    });
+
+    it('a chain that does not lead to the node (it vanished meanwhile) ends in the same notice', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      await store.revealNode('s9', ['dir:A', 'a1']);
+      expect(store.selectedId()).toBeNull();
+      expect(store.notice()?.key).toBe('codeGraph.reveal.not_found');
+    });
+
+    it('a failing detail request surfaces as an action error, not a crash', async () => {
+      const api = makeApi(smallGraph());
+      api.codeGraphNodeDetail.mockRejectedValueOnce(new Error('db gone'));
+      const store = setup(api);
+      await store.loadOverview(P);
+      await expect(store.revealNode('s1')).resolves.toBeUndefined();
+      expect(store.error()).toBe('db gone');
+    });
+
+    it('a newer reveal supersedes an older one still expanding', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      const slow = deferred<GraphViewPage>();
+      api.codeGraphExpand.mockReturnValueOnce(slow.promise);
+
+      const first = store.revealNode('s1', ['dir:A', 'a1']);
+      await flush();
+      await store.revealNode('dir:C');
+      slow.resolve(smallGraph().expand('dir:A', { visibleIds: ['dir:B'] }));
+      await first;
+
+      expect(store.selectedId()).toBe('dir:C');
+      expect(api.codeGraphExpand.mock.calls.map((c) => c[1])).toEqual(['dir:A']);
+    });
+
+    it('loads further pages of a level until the ancestor shows up', async () => {
+      const files = Array.from({ length: 3 }, (_, i) => n(`f${i}`, { kind: 'file', parentId: 'dir:A', childCount: 1 }));
+      const api = makeApi({
+        overview: () => page([n('dir:A', { childCount: 3 })]),
+        expand: (id, o) => {
+          if (id === 'dir:A') {
+            const offset = o?.offset ?? 0;
+            const slice = files.slice(offset, offset + 2);
+            return page(slice, [], { total: 3, hasMore: offset + slice.length < 3 });
+          }
+          if (id === 'f2') return page([n('deep', { kind: 'function', parentId: 'f2', childCount: 0 })]);
+          return EMPTY;
+        },
+      });
+      const store = setup(api);
+      await store.loadOverview(P);
+
+      await store.revealNode('deep', ['dir:A', 'f2']);
+
+      expect(api.codeGraphExpand.mock.calls.map((c) => [c[1], c[2]?.offset])).toEqual([
+        ['dir:A', undefined], ['dir:A', 2], ['f2', undefined],
+      ]);
+      expect(store.selectedId()).toBe('deep');
+    });
+
+    it('waits for a pending load before walking the chain', async () => {
+      const api = makeApi(smallGraph());
+      const slow = deferred<GraphViewPage>();
+      api.codeGraphOverview.mockImplementationOnce(() => slow.promise);
+      const store = setup(api);
+      const shown = store.show(P, 1);
+      const revealed = store.revealNode('a1', ['dir:A']);
+      slow.resolve(smallGraph().overview());
+      await shown;
+      await revealed;
+      expect(store.selectedId()).toBe('a1');
+    });
+
+    it('warns when the revealed node is hidden by the filters', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      store.setFilters({ nodeKinds: ['file'], showTests: true, showGenerated: true });
+      await store.revealNode('dir:B');
+      expect(store.selectedId()).toBe('dir:B');
+      expect(store.notice()?.key).toBe('codeGraph.reveal.filtered');
+    });
+  });
+
+  describe('setFilters (T-511)', () => {
+    it('edgeKinds:[calls] hides the imports edges without calling the API, and keeps them in the model', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      await store.expand('dir:A');
+      await store.expand('a1');
+      api.codeGraphOverview.mockClear();
+      api.codeGraphExpand.mockClear();
+      const changes: GraphViewChange[] = [];
+      store.onChange((c) => changes.push(c));
+
+      store.setFilters({ edgeKinds: ['calls'], showTests: true, showGenerated: true });
+
+      expect(store.edges().map((x) => x.kind)).toContain('aggregate');
+      expect(store.visibleEdges().map((x) => x.kind)).toEqual(['calls']);
+      expect(api.codeGraphOverview).not.toHaveBeenCalled();
+      expect(api.codeGraphExpand).not.toHaveBeenCalled();
+      expect(changes).toEqual([]);
+      expect(store.filters().edgeKinds).toEqual(['calls']);
+    });
+
+    it('hides imports edges kept in the model', async () => {
+      const store = setup(makeApi(smallGraph()));
+      await store.loadOverview(P);
+      await store.expand('dir:A');
+      expect(store.edges().filter((x) => x.kind === 'imports')).toHaveLength(1);
+      store.setFilters({ edgeKinds: ['calls'], showTests: true, showGenerated: true });
+      expect(store.edges().filter((x) => x.kind === 'imports')).toHaveLength(1);
+      expect(store.visibleEdges().filter((x) => x.kind === 'imports')).toHaveLength(0);
+      expect(store.hiddenCount()).toBeGreaterThan(0);
+    });
+
+    it('hides tests, generated nodes and unchecked kinds, and the edges touching them', async () => {
+      const api = makeApi({
+        overview: () => page(
+          [n('dir:src'), n('t', { kind: 'file', isTest: true }), n('g', { kind: 'file', generated: true }), n('f', { kind: 'file' })],
+          [e('t', 'dir:src'), e('g', 'f'), e('f', 'dir:src')],
+        ),
+        expand: () => EMPTY,
+      });
+      const store = setup(api);
+      await store.loadOverview(P);
+
+      store.setFilters({ showTests: false, showGenerated: true });
+      expect(store.visibleNodes().map((x) => x.id)).toEqual(['dir:src', 'g', 'f']);
+      store.setFilters({ showTests: true, showGenerated: false });
+      expect(store.visibleNodes().map((x) => x.id)).toEqual(['dir:src', 't', 'f']);
+      expect(store.visibleEdges()).toEqual([e('t', 'dir:src'), e('f', 'dir:src')]);
+      store.setFilters({ nodeKinds: ['file'], showTests: true, showGenerated: true });
+      expect(store.visibleNodes().map((x) => x.id)).toEqual(['t', 'g', 'f']);
+      expect(store.visibleEdges()).toEqual([e('g', 'f')]);
+      expect(store.nodes()).toHaveLength(4);
+    });
+
+    it('never hides a "more" node', async () => {
+      const store = setup(makeApi({ overview: () => page([n('dir:A')], [], { total: 9, hasMore: true }), expand: () => EMPTY }));
+      await store.loadOverview(P);
+      store.setFilters({ nodeKinds: ['file'], showTests: true, showGenerated: true });
+      expect(store.visibleNodes().map((x) => x.id)).toEqual([moreNodeId(null, 1)]);
+    });
+
+    it('survives a reload, another project and reset', async () => {
+      const store = setup(makeApi(smallGraph()));
+      await store.show(P, 1);
+      const filters = { edgeKinds: ['calls' as const], showTests: false, showGenerated: true };
+      store.setFilters(filters);
+      await store.show(P, 2);
+      expect(store.filters()).toEqual(filters);
+      await store.show('/ws/other', 1);
+      store.reset();
+      expect(store.filters()).toEqual(filters);
+    });
+
+    it('exposes the shown project and revision for the panels that read details', async () => {
+      const store = setup(makeApi(smallGraph()));
+      expect(store.projectKey()).toBeNull();
+      await store.show(P, 7);
+      expect(store.projectKey()).toBe(P);
+      expect(store.shownRevision()).toBe(7);
+      store.reset();
+      expect(store.projectKey()).toBeNull();
     });
   });
 

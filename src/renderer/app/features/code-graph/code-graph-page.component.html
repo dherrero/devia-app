@@ -6,6 +6,9 @@
       <span class="cg-project">{{ p }}</span>
     }
   </div>
+  @if (view() === 'graph') {
+    <ds-cg-search class="cg-search" />
+  }
   <dv-button iconOnly
              variant="ghost"
              size="sm"
@@ -49,8 +52,10 @@
       <ds-cg-toolbar />
       <div class="cg-graph">
         <ds-graph-canvas [project]="graphProject()" [revision]="revision()" />
-        <!-- T-511 mounts the node detail panel here. -->
-        <aside class="cg-side" data-testid="cg-side"></aside>
+        <aside class="cg-side" data-testid="cg-side">
+          <ds-cg-filters class="cg-side__filters" />
+          <ds-cg-node-detail class="cg-side__detail" />
+        </aside>
       </div>
     }
   }

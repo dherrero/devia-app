@@ -48,7 +48,7 @@
   <div class="gc-top">
     <div class="gc-status">
       <span class="gc-chip" data-testid="cg-canvas-count">
-        {{ countKey(store.visibleCount()) | translate: { count: store.visibleCount() } }}
+        {{ countKey(shownCount()) | translate: { count: shownCount() } }}
       </span>
       @if (busy()) {
         <span class="gc-chip gc-chip--busy" data-testid="cg-canvas-busy">

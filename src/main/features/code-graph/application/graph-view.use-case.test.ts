@@ -420,6 +420,49 @@ describe('GraphViewUseCase on a real multi-language project', () => {
     const dir = must(uc.overview(env.project).nodes.find((n) => n.id === 'dir:src'));
     expect(typeof dir.community).toBe('number');
   });
+
+  it('gives the impact files with their file node ids so the view can reveal them', () => {
+    const d = uc.nodeDetail(env.project, idOf('src/lib/util.ts', 'helper'));
+    if (d?.kind !== 'symbol') throw new Error('expected a symbol detail');
+    expect(d.impact.refs.map((r) => r.path)).toEqual(d.impact.files);
+    expect(d.impact.refs[0]).toEqual({ id: idOf('src/lib/util.ts'), path: 'src/lib/util.ts' });
+  });
+});
+
+describe('GraphViewUseCase generated flags (T-511)', () => {
+  let env: Env;
+  let uc: GraphViewUseCase;
+  const idOf = (file: string): string =>
+    withDb(env, (q) => must(q.nodesInFile(file).find((x) => x.kind === 'file'), file).id);
+
+  beforeAll(async () => {
+    env = makeEnv();
+    await indexFixture(env, {
+      'gen/api.generated.ts': 'export function callApi(): number {\n  return 1;\n}\n',
+      'gen/client.gen.ts': "import { callApi } from './api.generated';\n\nexport function client(): number {\n  return callApi();\n}\n",
+      'mixed/a.generated.ts': 'export const A = 1;\n',
+      'mixed/b.ts': "import { A } from './a.generated';\n\nexport function useA(): number {\n  return A;\n}\n",
+    });
+    uc = new GraphViewUseCase({ store: env.store });
+  }, 60_000);
+  afterAll(() => env.dispose());
+
+  it('flags a dir whose files are all generated, and generated files, never the rest', () => {
+    const root = uc.overview(env.project).nodes;
+    expect(must(root.find((n) => n.id === 'dir:gen')).generated).toBe(true);
+    expect(must(root.find((n) => n.id === 'dir:mixed'))).not.toHaveProperty('generated');
+    const mixed = uc.expand(env.project, 'dir:mixed', { visibleIds: ['dir:gen'] }).nodes;
+    expect(must(mixed.find((n) => n.path === 'mixed/a.generated.ts')).generated).toBe(true);
+    expect(must(mixed.find((n) => n.path === 'mixed/b.ts'))).not.toHaveProperty('generated');
+  });
+
+  it('flags the symbols of a generated file', () => {
+    const symbols = uc.expand(env.project, idOf('gen/api.generated.ts'), { visibleIds: [] }).nodes;
+    expect(symbols.length).toBeGreaterThan(0);
+    for (const s of symbols) expect(s.generated).toBe(true);
+    const own = uc.expand(env.project, idOf('mixed/b.ts'), { visibleIds: [] }).nodes;
+    for (const s of own) expect(s).not.toHaveProperty('generated');
+  });
 });
 
 describe('GraphViewUseCase lifecycle', () => {

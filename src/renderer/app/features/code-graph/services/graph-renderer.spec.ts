@@ -328,6 +328,22 @@ describe('CytoscapeGraphRenderer headless smoke (S-44 T-510)', () => {
     expect(cy.getElementById(edgeId(e('A', 't'))).hasClass('filtered')).toBe(true);
   });
 
+  it('hides generated nodes and edges of hidden kinds, also on elements added later (T-511)', async () => {
+    const calls: GraphViewEdge = { source: 'A', target: 'B', kind: 'calls', weight: 1 };
+    const r = await mounted([n('A'), n('B'), n('g', { kind: 'file', generated: true })], [calls, e('A', 'g')]);
+    const cy = core(r);
+    r.setFilters({ hideGenerated: true, hiddenEdgeKinds: new Set(['calls']) });
+    expect(cy.getElementById('g').hasClass('filtered')).toBe(true);
+    expect(cy.getElementById(edgeId(calls)).hasClass('filtered')).toBe(true);
+    expect(cy.getElementById(edgeId(e('A', 'g'))).hasClass('filtered')).toBe(false);
+    await r.explode('B', [n('b1', { generated: true, parentId: 'B' }), n('b2', { parentId: 'B' })], [{ source: 'b2', target: 'A', kind: 'calls', weight: 1 }]);
+    expect(cy.getElementById('b1').hasClass('filtered')).toBe(true);
+    expect(cy.getElementById('b2').hasClass('filtered')).toBe(false);
+    expect(cy.getElementById(edgeId({ source: 'b2', target: 'A', kind: 'calls', weight: 1 })).hasClass('filtered')).toBe(true);
+    r.setFilters({});
+    expect(cy.$('.filtered')).toHaveLength(0);
+  });
+
   it('hides labels below the zoom threshold (throttled) and reports the viewport', async () => {
     const r = await mounted([n('A'), n('B')], []);
     const cy = core(r);

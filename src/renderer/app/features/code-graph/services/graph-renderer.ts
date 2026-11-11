@@ -20,7 +20,9 @@ import { edgeId, isMoreNode, type ViewNode } from './graph-view.store';
 
 export interface GraphFilters {
   hideTests?: boolean;
+  hideGenerated?: boolean;
   hiddenKinds?: ReadonlySet<string>;
+  hiddenEdgeKinds?: ReadonlySet<string>;
   minEdgeWeight?: number;
 }
 
@@ -480,11 +482,14 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     if (!cy) return;
     cy.batch(() => {
       cy.nodes().forEach((n) => {
-        if (this.nodeFiltered(n.data('kind') as string, n.data('test') === true)) n.addClass('filtered');
-        else n.removeClass('filtered');
+        if (this.nodeFiltered(n.data('kind') as string, n.data('test') === true, n.data('generated') === true)) {
+          n.addClass('filtered');
+        } else {
+          n.removeClass('filtered');
+        }
       });
       cy.edges().forEach((edge) => {
-        if (this.edgeFiltered(edge.data('weight') as number)) edge.addClass('filtered');
+        if (this.edgeFiltered(edge.data('weight') as number, edge.data('kind') as string)) edge.addClass('filtered');
         else edge.removeClass('filtered');
       });
     });
@@ -763,7 +768,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     if (visual.ring) classes.push('hub');
     if (node.isTest) classes.push('test');
     if (this.zoomedOut) classes.push('zo');
-    if (this.nodeFiltered(node.kind, node.isTest === true)) classes.push('filtered');
+    if (this.nodeFiltered(node.kind, node.isTest === true, node.generated === true)) classes.push('filtered');
     const data: Record<string, unknown> = {
       id: node.id,
       kind: node.kind,
@@ -772,6 +777,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       size: visual.size,
       shape: visual.shape,
       test: node.isTest === true,
+      generated: node.generated === true,
       node,
     };
     if (node.parentId !== undefined) data['parentId'] = node.parentId;
@@ -788,13 +794,14 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       if (this.selectedId !== null) {
         classes.push(edge.source === this.selectedId || edge.target === this.selectedId ? 'adj' : 'faded');
       }
-      if (this.edgeFiltered(edge.weight)) classes.push('filtered');
+      if (this.edgeFiltered(edge.weight, edge.kind)) classes.push('filtered');
       out.push({
         group: 'edges',
         data: {
           id,
           source: edge.source,
           target: edge.target,
+          kind: edge.kind,
           weight: edge.weight,
           width: edgeWidth(edge.weight),
           opacity: edgeOpacity(edge.weight),
@@ -805,13 +812,15 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     return out;
   }
 
-  private nodeFiltered(kind: string, isTest: boolean): boolean {
+  private nodeFiltered(kind: string, isTest: boolean, generated: boolean): boolean {
     if (kind === 'more') return false;
     if (this.filters.hideTests && isTest) return true;
+    if (this.filters.hideGenerated && generated) return true;
     return this.filters.hiddenKinds?.has(kind) ?? false;
   }
 
-  private edgeFiltered(weight: number): boolean {
+  private edgeFiltered(weight: number, kind: string): boolean {
+    if (this.filters.hiddenEdgeKinds?.has(kind)) return true;
     return this.filters.minEdgeWeight !== undefined && weight < this.filters.minEdgeWeight;
   }
 

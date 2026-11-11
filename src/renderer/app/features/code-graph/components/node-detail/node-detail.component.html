@@ -1,0 +1,190 @@
+<section class="nd" role="region" [attr.aria-label]="'codeGraph.detail.aria' | translate"
+         [attr.aria-busy]="state().status === 'loading'">
+  @switch (state().status) {
+    @case ('idle') {
+      <div class="nd__empty" data-testid="cg-detail-empty">
+        <p class="nd__empty-title">{{ 'codeGraph.detail.empty_title' | translate }}</p>
+        <p class="nd__empty-body">{{ 'codeGraph.detail.empty_body' | translate }}</p>
+        <p class="nd__empty-body">{{ 'codeGraph.detail.empty_search' | translate: { keys: searchKeys } }}</p>
+      </div>
+    }
+    @case ('more') {
+      <p class="nd__note" data-testid="cg-detail-more">{{ 'codeGraph.detail.more' | translate }}</p>
+    }
+    @case ('loading') {
+      <div class="nd__note" data-testid="cg-detail-loading" role="status">
+        <dv-spinner size="sm" />
+        <span>{{ 'codeGraph.detail.loading' | translate }}</span>
+      </div>
+    }
+    @case ('missing') {
+      <p class="nd__note" data-testid="cg-detail-missing" role="status">{{ 'codeGraph.detail.missing' | translate }}</p>
+    }
+    @case ('error') {
+      <p class="nd__note nd__note--error" data-testid="cg-detail-error" role="alert">{{ 'codeGraph.detail.error' | translate }}</p>
+    }
+    @case ('ready') {
+      <header class="nd__head">
+        @if (symbol(); as s) {
+          <h2 class="nd__name" data-testid="cg-detail-name">{{ s.node.name }}</h2>
+          <p class="nd__meta">
+            <dv-icon [icon]="kindIcon(s.node.kind)" size="sm" aria-hidden="true" />
+            <span data-testid="cg-detail-kind">{{ 'codeGraph.canvas.kind.' + s.node.kind | translate }}</span>
+            @if (s.node.isExported) { <span class="nd__tag">{{ 'codeGraph.detail.exported' | translate }}</span> }
+            @if (s.hub) { <span class="nd__tag">{{ 'codeGraph.detail.hub' | translate }}</span> }
+            @if (s.node.isTest) { <span class="nd__tag">{{ 'codeGraph.detail.test' | translate }}</span> }
+          </p>
+          <p class="nd__location" [title]="location(s.node)">
+            <span class="nd__sr">{{ 'codeGraph.detail.location' | translate }}: </span>
+            <code data-testid="cg-detail-location">{{ location(s.node) }}</code>
+          </p>
+        } @else if (file(); as f) {
+          <h2 class="nd__name" data-testid="cg-detail-name">{{ basename(f.path) }}</h2>
+          <p class="nd__meta">
+            <dv-icon [icon]="kindIcon('file')" size="sm" aria-hidden="true" />
+            <span data-testid="cg-detail-kind">{{ 'codeGraph.canvas.kind.file' | translate }}</span>
+            <span class="nd__tag">{{ f.language }}</span>
+            @if (f.isTest) { <span class="nd__tag">{{ 'codeGraph.detail.test' | translate }}</span> }
+          </p>
+          <p class="nd__location" [title]="f.path">
+            <span class="nd__sr">{{ 'codeGraph.detail.location' | translate }}: </span>
+            <code data-testid="cg-detail-location">{{ f.path }}</code>
+          </p>
+          <p class="nd__counts" data-testid="cg-detail-counts">
+            {{ plural('codeGraph.detail.symbols', f.symbolCount) | translate: { count: f.symbolCount } }}
+          </p>
+        } @else if (dir(); as d) {
+          <h2 class="nd__name" data-testid="cg-detail-name">{{ basename(d.path) }}</h2>
+          <p class="nd__meta">
+            <dv-icon [icon]="kindIcon('dir')" size="sm" aria-hidden="true" />
+            <span data-testid="cg-detail-kind">{{ 'codeGraph.canvas.kind.dir' | translate }}</span>
+          </p>
+          <p class="nd__location" [title]="d.path">
+            <span class="nd__sr">{{ 'codeGraph.detail.location' | translate }}: </span>
+            <code data-testid="cg-detail-location">{{ d.path }}</code>
+          </p>
+          <p class="nd__counts" data-testid="cg-detail-counts">
+            {{ plural('codeGraph.detail.files', d.fileCount) | translate: { count: d.fileCount } }}
+            <span aria-hidden="true">·</span>
+            {{ plural('codeGraph.detail.symbols', d.symbolCount) | translate: { count: d.symbolCount } }}
+          </p>
+        }
+        <div class="nd__actions">
+          <dv-button size="sm" variant="secondary" data-testid="cg-detail-copy" (clicked)="copyPath()">
+            <dv-icon [icon]="LucideCopy" size="sm" />
+            {{ 'codeGraph.detail.copy_path' | translate }}
+          </dv-button>
+          <dv-button size="sm" variant="secondary" data-testid="cg-detail-open" (clicked)="openInIde()">
+            <dv-icon [icon]="LucideExternalLink" size="sm" />
+            {{ 'codeGraph.detail.open_ide' | translate }}
+          </dv-button>
+        </div>
+      </header>
+
+      @if (symbol(); as s) {
+        @if (s.signature) {
+          <h3 class="nd__section">{{ 'codeGraph.detail.signature' | translate }}</h3>
+          <pre class="nd__code" data-testid="cg-detail-signature">{{ s.signature }}</pre>
+        }
+        @if (s.docstring) {
+          <h3 class="nd__section">{{ 'codeGraph.detail.docstring' | translate }}</h3>
+          <p class="nd__doc" data-testid="cg-detail-docstring">{{ s.docstring }}</p>
+        }
+
+        <h3 class="nd__section" data-testid="cg-detail-callers-title">
+          {{ 'codeGraph.detail.callers' | translate }} <span class="nd__count">{{ s.callers.length }}</span>
+        </h3>
+        <ng-container *ngTemplateOutlet="nodeList; context: { $implicit: s.callers, testid: 'cg-detail-callers' }" />
+
+        <h3 class="nd__section" data-testid="cg-detail-callees-title">
+          {{ 'codeGraph.detail.callees' | translate }} <span class="nd__count">{{ s.callees.length }}</span>
+        </h3>
+        <ng-container *ngTemplateOutlet="nodeList; context: { $implicit: s.callees, testid: 'cg-detail-callees' }" />
+
+        <h3 class="nd__section" data-testid="cg-detail-impact-title">
+          {{ plural('codeGraph.detail.impact', s.impact.count) | translate: { count: s.impact.count } }}
+        </h3>
+        <div data-testid="cg-detail-impact">
+          <p class="nd__hint">{{ 'codeGraph.detail.impact_hint' | translate }}</p>
+          @if (s.impact.refs.length === 0) {
+            <p class="nd__none">{{ 'codeGraph.detail.none' | translate }}</p>
+          } @else {
+            <ul class="nd__list">
+              @for (ref of s.impact.refs; track ref.id) {
+                <li>
+                  <button type="button" class="nd__item" [title]="ref.path" (click)="reveal(ref.id)">
+                    <dv-icon [icon]="kindIcon('file')" size="sm" aria-hidden="true" />
+                    <span class="nd__item-path">{{ ref.path }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+            @if (s.impact.truncated) {
+              <p class="nd__hint">{{ 'codeGraph.detail.truncated' | translate: { shown: s.impact.files.length } }}</p>
+            }
+          }
+        </div>
+      }
+
+      @if (file(); as f) {
+        <h3 class="nd__section">
+          {{ 'codeGraph.detail.imports' | translate }} <span class="nd__count">{{ f.importsCount }}</span>
+        </h3>
+        <ng-container *ngTemplateOutlet="fileList; context: { $implicit: f.imports, total: f.importsCount, testid: 'cg-detail-imports' }" />
+        <h3 class="nd__section">
+          {{ 'codeGraph.detail.imported_by' | translate }} <span class="nd__count">{{ f.importedByCount }}</span>
+        </h3>
+        <ng-container *ngTemplateOutlet="fileList; context: { $implicit: f.importedBy, total: f.importedByCount, testid: 'cg-detail-imported-by' }" />
+      }
+
+      @if (dir(); as d) {
+        <h3 class="nd__section">{{ 'codeGraph.detail.hubs' | translate }}</h3>
+        <ng-container *ngTemplateOutlet="nodeList; context: { $implicit: d.topHubs, testid: 'cg-detail-hubs' }" />
+      }
+    }
+  }
+
+  <p class="nd__sr" data-testid="cg-detail-live" aria-live="polite" aria-atomic="true">{{ announcement() }}</p>
+</section>
+
+<ng-template #nodeList let-nodes let-testid="testid">
+  <div [attr.data-testid]="testid">
+    @if (nodes.length === 0) {
+      <p class="nd__none">{{ 'codeGraph.detail.none' | translate }}</p>
+    } @else {
+      <ul class="nd__list">
+        @for (node of nodes; track node.id) {
+          <li>
+            <button type="button" class="nd__item" [title]="location(node)" (click)="reveal(node.id)">
+              <dv-icon [icon]="kindIcon(node.kind)" size="sm" aria-hidden="true" />
+              <span class="nd__item-name">{{ node.name }}</span>
+              <span class="nd__item-path">{{ location(node) }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+</ng-template>
+
+<ng-template #fileList let-refs let-total="total" let-testid="testid">
+  <div [attr.data-testid]="testid">
+    @if (refs.length === 0) {
+      <p class="nd__none">{{ 'codeGraph.detail.none' | translate }}</p>
+    } @else {
+      <ul class="nd__list">
+        @for (ref of refs; track ref.id) {
+          <li>
+            <button type="button" class="nd__item" [title]="ref.path" (click)="reveal(ref.id)">
+              <dv-icon [icon]="kindIcon('file')" size="sm" aria-hidden="true" />
+              <span class="nd__item-path">{{ ref.path }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+      @if (total > refs.length) {
+        <p class="nd__hint">{{ plural('codeGraph.detail.list_more', total - refs.length) | translate: { count: total - refs.length } }}</p>
+      }
+    }
+  </div>
+</ng-template>

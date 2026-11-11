@@ -177,7 +177,8 @@ describe('round trip against the real files', () => {
     // 358: +2 for the code graph canvas "older nodes collapsed" notice (es/en only; T-513 translates).
     // 413: +55 for the interactive graph canvas (es/en only; T-513 translates).
     // 417: +4 for the graph canvas reload announcement and legend rows (es/en only; T-513 translates).
-    expect(Object.keys(missing).length).toBe(417);
+    // 488: +71 for the graph search, filters and node detail panel (es/en only; T-513 translates).
+    expect(Object.keys(missing).length).toBe(488);
   });
 
   it('extracts nothing for the complete language', () => {
