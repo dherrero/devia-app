@@ -280,7 +280,10 @@ export function formatResult(lang, result, verbose = false) {
   const lines = [`[${lang}]  (codegraph synthesized edges excluded: ${result.synthesized})`];
   for (const k of ['calls', 'imports', 'symbols']) {
     const r = result[k];
-    const flag = r.pct >= THRESHOLDS[k] ? 'ok' : `BELOW ${THRESHOLDS[k]}%`;
+    // An empty reference set (codegraph emits no Go `imports` edges at all) passes
+    // vacuously; say so instead of printing a 100% that measured nothing.
+    const flag =
+      r.theirs === 0 ? 'n/a: codegraph emits none' : r.pct >= THRESHOLDS[k] ? 'ok' : `BELOW ${THRESHOLDS[k]}%`;
     lines.push(`  ${k}: ${r.matched}/${r.theirs} (${r.pct.toFixed(1)}%) ${flag}  [ours total ${r.ours}, extra ${r.extra.length}]`);
     if (verbose) {
       for (const m of r.missing) lines.push(`    - missing ${m}`);
