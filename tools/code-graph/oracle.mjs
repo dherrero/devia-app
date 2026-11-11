@@ -75,6 +75,34 @@ export const IGNORED_SYMBOL_KINDS = new Set(['file', 'import', 'export', 'module
 export const MODULE_KINDS = new Set(['module']);
 
 /**
+ * Kind aliases, per language (by file extension), folding both sides to one
+ * spelling. Each is a deliberate modelling choice of Devia's extractors:
+ *
+ * - Go `struct` -> `class`: Devia stores a struct as `class` (metadata.goKind =
+ *   'struct') so every language shares one class-like kind; codegraph keeps
+ *   `struct`.
+ * - Dart `component` -> `class`: Devia marks Flutter widgets (classes extending
+ *   StatelessWidget/StatefulWidget/State) as `component` so the UI and the MCP
+ *   can tell widgets apart; codegraph calls them `class`.
+ * - Dart `property` -> `method`: Devia stores getters/setters as `property`
+ *   (metadata.accessor = get|set); codegraph stores them as `method`.
+ */
+export const KIND_ALIASES = {
+  go: new Map([['struct', 'class']]),
+  dart: new Map([
+    ['component', 'class'],
+    ['property', 'method'],
+  ]),
+};
+
+const EXTENSION_LANGUAGE = { '.go': 'go', '.dart': 'dart' };
+
+function normaliseKind(file, kind) {
+  const lang = EXTENSION_LANGUAGE[path.posix.extname(file)];
+  return (lang && KIND_ALIASES[lang].get(kind)) ?? kind;
+}
+
+/**
  * Qualified-name separator. codegraph joins members with `::`
  * (`Logger::info`), Devia with `.` (`Logger.info`). Pure spelling: both sides
  * are folded to `.`.
@@ -133,10 +161,20 @@ export function isSynthesized(metadataJson) {
 /** Edge kinds that are scored. */
 export const SCORED_EDGE_KINDS = ['calls', 'imports'];
 
+/**
+ * Edge kinds read as `imports`. Devia stores a re-export directive (Dart
+ * `export 'x.dart';`) as a file -> file `exports` edge, distinct from
+ * `imports`, so "who re-exports X" stays answerable; codegraph records the
+ * same directive as an `imports` edge. Both are a module dependency, so they
+ * are compared together.
+ */
+const IMPORT_EDGE_KINDS = ['imports', 'exports'];
+const READ_EDGE_KINDS = ['calls', ...IMPORT_EDGE_KINDS];
+
 // ---------------------------------------------------------------------------
 
 function symbolKey(file, qualifiedName, kind) {
-  return `${file}#${normaliseQualifiedName(qualifiedName)}#${kind}`;
+  return `${file}#${normaliseQualifiedName(qualifiedName)}#${normaliseKind(file, kind)}`;
 }
 
 function toPosix(p) {
@@ -187,9 +225,9 @@ export function readGraph(dbPath) {
            FROM edges e
            JOIN nodes s ON s.id = e.source
            JOIN nodes t ON t.id = e.target
-          WHERE e.kind IN (${SCORED_EDGE_KINDS.map(() => '?').join(',')})`,
+          WHERE e.kind IN (${READ_EDGE_KINDS.map(() => '?').join(',')})`,
       )
-      .all(...SCORED_EDGE_KINDS);
+      .all(...READ_EDGE_KINDS);
     const fileKey = new Map();
     for (const n of nodes) if (n.kind === 'file') fileKey.set(toPosix(n.file_path), keyById.get(n.id));
     const imports = [];
@@ -198,7 +236,7 @@ export function readGraph(dbPath) {
         synthesized++;
         continue;
       }
-      if (r.kind === 'imports') {
+      if (IMPORT_EDGE_KINDS.includes(r.kind)) {
         imports.push(r);
         continue;
       }
