@@ -161,4 +161,36 @@ describe('python import resolution', () => {
     expect(h.targets(h.fileId('pkg/b.py'), 'imports')).toEqual([]);
     expect(h.targets(h.sym('pkg/b.py', 'f').id, 'calls')).toEqual([]);
   });
+
+  it('imports the package __init__ as well as the submodule for `from pkg import sub`', async () => {
+    await h.addFiles({
+      'pkg/__init__.py': '',
+      'pkg/sub.py': 'def g():\n    pass\n',
+      'pkg/other/__init__.py': '',
+      'pkg/other/c.py': 'from .. import sub\n',
+      'main.py': 'from pkg import sub\n\ndef m():\n    sub.g()\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.fileId('main.py'), 'imports').sort()).toEqual(
+      [h.fileId('pkg/__init__.py'), h.fileId('pkg/sub.py')].sort(),
+    );
+    expect(h.targets(h.fileId('pkg/other/c.py'), 'imports').sort()).toEqual(
+      [h.fileId('pkg/__init__.py'), h.fileId('pkg/sub.py')].sort(),
+    );
+    expect(h.targets(h.sym('main.py', 'm').id, 'calls')).toEqual([
+      h.sym('pkg/sub.py', 'g').id,
+    ]);
+  });
+
+  it('does not add a package edge for `from pkg.mod import name`', async () => {
+    await h.addFiles({
+      'pkg/__init__.py': '',
+      'pkg/mod.py': 'def g():\n    pass\n',
+      'main.py': 'from pkg.mod import g\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(h.targets(h.fileId('main.py'), 'imports')).toEqual([
+      h.fileId('pkg/mod.py'),
+    ]);
+  });
 });

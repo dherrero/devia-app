@@ -288,7 +288,18 @@ class ResolutionRun {
           )
         : undefined;
     let candidates: string[];
-    if (submodule !== undefined) candidates = [submodule];
+    if (submodule !== undefined) {
+      // `from pkg import sub` runs pkg/__init__ before loading sub, so both are imported.
+      const pkg = resolver.resolveImport(
+        ref.filePath,
+        ref.referenceName,
+        this.ctx,
+      );
+      candidates =
+        pkg !== undefined && pkg !== submodule && isPackageInit(pkg)
+          ? [submodule, pkg]
+          : [submodule];
+    }
     else if (resolver.resolveImportAll)
       candidates = resolver.resolveImportAll(
         ref.filePath,
@@ -675,7 +686,11 @@ function isDroppedBuiltin(ref: UnresolvedRef): boolean {
   );
 }
 
-const SOURCE_EXTENSION = /\.(d\.ts|[cm]?[jt]sx?|dart|pyi?|go|java)$/;
+function isPackageInit(file: string): boolean {
+  return /(^|\/)__init__\.pyi?$/.test(file);
+}
+
+const SOURCE_EXTENSION =/\.(d\.ts|[cm]?[jt]sx?|dart|pyi?|go|java)$/;
 
 export function fileStem(file: string): string {
   return path.posix.basename(file).replace(SOURCE_EXTENSION, '');
