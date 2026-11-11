@@ -74,6 +74,7 @@ export class CodeGraphUseCase {
   private readonly jobs = new Map<string, Job>();
   private readonly jobEnd = new WeakMap<Job, () => void>();
   private readonly configStale = new Set<string>();
+  private readonly updatedAt = new Map<string, number>();
   private readonly runIndex: NonNullable<CodeGraphUseCaseDeps['runIndex']>;
   private readonly sync: NonNullable<CodeGraphUseCaseDeps['sync']>;
   private readonly headCommit: NonNullable<CodeGraphUseCaseDeps['headCommit']>;
@@ -110,6 +111,8 @@ export class CodeGraphUseCase {
     };
     if (doc?.builtAtCommit !== undefined) base.builtAtCommit = doc.builtAtCommit;
     if (doc !== undefined) base.indexedAt = doc.indexedAt;
+    const updatedAt = this.updatedAt.get(projectAbs);
+    if (updatedAt !== undefined) base.updatedAt = updatedAt;
     if (this.watches.get(projectAbs)?.degraded) base.watchDegraded = true;
 
     const indexing = this.jobs.get(projectAbs)?.kind === 'index' || isFullIndexRunning(this.store.dataDir(projectAbs));
@@ -163,6 +166,7 @@ export class CodeGraphUseCase {
       this.store.saveDoc(projectAbs, doc);
       this.configStale.delete(projectAbs);
       this.resetDirty(projectAbs);
+      this.markUpdated(projectAbs);
     } finally {
       this.endJob(projectAbs, job);
     }
@@ -184,6 +188,7 @@ export class CodeGraphUseCase {
     if (watch) this.closeWatch(watch);
     if (job) await job.settled;
     this.configStale.delete(projectAbs);
+    this.updatedAt.delete(projectAbs);
     this.store.remove(projectAbs);
   }
 
@@ -455,6 +460,7 @@ export class CodeGraphUseCase {
         if (!job.stopped) this.configStale.add(projectAbs);
         return { fullIndexRequired: true };
       }
+      if (!job.stopped && result.added + result.modified + result.deleted > 0) this.markUpdated(projectAbs);
       if (!result.skippedBusy && !result.truncated && opts.onlyPaths === undefined) {
         await this.markSynced(projectAbs, job);
       }
@@ -465,6 +471,12 @@ export class CodeGraphUseCase {
     } finally {
       this.endJob(projectAbs, job);
     }
+  }
+
+  /** Strictly increasing per project, so two changes within the same clock tick still differ. */
+  private markUpdated(projectAbs: string): void {
+    const previous = this.updatedAt.get(projectAbs) ?? 0;
+    this.updatedAt.set(projectAbs, Math.max(this.now(), previous + 1));
   }
 
   private async markSynced(projectAbs: string, job: Job): Promise<void> {

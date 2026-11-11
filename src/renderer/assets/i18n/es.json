@@ -1113,10 +1113,10 @@
       "dismiss": "Cerrar aviso"
     },
     "canvas": {
-      "collapsed_notice": "Se ha contraído {{count}} nodo antiguo para mantener el grafo fluido.",
-      "collapsed_notice_plural": "Se han contraído {{count}} nodos antiguos para mantener el grafo fluido.",
+      "collapsed_notice": "Se ha contraído {{count}} grupo antiguo: el grafo muestra como máximo {{max}} elementos para seguir fluido.",
+      "collapsed_notice_plural": "Se han contraído {{count}} grupos antiguos: el grafo muestra como máximo {{max}} elementos para seguir fluido.",
       "aria": "Grafo de código del proyecto",
-      "help": "Flechas: desplazar. + y −: acercar y alejar. 0: encuadrar. [ y ]: recorrer los nodos. Intro o Espacio: expandir el nodo seleccionado, o contraer su grupo si no tiene hijos. Retroceso: contraer el grupo del nodo. Escape: quitar la selección. Doble clic: expandir o contraer.",
+      "help": "Flechas: desplazar. + y −: acercar y alejar. 0: encuadrar. [ y ]: recorrer los nodos. Intro o Espacio: expandir el nodo seleccionado. Retroceso: contraer el grupo del nodo. Escape: quitar la selección. Doble clic: expandir.",
       "controls": "Controles de vista",
       "zoom_in": "Acercar",
       "zoom_out": "Alejar",
@@ -1130,7 +1130,10 @@
         "title": "Leyenda",
         "color": "Color: comunidad",
         "shape": "Forma: tipo",
-        "hub": "Borde: nodo central"
+        "hub": "Borde: nodo central",
+        "symbol": "Clase, función u otro símbolo",
+        "test": "Atenuado: pruebas",
+        "more": "Más elementos sin cargar"
       },
       "kind": {
         "dir": "Directorio",
@@ -1173,7 +1176,8 @@
       "error": "No se pudo cargar el grafo.",
       "retry": "Reintentar",
       "edges_truncated": "Se muestran solo las relaciones más fuertes.",
-      "dismiss": "Cerrar aviso"
+      "dismiss": "Cerrar aviso",
+      "updated": "Grafo actualizado"
     }
   }
 }

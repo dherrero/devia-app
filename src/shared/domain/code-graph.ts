@@ -86,6 +86,8 @@ export interface CodeGraphStatus {
   languages: Partial<Record<CodeGraphLanguage, number>>;
   builtAtCommit?: string;
   indexedAt?: number;
+  /** Last time the graph content changed in this app session (index finished, or a sync added/modified/deleted files). */
+  updatedAt?: number;
   agentAccess: boolean;
   autoUpdate: boolean;
   unsupported?: boolean;

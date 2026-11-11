@@ -435,6 +435,42 @@ describe('CodeGraphUseCase races and job lifecycle', () => {
     expect(store.loadDoc(project)).toMatchObject({ builtAtCommit: 'bbb', indexedAt: 2000 });
   });
 
+  it('bumps updatedAt when an index finishes or a sync changes files, never on a no-op sync', async () => {
+    let t = 1000;
+    const none: SyncResult = {
+      added: 0, modified: 0, deleted: 0, skippedBusy: false, truncated: false, fullIndexRequired: false,
+    };
+    let result: SyncResult = none;
+    const { uc } = makeUseCase({ sync: async () => result, now: () => t });
+    expect((await uc.status(project)).updatedAt).toBeUndefined();
+
+    await uc.index(project, noProgress);
+    const afterIndex = (await uc.status(project)).updatedAt;
+    expect(afterIndex).toBe(1000);
+
+    await uc.syncNow(project, { onlyPaths: ['src/f0.ts'] });
+    expect((await uc.status(project)).updatedAt).toBe(afterIndex);
+
+    result = { ...none, modified: 1 };
+    await uc.syncNow(project, { onlyPaths: ['src/f0.ts'] });
+    const afterEdit = (await uc.status(project)).updatedAt ?? 0;
+    expect(afterEdit).toBeGreaterThan(afterIndex ?? 0);
+
+    result = { ...none, deleted: 1 };
+    await uc.syncNow(project, { onlyPaths: ['src/f1.ts'] });
+    const afterDelete = (await uc.status(project)).updatedAt ?? 0;
+    expect(afterDelete).toBeGreaterThan(afterEdit);
+
+    t = 5000;
+    result = { ...none, added: 2 };
+    await uc.syncNow(project);
+    expect((await uc.status(project)).updatedAt).toBe(5000);
+
+    result = none;
+    await uc.syncNow(project);
+    expect((await uc.status(project)).updatedAt).toBe(5000);
+  });
+
   it('an active index makes syncNow return skippedBusy without calling sync', async () => {
     const g = gate();
     const { uc, calls } = makeUseCase({

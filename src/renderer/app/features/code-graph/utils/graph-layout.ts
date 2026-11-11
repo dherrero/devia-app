@@ -87,8 +87,7 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 /**
  * Vogel's sunflower spiral around the parent: deterministic, evenly spaced and
- * compact, so the children appear where the parent was before fcose spreads them
- * (fcose centres each randomized component on its current bounding box).
+ * compact. Its nearest neighbours sit at least 0.75 × spacing apart.
  */
 export function seedChildPositions(parent: Point, n: number, spacing = 24): Point[] {
   const out: Point[] = [];
@@ -204,11 +203,28 @@ export function planBurst(
   const duration = motion.reducedMotion ? 0 : BURST_ANIMATION_MS;
   if (sizes.length === 0) return { positions: [], radius: originRadius, shift: 0, duration };
   const maxSize = Math.max(...sizes);
-  const positions = seedChildPositions(center, sizes.length, (maxSize + BURST_GAP) / 0.75);
+  const positions = seedChildPositions(center, sizes.length, burstSpacing(maxSize));
   const far = Math.max(...positions.map((p) => Math.hypot(p.x - center.x, p.y - center.y)));
   const radius = far + maxSize / 2 + BURST_GAP;
   return { positions, radius, shift: Math.max(0, radius - originRadius), duration };
 }
+
+/** The spacing planBurst uses for children of up to `maxSize`. */
+export function burstSpacing(maxSize: number): number {
+  return (maxSize + BURST_GAP) / 0.75;
+}
+
+/**
+ * Slots for `count` nodes joining a burst spiral around `center` that already
+ * holds `taken` nodes: the next positions of the same spiral, so they land on
+ * its rim instead of on top of the siblings.
+ */
+export function continueSpiral(center: Point, taken: number, count: number, maxSize: number): Point[] {
+  return seedChildPositions(center, taken + count, burstSpacing(maxSize)).slice(taken);
+}
+
+/** A node that would move less than this is left alone by an animation (no visible change, no work). */
+export const MIN_MOVE_PX = 0.5;
 
 /**
  * Radial displacement of a node at distance `d` from a burst: the whole `shift`

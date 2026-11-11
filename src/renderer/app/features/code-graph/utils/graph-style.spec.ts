@@ -1,16 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { GraphOverviewNode, GraphViewEdge } from '../../../../../shared/domain/code-graph';
+import { NODE_KINDS, type GraphOverviewNode } from '../../../../../shared/domain/code-graph';
 import {
-  COMMUNITY_PALETTE, NEUTRAL_COLOR, STYLE_VARS, edgeStyle, graphStyle, refreshTheme, resolveStyleVars,
+  COMMUNITY_PALETTE, LABEL_ZOOM_THRESHOLD, NEUTRAL_COLOR, edgeOpacity, edgeWidth, graphStyle, refreshTheme, resolveStyleVars,
+  shapeLegend, zoomedLabelSize,
 } from './graph-style';
 
 function node(over: Partial<GraphOverviewNode> = {}): GraphOverviewNode {
   return { id: 'n', kind: 'file', label: 'n.ts', childCount: 0, path: 'src/n.ts', ...over };
-}
-
-function edge(over: Partial<GraphViewEdge> = {}): GraphViewEdge {
-  return { source: 'a', target: 'b', kind: 'aggregate', weight: 1, ...over };
 }
 
 const HEX = /#[0-9a-f]{3,8}\b/i;
@@ -35,19 +32,11 @@ describe('graphStyle (S-44 T-510)', () => {
   });
 
   it('returns CSS custom property names, never hex literals', () => {
-    const samples = [
-      graphStyle(node({ community: 0, hub: true })),
-      graphStyle(node({ kind: 'dir' })),
-      graphStyle(node(), { selected: true, hovered: true, expanded: true }),
-    ];
-    for (const s of samples) {
+    for (const s of [graphStyle(node({ community: 0, hub: true })), graphStyle(node({ kind: 'dir' }))]) {
       expect(s.color).toMatch(/^--dv-[a-z0-9-]+$/);
-      if (s.borderColor !== null) expect(s.borderColor).toMatch(/^--dv-[a-z0-9-]+$/);
       expect(JSON.stringify(s)).not.toMatch(HEX);
     }
-    const e = edgeStyle(edge({ weight: 40 }), { selectedId: 'a' });
-    expect(e.color).toMatch(/^--dv-[a-z0-9-]+$/);
-    for (const v of [...STYLE_VARS, ...COMMUNITY_PALETTE, NEUTRAL_COLOR]) expect(v).toMatch(/^--dv-[a-z0-9-]+$/);
+    for (const v of [...COMMUNITY_PALETTE, NEUTRAL_COLOR]) expect(v).toMatch(/^--dv-[a-z0-9-]+$/);
   });
 
   it('maps kinds to shapes: dir round-rectangle, file rectangle, types ellipse variants, callables small ellipse', () => {
@@ -86,56 +75,51 @@ describe('graphStyle (S-44 T-510)', () => {
     expect(hub.size).toBeGreaterThan(plain.size);
     expect(hub.ring).toBe(true);
     expect(plain.ring).toBe(false);
-    expect(hub.borderWidth).toBeGreaterThan(0);
-    expect(hub.borderColor).not.toBeNull();
-  });
-
-  it('dims test files', () => {
-    expect(graphStyle(node({ isTest: true })).opacity).toBeLessThan(graphStyle(node()).opacity);
-    expect(graphStyle(node()).opacity).toBe(1);
-  });
-
-  it('applies selected, hover and expanded modifiers, selection winning', () => {
-    const base = graphStyle(node());
-    const hovered = graphStyle(node(), { hovered: true });
-    const selected = graphStyle(node(), { selected: true, hovered: true });
-    const expanded = graphStyle(node(), { expanded: true });
-    expect(base.borderWidth).toBe(0);
-    expect(hovered.borderWidth).toBeGreaterThan(0);
-    expect(selected.borderWidth).toBeGreaterThan(hovered.borderWidth);
-    expect(selected.borderColor).toBe('--dv-acc');
-    expect(expanded.borderStyle).toBe('dashed');
-    expect(graphStyle(node({ isTest: true }), { selected: true }).opacity).toBe(1);
   });
 });
 
-describe('edgeStyle (S-44 T-510)', () => {
+describe('shapeLegend (S-44 T-510)', () => {
+  it('lists every shape graphStyle produces, once, and nothing else', () => {
+    const produced = new Set([...NODE_KINDS, 'dir' as const].map((kind) => graphStyle(node({ kind })).shape));
+    const listed = shapeLegend().map((entry) => entry.shape);
+    expect(new Set(listed).size).toBe(listed.length);
+    expect(new Set(listed)).toEqual(produced);
+  });
+
+  it('labels each shape with a kind that produces it (the ellipse covers the remaining symbols)', () => {
+    for (const entry of shapeLegend()) {
+      if (entry.kind === null) {
+        expect(entry.shape).toBe('ellipse');
+        continue;
+      }
+      expect(graphStyle(node({ kind: entry.kind })).shape).toBe(entry.shape);
+    }
+  });
+});
+
+describe('zoomedLabelSize (S-44 T-510)', () => {
+  it('is null at or above the label threshold', () => {
+    expect(zoomedLabelSize(1)).toBeNull();
+    expect(zoomedLabelSize(LABEL_ZOOM_THRESHOLD)).toBeNull();
+  });
+
+  it('grows as the zoom shrinks so the label keeps a readable on-screen size, capped', () => {
+    expect(zoomedLabelSize(0.5)).toBe(24);
+    expect(zoomedLabelSize(0.25)).toBe(48);
+    for (const zoom of [0.7, 0.5, 0.3, 0.2]) expect((zoomedLabelSize(zoom) ?? 0) * zoom).toBeGreaterThanOrEqual(11.5);
+    expect(zoomedLabelSize(0.1)).toBe(zoomedLabelSize(0.05));
+    expect(zoomedLabelSize(0.05)).toBeLessThanOrEqual(60);
+  });
+});
+
+describe('edge width and opacity (S-44 T-510)', () => {
   it('log-scales width and opacity by weight, clamped', () => {
-    const w1 = edgeStyle(edge({ weight: 1 }));
-    const w10 = edgeStyle(edge({ weight: 10 }));
-    const w1000 = edgeStyle(edge({ weight: 1000 }));
-    const wHuge = edgeStyle(edge({ weight: 1e9 }));
-    expect(w10.width).toBeGreaterThan(w1.width);
-    expect(w1000.width).toBeGreaterThan(w10.width);
-    expect(wHuge.width).toBe(edgeStyle(edge({ weight: 1e12 })).width);
-    expect(w10.opacity).toBeGreaterThan(w1.opacity);
-    expect(wHuge.opacity).toBeLessThanOrEqual(1);
-    expect(edgeStyle(edge({ weight: 0 })).width).toBe(w1.width);
-  });
-
-  it('uses a straight, cheap curve (no bezier) for every edge', () => {
-    expect(edgeStyle(edge()).curve).toBe('haystack');
-    expect(edgeStyle(edge({ kind: 'calls' })).curve).not.toBe('bezier');
-  });
-
-  it('dims edges not adjacent to the selected node and highlights adjacent ones', () => {
-    const none = edgeStyle(edge({ weight: 5 }));
-    const adjacent = edgeStyle(edge({ weight: 5 }), { selectedId: 'b' });
-    const other = edgeStyle(edge({ weight: 5 }), { selectedId: 'z' });
-    expect(adjacent.opacity).toBeGreaterThanOrEqual(none.opacity);
-    expect(adjacent.color).toBe('--dv-acc');
-    expect(other.opacity).toBeLessThan(none.opacity);
-    expect(none.color).not.toBe('--dv-acc');
+    expect(edgeWidth(10)).toBeGreaterThan(edgeWidth(1));
+    expect(edgeWidth(1000)).toBeGreaterThan(edgeWidth(10));
+    expect(edgeWidth(1e9)).toBe(edgeWidth(1e12));
+    expect(edgeOpacity(10)).toBeGreaterThan(edgeOpacity(1));
+    expect(edgeOpacity(1e9)).toBeLessThanOrEqual(1);
+    expect(edgeWidth(0)).toBe(edgeWidth(1));
   });
 });
 
@@ -161,5 +145,61 @@ describe('resolveStyleVars (S-44 T-510)', () => {
     refreshTheme();
     const vars = resolveStyleVars(document.documentElement);
     expect(vars.color('--dv-nope')).not.toBe('');
+  });
+
+  describe('with a canvas to convert colours', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    /** A 2D context that, like a browser, ignores a fillStyle it cannot parse. */
+    class FakeOffscreenCanvas {
+      getContext() {
+        const parse = (v: string): [number, number, number, number] | null => {
+          if (v === 'black') return [0, 0, 0, 255];
+          if (v === 'white') return [255, 255, 255, 255];
+          if (v === 'transparent') return [0, 0, 0, 0];
+          if (v === 'oklch(0.6 0.1 200)') return [10, 20, 30, 255];
+          const m = /^rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)$/.exec(v);
+          return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Math.round(Number(m[4] ?? 1) * 255)] : null;
+        };
+        let style: [number, number, number, number] = [0, 0, 0, 255];
+        let painted: [number, number, number, number] = [0, 0, 0, 0];
+        return {
+          get fillStyle(): string {
+            return `rgba(${style.join(', ')})`;
+          },
+          set fillStyle(v: string) {
+            style = parse(v) ?? style;
+          },
+          clearRect: () => {
+            painted = [0, 0, 0, 0];
+          },
+          fillRect: () => {
+            if (style[3] > 0) painted = style;
+          },
+          getImageData: () => ({ data: painted }),
+        };
+      }
+    }
+
+    function resolve(raw: string): string {
+      vi.stubGlobal('OffscreenCanvas', FakeOffscreenCanvas);
+      document.documentElement.style.setProperty('--dv-acc', raw);
+      refreshTheme();
+      return resolveStyleVars(document.documentElement).color('--dv-acc');
+    }
+
+    it('converts a modern colour to rgba', () => {
+      expect(resolve('oklch(0.6 0.1 200)')).toBe('rgba(10, 20, 30, 1)');
+    });
+
+    it('falls back to the neutral fallback for a value the canvas cannot parse, never the raw string', () => {
+      const out = resolve('oklch(from nonsense)');
+      expect(out).not.toContain('oklch');
+      expect(out).toBe(resolve(''));
+    });
+
+    it('keeps an explicitly transparent token transparent', () => {
+      expect(resolve('transparent')).toBe('rgba(0, 0, 0, 0)');
+    });
   });
 });

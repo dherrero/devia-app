@@ -1113,10 +1113,10 @@
       "dismiss": "Dismiss"
     },
     "canvas": {
-      "collapsed_notice": "Collapsed {{count}} older node to keep the graph responsive.",
-      "collapsed_notice_plural": "Collapsed {{count}} older nodes to keep the graph responsive.",
+      "collapsed_notice": "Collapsed {{count}} older group: the graph shows at most {{max}} items to stay responsive.",
+      "collapsed_notice_plural": "Collapsed {{count}} older groups: the graph shows at most {{max}} items to stay responsive.",
       "aria": "Project code graph",
-      "help": "Arrows: pan. + and −: zoom in and out. 0: fit. [ and ]: walk the nodes. Enter or Space: expand the selected node, or collapse its group when it has no children. Backspace: collapse the node's group. Escape: clear the selection. Double click: expand or collapse.",
+      "help": "Arrows: pan. + and −: zoom in and out. 0: fit. [ and ]: walk the nodes. Enter or Space: expand the selected node. Backspace: collapse the node's group. Escape: clear the selection. Double click: expand.",
       "controls": "View controls",
       "zoom_in": "Zoom in",
       "zoom_out": "Zoom out",
@@ -1130,7 +1130,10 @@
         "title": "Legend",
         "color": "Colour: community",
         "shape": "Shape: kind",
-        "hub": "Ring: central node"
+        "hub": "Ring: central node",
+        "symbol": "Class, function or other symbol",
+        "test": "Dimmed: tests",
+        "more": "More items not loaded"
       },
       "kind": {
         "dir": "Directory",
@@ -1173,7 +1176,8 @@
       "error": "The graph could not be loaded.",
       "retry": "Retry",
       "edges_truncated": "Only the strongest relations are shown.",
-      "dismiss": "Dismiss notice"
+      "dismiss": "Dismiss notice",
+      "updated": "Graph updated"
     }
   }
 }

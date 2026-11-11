@@ -120,12 +120,20 @@
         <span class="gc-legend__ring" aria-hidden="true"></span>
         <span>{{ 'codeGraph.canvas.legend.hub' | translate }}</span>
       </div>
+      <div class="gc-legend__row" data-legend="test">
+        <span class="gc-legend__dim" aria-hidden="true"></span>
+        <span>{{ 'codeGraph.canvas.legend.test' | translate }}</span>
+      </div>
+      <div class="gc-legend__row" data-legend="more">
+        <span class="gc-legend__more" aria-hidden="true"></span>
+        <span>{{ 'codeGraph.canvas.legend.more' | translate }}</span>
+      </div>
       <p class="gc-legend__subtitle">{{ 'codeGraph.canvas.legend.shape' | translate }}</p>
       <ul class="gc-legend__shapes">
-        @for (kind of shapes; track kind) {
-          <li class="gc-legend__row">
-            <span [class]="'gc-shape gc-shape--' + kind" aria-hidden="true"></span>
-            <span>{{ 'codeGraph.canvas.kind.' + kind | translate }}</span>
+        @for (entry of shapes; track entry.shape) {
+          <li class="gc-legend__row" [attr.data-shape]="entry.shape">
+            <span [class]="'gc-shape gc-shape--' + entry.shape" aria-hidden="true"></span>
+            <span>{{ entry.label | translate }}</span>
           </li>
         }
       </ul>

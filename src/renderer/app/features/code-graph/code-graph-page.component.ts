@@ -46,12 +46,14 @@ export default class CodeGraphPageComponent {
   /** The project whose status is shown (lags the selection while a switch loads). */
   readonly graphProject = computed(() => this.graph.project() ?? this.project() ?? '');
   /**
-   * Changes when the graph on disk changed: a full index moves `indexedAt`, an
-   * incremental (auto-)update only the counts or the commit. The canvas reloads its view.
+   * Changes when the graph on disk changed: a full index moves `indexedAt`, any
+   * update with changes moves `updatedAt`. The canvas reloads its view.
    */
   readonly revision = computed(() => {
     const s = this.graph.status();
-    return s ? `${s.indexedAt ?? ''}|${s.builtAtCommit ?? ''}|${s.nodeCount}|${s.edgeCount}|${s.fileCount}` : undefined;
+    return s
+      ? `${s.indexedAt ?? ''}|${s.updatedAt ?? ''}|${s.nodeCount}|${s.edgeCount}|${s.fileCount}|${s.builtAtCommit ?? ''}`
+      : undefined;
   });
 
   private readonly emptyState = viewChild(CodeGraphEmptyStateComponent);

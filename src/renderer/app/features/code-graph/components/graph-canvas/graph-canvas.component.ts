@@ -10,13 +10,16 @@ import type { GraphOverviewNode } from '../../../../../../shared/domain/code-gra
 import { GRAPH_RENDERER_FACTORY, type GraphRenderer } from '../../services/graph-renderer';
 import { GraphViewStore, isMoreNode, type GraphViewChange, type ViewNode } from '../../services/graph-view.store';
 import { describeCodeGraphError } from '../../utils/code-graph-error';
-import { COMMUNITY_PALETTE } from '../../utils/graph-style';
+import { COMMUNITY_PALETTE, shapeLegend } from '../../utils/graph-style';
 import { pluralKey } from '../../utils/plural';
 
 const ZOOM_STEP = 1.25;
 const PAN_STEP = 80;
 const LEGEND_SWATCHES = COMMUNITY_PALETTE.slice(0, 6);
-const LEGEND_SHAPES = ['dir', 'file', 'class', 'interface', 'function'] as const;
+const LEGEND_SHAPES = shapeLegend().map((entry) => ({
+  shape: entry.shape,
+  label: entry.kind === null ? 'codeGraph.canvas.legend.symbol' : `codeGraph.canvas.kind.${entry.kind}`,
+}));
 
 let nextId = 0;
 
@@ -27,9 +30,10 @@ let nextId = 0;
  *
  * Keyboard (the surface is focusable, `role="application"`): arrows pan,
  * `+`/`-` zoom, `0` fits, `[`/`]` walk the nodes in display order (select and
- * centre), Enter/Space expand the selected node or, when it has no children,
- * collapse the expansion it came from, Backspace collapses that expansion,
- * Escape clears the selection. Keys with Ctrl/Cmd/Alt are left to the app.
+ * centre), Enter/Space expand the selected node (or load the next page of a
+ * "more" node), Backspace collapses the expansion it came from, Escape clears
+ * the selection. Keys with Ctrl/Cmd/Alt are left to the app. A double click
+ * never collapses: on a leaf it is too easy to fire by accident.
  */
 @Component({
   selector: 'ds-graph-canvas',
@@ -136,9 +140,9 @@ export class GraphCanvasComponent {
     void this.store.reload(this.project());
   }
 
-  expandSelected(): void {
+  expandSelected(): boolean {
     const node = this.selected();
-    if (node) this.activate(node.id);
+    return node ? this.activate(node.id) : false;
   }
 
   collapseSelectionOwner(): void {
@@ -170,8 +174,7 @@ export class GraphCanvasComponent {
         this.store.select(null);
         return true;
       case 'Enter': case ' ':
-        this.expandSelected();
-        return true;
+        return this.expandSelected();
       case 'Backspace':
         this.collapseSelectionOwner();
         return true;
@@ -195,20 +198,17 @@ export class GraphCanvasComponent {
     this.announceSelection(node);
   }
 
-  /** Double click, Enter/Space or the selection bar: expand, load the next page, or collapse (the second action). */
-  private activate(id: string): void {
+  /** Double click, Enter/Space or the selection bar: expand, or load the next page. False when there is nothing to do. */
+  private activate(id: string): boolean {
     const node = this.nodeById().get(id);
-    if (!node) return;
+    if (!node) return false;
     if (isMoreNode(node)) {
       this.track(this.store.showMore(node.parentId ?? null, node.offset));
-      return;
+      return true;
     }
-    if (node.childCount > 0) {
-      this.track(this.store.expand(id));
-      return;
-    }
-    const owner = this.store.ownerOf(id);
-    if (owner !== null) this.store.collapse(owner);
+    if (node.childCount <= 0) return false;
+    this.track(this.store.expand(id));
+    return true;
   }
 
   private track(work: Promise<void>): void {
@@ -242,6 +242,11 @@ export class GraphCanvasComponent {
       case 'reset':
         void renderer.setElements(change.nodes, change.edges);
         renderer.select(this.store.selectedId());
+        return;
+      case 'reload':
+        void renderer.setElements(change.nodes, change.edges, { preserve: true });
+        renderer.select(this.store.selectedId());
+        this.announce('codeGraph.canvas.updated', {});
         return;
       case 'explode': {
         void renderer.explode(change.parentId, change.nodes, change.edges);
@@ -279,7 +284,7 @@ export class GraphCanvasComponent {
     renderer.mount(surface);
     this.cleanups.push(
       renderer.onSelect((id) => this.onRendererSelect(id)),
-      renderer.onExpandRequest((id) => this.activate(id)),
+      renderer.onExpandRequest((id) => void this.activate(id)),
       renderer.onShowMore((parentId, offset) => this.track(this.store.showMore(parentId, offset))),
       this.store.onChange((change) => this.apply(change)),
     );

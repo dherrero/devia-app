@@ -1,5 +1,5 @@
 import type { GraphOverviewNode, GraphViewEdge } from '../../../../../shared/domain/code-graph';
-import type { GraphFilters, GraphRenderer, GraphViewport } from '../services/graph-renderer';
+import type { GraphFilters, GraphRenderer, GraphViewport, SetElementsOptions } from '../services/graph-renderer';
 import type { ViewNode } from '../services/graph-view.store';
 
 type Call = [method: string, ...args: unknown[]];
@@ -20,8 +20,8 @@ export class FakeGraphRenderer implements GraphRenderer {
     this.calls.push(['mount', el]);
   }
 
-  setElements(nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void> {
-    this.calls.push(['setElements', nodes, edges]);
+  setElements(nodes: readonly ViewNode[], edges: readonly GraphViewEdge[], options?: SetElementsOptions): Promise<void> {
+    this.calls.push(['setElements', nodes, edges, options]);
     return Promise.resolve();
   }
 

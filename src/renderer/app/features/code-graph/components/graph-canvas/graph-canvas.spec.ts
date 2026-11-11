@@ -2,14 +2,15 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type {
-  GraphExpandOptions, GraphOverviewNode, GraphOverviewOptions, GraphViewEdge, GraphViewPage,
+import {
+  NODE_KINDS, type GraphExpandOptions, type GraphOverviewNode, type GraphOverviewOptions, type GraphViewEdge, type GraphViewPage,
 } from '../../../../../../shared/domain/code-graph';
 import es from '../../../../../assets/i18n/es.json';
 import { ElectronApiService } from '../../../../core/services/electron-api.service';
 import { GRAPH_RENDERER_FACTORY, type GraphRendererOptions } from '../../services/graph-renderer';
 import { GraphViewStore, moreNodeId } from '../../services/graph-view.store';
 import { FakeGraphRenderer } from '../../testing/fake-graph-renderer';
+import { graphStyle } from '../../utils/graph-style';
 import { GraphCanvasComponent } from './graph-canvas.component';
 
 const P = '/ws/proj';
@@ -182,9 +183,9 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
       expect(help && text(document.getElementById(help))).toContain('Intro');
     });
 
-    it('shows the visible element counter with the plural convention', async () => {
+    it('shows the visible element counter (nodes + edges) with the plural convention', async () => {
       await mount();
-      expect(text(byId('cg-canvas-count'))).toBe('3 elementos visibles');
+      expect(text(byId('cg-canvas-count'))).toBe('4 elementos visibles');
       api.codeGraphOverview.mockResolvedValueOnce(page([n('dir:only')]));
       await store.loadOverview(P);
       fixture.detectChanges();
@@ -197,6 +198,20 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
       expect(legend).toContain('Color: comunidad');
       expect(legend).toContain('Directorio');
       expect(legend).toContain('Fichero');
+      expect(legend).toContain('Módulo');
+      expect(legend).toContain('Enumeración');
+      expect(legend).toContain('Componente');
+    });
+
+    it('the legend lists exactly the shapes the style produces, plus the "more" node and the test dimming', async () => {
+      await mount();
+      const legend = byId('cg-canvas-legend');
+      const shown = [...(legend?.querySelectorAll('[data-shape]') ?? [])].map((el) => el.getAttribute('data-shape'));
+      const produced = new Set([...NODE_KINDS, 'dir' as const].map((kind) => graphStyle(n('x', { kind })).shape));
+      expect(new Set(shown)).toEqual(produced);
+      expect(shown).toHaveLength(produced.size);
+      expect(text(legend?.querySelector('[data-legend="more"]') ?? null)).toBe('Más elementos sin cargar');
+      expect(text(legend?.querySelector('[data-legend="test"]') ?? null)).toBe('Atenuado: pruebas');
     });
   });
 
@@ -222,16 +237,15 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
       expect(live()).toBe('Expandido src: 2 elementos');
     });
 
-    it('the second action collapses: a double click on a leaf child collapses its expansion', async () => {
+    it('a double click on a leaf does NOT collapse its group (collapse is Backspace or the selection bar)', async () => {
       await mount();
       renderer.emitExpandRequest('dir:src');
       await settle();
       renderer.emitExpandRequest('f:b');
       await settle();
-      const [, id, childIds] = renderer.callsOf('collapse').at(-1) ?? [];
-      expect(id).toBe('dir:src');
-      expect([...(childIds as string[])].sort()).toEqual(['f:a', 'f:b']);
-      expect(live()).toBe('Contraído src');
+      expect(renderer.callsOf('collapse')).toHaveLength(0);
+      expect(store.expanded().has('dir:src')).toBe(true);
+      expect(live()).toBe('Expandido src: 2 elementos');
     });
 
     it('a click on a "more" node loads the next page', async () => {
@@ -280,15 +294,17 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
       expect(renderer.callsOf('select').at(-1)).toEqual(['select', null]);
     });
 
-    it('Space on an expanded child with no children collapses (second action)', async () => {
+    it('Space on a leaf does nothing (and leaves the key alone); Backspace is the way to collapse', async () => {
       await mount();
       renderer.emitSelect('dir:src');
       key(' ');
       await settle();
       renderer.emitSelect('f:b');
-      key(' ');
+      const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+      surface().dispatchEvent(space);
       await settle();
-      expect(store.expanded().size).toBe(0);
+      expect(space.defaultPrevented).toBe(false);
+      expect(store.expanded().size).toBe(1);
     });
 
     it('+ / - / 0 zoom and fit, arrows pan', async () => {
@@ -361,7 +377,7 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
         params: { count: 2 },
       });
       fixture.detectChanges();
-      expect(text(byId('cg-canvas-notice'))).toContain('Se han contraído 2 nodos antiguos');
+      expect(text(byId('cg-canvas-notice'))).toContain('Se han contraído 2 grupos antiguos');
       click('cg-canvas-notice-dismiss');
       expect(store.notice()).toBeNull();
       expect(byId('cg-canvas-notice')).toBeNull();
@@ -426,6 +442,38 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
       expect(store.expanded().has('dir:src')).toBe(true);
       expect(store.selectedId()).toBe('f:a');
       expect(renderer.callsOf('select').at(-1)).toEqual(['select', 'f:a']);
+    });
+
+    it('a reload keeps the drawn graph (no skeleton), redraws it once preserving positions, silently, with one announcement', async () => {
+      await mount(1);
+      renderer.emitExpandRequest('dir:src');
+      await settle();
+      renderer.emitSelect('f:a');
+      await settle();
+      const slow = deferred<GraphViewPage>();
+      api.codeGraphOverview.mockReturnValueOnce(slow.promise);
+      const before = renderer.calls.length;
+      const announcements: string[] = [];
+      const component = fixture.componentInstance;
+      const watch = setInterval(() => announcements.push(component.announcement()), 0);
+
+      fixture.componentRef.setInput('revision', 2);
+      fixture.detectChanges();
+      await settle();
+      expect(byId('cg-canvas-loading')).toBeNull();
+      expect(byId('cg-canvas-selection')).not.toBeNull();
+      expect(byId('cg-canvas-count')).not.toBeNull();
+
+      slow.resolve(OVERVIEW());
+      await settle();
+      clearInterval(watch);
+      const during = renderer.calls.slice(before).map((c) => c[0]);
+      expect(during.filter((m) => m === 'setElements' || m === 'explode' || m === 'collapse')).toEqual(['setElements']);
+      expect(renderer.callsOf('setElements').at(-1)?.[3]).toEqual({ preserve: true });
+      expect(live()).toBe('Grafo actualizado');
+      expect(announcements.some((a) => a.startsWith('Expandido'))).toBe(false);
+      expect(store.expanded().has('dir:src')).toBe(true);
+      expect(store.selectedId()).toBe('f:a');
     });
 
     it('a re-created canvas re-applies the graph the page-level store already holds', async () => {

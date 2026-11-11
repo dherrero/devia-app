@@ -201,6 +201,21 @@ describe('CodeGraphPageComponent', () => {
     expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
   });
 
+  it('reloads exactly once per updatedAt change, even when the counts and commit stay the same', async () => {
+    const base = { state: 'ready' as const, indexedAt: 1, nodeCount: 10, edgeCount: 4, builtAtCommit: 'abc' };
+    await mount(graphStatus(base));
+    await flush();
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ ...base, updatedAt: 7 }) });
+    await flush();
+    expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ ...base, updatedAt: 7 }) });
+    await flush();
+    expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ ...base, updatedAt: 8 }) });
+    await flush();
+    expect(api.codeGraphOverview).toHaveBeenCalledTimes(3);
+  });
+
   it('keeps the view across a re-index (the canvas is re-created) and drops a selection that disappeared', async () => {
     await mount(graphStatus({ state: 'ready', indexedAt: 1 }));
     await flush();

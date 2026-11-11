@@ -6,8 +6,10 @@ import {
 import { ElectronApiService } from '../../../core/services/electron-api.service';
 import { pluralKey } from '../utils/plural';
 
-/** Hard cap of nodes on screen (spike T-479 measured ~97 fps at 8.8k elements; edges come on top). */
+/** Hard cap of nodes on screen (spec T-510). */
 export const VISIBLE_NODE_CAP = 5000;
+/** Hard cap of nodes + edges on screen: the spike T-479 measured ~97 fps at 8.8k elements. */
+export const VISIBLE_ELEMENT_CAP = 8000;
 /** The most `visibleIds` an expand request may carry (contract T-503). */
 export const VISIBLE_IDS_LIMIT = 2000;
 
@@ -33,6 +35,8 @@ export interface GraphViewNotice {
 /** Deltas for a renderer, emitted synchronously after each state change. */
 export type GraphViewChange =
   | { type: 'reset'; nodes: readonly ViewNode[]; edges: readonly GraphViewEdge[] }
+  /** The graph changed on disk and the view was rebuilt with the same expansions: keep the camera and positions. */
+  | { type: 'reload'; nodes: readonly ViewNode[]; edges: readonly GraphViewEdge[] }
   | {
     type: 'explode';
     parentId: string;
@@ -72,6 +76,12 @@ interface StoredEdge {
   seq: number;
 }
 
+/** What a reload restores; kept until it finishes so overlapping reloads never start from a half-built view. */
+interface ReloadTarget {
+  expansions: string[];
+  selected: string | null;
+}
+
 interface Expansion {
   node: GraphOverviewNode;
   /** Direct children on screen (more nodes included); nested expansions hang off their own record. */
@@ -101,6 +111,10 @@ interface Expansion {
  *
  * Async results are dropped when the project changed (generation token) or the
  * node they belong to left the screen meanwhile.
+ *
+ * A reload (the graph changed on disk) is built off screen: the published
+ * signals keep the previous view until the overview and every re-expansion are
+ * in, then one `reload` change replaces it.
  */
 @Injectable()
 export class GraphViewStore {
@@ -116,6 +130,7 @@ export class GraphViewStore {
   private readonly _notice = signal<GraphViewNotice | null>(null);
   private readonly _edgesTruncated = signal(false);
   private readonly _empty = signal(false);
+  private readonly _reloading = signal(false);
 
   readonly nodes = this._nodes.asReadonly();
   readonly edges = this._edges.asReadonly();
@@ -127,6 +142,7 @@ export class GraphViewStore {
   readonly notice = this._notice.asReadonly();
   readonly edgesTruncated = this._edgesTruncated.asReadonly();
   readonly empty = this._empty.asReadonly();
+  readonly reloading = this._reloading.asReadonly();
 
   private project: string | null = null;
   /** The graph revision last requested through show() (opaque: changes when the graph on disk changed). */
@@ -141,6 +157,7 @@ export class GraphViewStore {
   private parentOf = new Map<string, string>();
   private inflight = new Map<string, Promise<void>>();
   private pendingLoad: Promise<void> | null = null;
+  private target: ReloadTarget | null = null;
   private listeners = new Set<(change: GraphViewChange) => void>();
 
   onChange(cb: (change: GraphViewChange) => void): () => void {
@@ -157,7 +174,7 @@ export class GraphViewStore {
     if (this.project === project && this.revision === revision && this._error() === null) {
       return this.pendingLoad ?? Promise.resolve();
     }
-    const keepView = this.project === project && this.nodeMap.size > 0;
+    const keepView = this.project === project && (this.nodeMap.size > 0 || this.target !== null);
     const run = keepView ? this.reload(project) : this.loadOverview(project);
     this.revision = revision;
     const pending = run.finally(() => {
@@ -175,11 +192,7 @@ export class GraphViewStore {
     try {
       const page = await this.api.codeGraphOverview(project);
       if (token !== this.generation) return;
-      const nodes: ViewNode[] = [...page.nodes];
-      const more = this.moreFor(null, page.nodes.length, page);
-      if (more) nodes.push(more);
-      for (const node of nodes) this.nodeMap.set(node.id, node);
-      for (const edge of page.edges) this.addEdge(edge);
+      this.applyOverview(page);
       this._empty.set(page.nodes.length === 0);
       this._edgesTruncated.set(page.edgesTruncated === true);
       this.publish();
@@ -192,6 +205,11 @@ export class GraphViewStore {
   }
 
   expand(id: string): Promise<void> {
+    const target = this._reloading() ? this.target : null;
+    if (target) {
+      if (!target.expansions.includes(id)) target.expansions.push(id);
+      return Promise.resolve();
+    }
     const existing = this.expansions.get(id);
     if (existing) {
       this.touch(id);
@@ -206,12 +224,18 @@ export class GraphViewStore {
   }
 
   collapse(id: string): void {
+    const target = this._reloading() ? this.target : null;
+    if (target) {
+      target.expansions = target.expansions.filter((x) => x !== id);
+      return;
+    }
     if (!this.collapseInternal(id)) return;
     this.publish();
   }
 
   select(id: string | null): void {
     this._selectedId.set(id);
+    if (this.target && this._reloading()) this.target.selected = id;
     if (id !== null) this.touchOwnerOf(id);
   }
 
@@ -233,20 +257,43 @@ export class GraphViewStore {
   /**
    * Reloads after the graph changed on disk (reindex/update), re-opening the
    * expansions whose nodes still exist (parents before children: map order)
-   * and keeping the selection when its node survived.
+   * and keeping the selection when its node survived. A reload that starts
+   * while another runs restores the same target, never the half-built state.
    */
   async reload(project: string): Promise<void> {
-    const selected = this._selectedId();
-    const expanded = [...this.expansions.keys()];
-    const loading = this.loadOverview(project);
+    const target = this.target ?? { expansions: [...this.expansions.keys()], selected: this._selectedId() };
+    this.target = target;
+    this._reloading.set(true);
+    this.restart(project);
     const token = this.generation;
-    await loading;
-    for (const id of expanded) {
+    try {
+      const page = await this.api.codeGraphOverview(project);
       if (token !== this.generation) return;
-      if (this.nodeMap.has(id) && !this.expansions.has(id)) await this.expand(id);
+      this.applyOverview(page);
+      for (let i = 0; i < target.expansions.length; i++) {
+        const id = target.expansions[i];
+        if (id !== undefined && this.nodeMap.has(id) && !this.expansions.has(id)) {
+          await this.once(id, () => this.doExpand(id));
+        }
+        if (token !== this.generation) return;
+      }
+      this.target = null;
+      this._reloading.set(false);
+      this._empty.set(page.nodes.length === 0);
+      this._edgesTruncated.set(page.edgesTruncated === true || this._edgesTruncated());
+      const selected = target.selected !== null && this.nodeMap.has(target.selected) ? target.selected : null;
+      this._selectedId.set(selected);
+      if (selected !== null) this.touchOwnerOf(selected);
+      this.publish();
+      this.emit({ type: 'reload', nodes: this._nodes(), edges: this._edges() });
+    } catch (err) {
+      if (token !== this.generation) return;
+      this._reloading.set(false);
+      this._selectedId.set(null);
+      this.publish();
+      this._error.set(messageOf(err));
+      this.emit({ type: 'reset', nodes: this._nodes(), edges: this._edges() });
     }
-    if (token !== this.generation) return;
-    if (selected !== null && this.nodeMap.has(selected)) this.select(selected);
   }
 
   /** The expanded node a visible node came from; null for root entries. */
@@ -262,6 +309,8 @@ export class GraphViewStore {
   reset(): void {
     this.revision = undefined;
     this.pendingLoad = null;
+    this.target = null;
+    this._reloading.set(false);
     this.clear();
     this.emit({ type: 'reset', nodes: [], edges: [] });
   }
@@ -275,20 +324,35 @@ export class GraphViewStore {
   }
 
   private clear(): void {
+    this.target = null;
+    this._reloading.set(false);
+    this.restart(null);
+    this._selectedId.set(null);
+    this._loading.set(false);
+    this._edgesTruncated.set(false);
+    this._empty.set(false);
+    this.publish();
+  }
+
+  /** Drops the internal model (and every request in flight) without touching what is published. */
+  private restart(project: string | null): void {
     this.generation++;
-    this.project = null;
+    this.project = project;
     this.nodeMap = new Map();
     this.edgeMap = new Map();
     this.expansions = new Map();
     this.parentOf = new Map();
     this.inflight = new Map();
-    this._selectedId.set(null);
-    this._loading.set(false);
     this._error.set(null);
     this._notice.set(null);
-    this._edgesTruncated.set(false);
-    this._empty.set(false);
-    this.publish();
+  }
+
+  private applyOverview(page: GraphViewPage): void {
+    const nodes: ViewNode[] = [...page.nodes];
+    const more = this.moreFor(null, page.nodes.length, page);
+    if (more) nodes.push(more);
+    for (const node of nodes) this.nodeMap.set(node.id, node);
+    for (const edge of page.edges) this.addEdge(edge);
   }
 
   private once(key: string, run: () => Promise<void>): Promise<void> {
@@ -308,13 +372,13 @@ export class GraphViewStore {
     if (project === null || !node || isMoreNode(node) || node.childCount <= 0) return;
     const token = this.generation;
     const protect = this.ancestorChain(id);
-    this.makeRoom(this.nodeMap.size - 1 + pageSize(node.childCount), protect);
+    this.makeRoom(pageSize(node.childCount) - 1, protect);
     try {
       const page = await this.api.codeGraphExpand(project, id, { visibleIds: this.relevantVisibleIds(id) });
       if (token !== this.generation || !this.nodeMap.has(id) || this.expansions.has(id)) return;
       if (page.nodes.length === 0) return;
       this.explode(node, page);
-      this.makeRoom(this.nodeMap.size, protect);
+      this.makeRoom(0, protect);
       this.publish();
     } catch (err) {
       if (token === this.generation) this._error.set(messageOf(err));
@@ -327,7 +391,7 @@ export class GraphViewStore {
     if (project === null || !more || !isMoreNode(more)) return;
     const token = this.generation;
     const protect = parentId === null ? new Set<string>() : this.ancestorChain(parentId);
-    this.makeRoom(this.nodeMap.size - 1 + pageSize(more.remaining), protect);
+    this.makeRoom(pageSize(more.remaining) - 1, protect);
     try {
       const page = parentId === null
         ? await this.api.codeGraphOverview(project, { offset })
@@ -352,7 +416,7 @@ export class GraphViewStore {
       const edges = this.addEdges(page.edges);
       if (page.edgesTruncated) this._edgesTruncated.set(true);
       this.emit({ type: 'append', parentId, removedId: moreId, nodes: added, edges });
-      this.makeRoom(this.nodeMap.size, protect);
+      this.makeRoom(0, protect);
       this.publish();
     } catch (err) {
       if (token === this.generation) this._error.set(messageOf(err));
@@ -448,11 +512,18 @@ export class GraphViewStore {
     return true;
   }
 
-  /** Collapses the least recently used expansions (never `protect`) until `projected` fits the cap. */
-  private makeRoom(projected: number, protect: ReadonlySet<string>): void {
-    let excess = projected - VISIBLE_NODE_CAP;
+  /**
+   * Collapses the least recently used expansions (never `protect`) until the
+   * view plus `incoming` nodes fits both caps. Edges of a pending page are
+   * unknown, so the check runs again once it has landed.
+   */
+  private makeRoom(incoming: number, protect: ReadonlySet<string>): void {
+    const excess = () => Math.max(
+      this.nodeMap.size + incoming - VISIBLE_NODE_CAP,
+      this.nodeMap.size + this.edgeMap.size + incoming - VISIBLE_ELEMENT_CAP,
+    );
     let collapsed = 0;
-    while (excess > 0) {
+    while (excess() > 0) {
       let victim: string | null = null;
       let oldest = Infinity;
       for (const [id, exp] of this.expansions) {
@@ -461,13 +532,11 @@ export class GraphViewStore {
         victim = id;
       }
       if (victim === null) break;
-      const before = this.nodeMap.size;
       this.collapseInternal(victim);
-      excess -= before - this.nodeMap.size;
       collapsed++;
     }
     if (collapsed > 0) {
-      this._notice.set({ key: pluralKey(COLLAPSED_NOTICE, collapsed), params: { count: collapsed } });
+      this._notice.set({ key: pluralKey(COLLAPSED_NOTICE, collapsed), params: { count: collapsed, max: VISIBLE_ELEMENT_CAP } });
       this.publish();
     }
   }
@@ -571,14 +640,16 @@ export class GraphViewStore {
   }
 
   private publish(): void {
+    if (this._reloading()) return;
     const edges = [...this.edgeMap.values()].sort((a, b) => a.seq - b.seq).map((s) => s.edge);
     this._nodes.set([...this.nodeMap.values()]);
     this._edges.set(edges);
     this._expanded.set(new Set(this.expansions.keys()));
-    this._visibleCount.set(this.nodeMap.size);
+    this._visibleCount.set(this.nodeMap.size + this.edgeMap.size);
   }
 
   private emit(change: GraphViewChange): void {
+    if (this._reloading()) return;
     for (const listener of [...this.listeners]) listener(change);
   }
 }

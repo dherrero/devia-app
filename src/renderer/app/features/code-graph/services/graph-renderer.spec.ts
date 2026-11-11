@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { GraphOverviewNode, GraphViewEdge } from '../../../../../shared/domain/code-graph';
 import { FakeGraphRenderer } from '../testing/fake-graph-renderer';
-import { COMMUNITY_PALETTE, type ColorVar, type ResolvedStyleVars } from '../utils/graph-style';
+import type { RunningLayout } from '../utils/graph-layout';
+import { COMMUNITY_PALETTE, zoomedLabelSize, type ColorVar, type ResolvedStyleVars } from '../utils/graph-style';
 import {
   CytoscapeGraphRenderer, GRAPH_RENDERER_FACTORY, LABEL_ZOOM_THRESHOLD, buildStylesheet, createCytoscapeRenderer,
   type GraphRenderer, type ZoneLike,
@@ -173,6 +174,101 @@ describe('CytoscapeGraphRenderer headless smoke (S-44 T-510)', () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(cy.getElementById('A').position()).toEqual({ x: 0, y: 0 });
     expect(cy.getElementById('B').position().x).toBeCloseTo(120);
+  });
+
+  type Layouts = { run: (eles: { map: (fn: (x: { id(): string }) => string) => string[] }, options: { name: string }) => RunningLayout };
+
+  function spyLayouts(r: CytoscapeGraphRenderer) {
+    return vi.spyOn(r as unknown as Layouts, 'run');
+  }
+
+  it('keeps the positions of the surviving nodes and the viewport when it reloads', async () => {
+    const r = await mounted([n('A'), n('B'), n('C')], [e('A', 'B')]);
+    const cy = core(r);
+    cy.getElementById('A').position({ x: 10, y: 20 });
+    cy.getElementById('B').position({ x: 300, y: 40 });
+    cy.getElementById('C').position({ x: -200, y: 90 });
+    cy.viewport({ zoom: 0.8, pan: { x: 5, y: 7 } });
+    const layouts = spyLayouts(r);
+
+    await r.setElements([n('A', { childCount: 9 }), n('B'), n('C'), n('D')], [e('A', 'B', 4), e('C', 'D')], { preserve: true });
+
+    expect(cy.getElementById('A').position()).toEqual({ x: 10, y: 20 });
+    expect(cy.getElementById('B').position()).toEqual({ x: 300, y: 40 });
+    expect(cy.getElementById('C').position()).toEqual({ x: -200, y: 90 });
+    expect(cy.getElementById('D').nonempty()).toBe(true);
+    expect(cy.zoom()).toBe(0.8);
+    expect(cy.pan()).toEqual({ x: 5, y: 7 });
+    expect(cy.edges()).toHaveLength(2);
+    expect(layouts.mock.calls.some(([, options]) => options.name === 'fcose')).toBe(false);
+  });
+
+  it('places a new node of an expanded parent next to its siblings without covering them', async () => {
+    const r = await mounted([n('A', { childCount: 3 }), n('B')], []);
+    const cy = core(r);
+    cy.getElementById('A').position({ x: 0, y: 0 });
+    cy.getElementById('B').position({ x: 2000, y: 0 });
+    const kids = [n('a1', { kind: 'file', parentId: 'A' }), n('a2', { kind: 'file', parentId: 'A' })];
+    await r.explode('A', kids, []);
+
+    await r.setElements([...kids, n('a3', { kind: 'file', parentId: 'A' }), n('B')], [], { preserve: true });
+
+    const p3 = cy.getElementById('a3').position();
+    expect(Math.hypot(p3.x, p3.y)).toBeLessThan(200);
+    for (const id of ['a1', 'a2']) {
+      const p = cy.getElementById(id).position();
+      const room = (Number(cy.getElementById(id).data('size')) + Number(cy.getElementById('a3').data('size'))) / 2;
+      expect(Math.hypot(p.x - p3.x, p.y - p3.y)).toBeGreaterThan(room);
+    }
+  });
+
+  it('runs a fresh global layout on reload when fewer than ~30% of the nodes survive', async () => {
+    const r = await mounted([n('A'), n('B'), n('C')], []);
+    const layouts = spyLayouts(r);
+    await r.setElements([n('A'), n('X'), n('Y'), n('Z'), n('W')], [], { preserve: true });
+    expect(layouts.mock.calls.some(([, options]) => options.name === 'fcose')).toBe(true);
+  });
+
+  it('animates only the nodes an explosion really moves (more than half a pixel)', async () => {
+    const r = await mounted([n('A', { childCount: 2 }), n('B'), n('F')], []);
+    const cy = core(r);
+    cy.getElementById('A').position({ x: 0, y: 0 });
+    cy.getElementById('B').position({ x: 120, y: 0 });
+    cy.getElementById('F').position({ x: 100000, y: 0 });
+    const layouts = spyLayouts(r);
+
+    await r.explode('A', [n('a1', { kind: 'file', parentId: 'A' }), n('a2', { kind: 'file', parentId: 'A' })], []);
+    const moved = layouts.mock.calls.map(([eles]) => eles.map((x) => x.id()).sort());
+    expect(moved).toEqual([['B', 'a1', 'a2']]);
+
+    layouts.mockClear();
+    r.collapse('A', ['a1', 'a2'], []);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(layouts.mock.calls.map(([eles]) => eles.map((x) => x.id()).sort())).toEqual([['B']]);
+  });
+
+  it('keeps the selected and hub labels readable when zoomed out (zoom-compensated font)', async () => {
+    const r = await mounted([n('A'), n('B', { hub: true }), n('C')], []);
+    const cy = core(r);
+    r.select('A');
+    cy.zoom(0.25);
+    await frame();
+    const expected = zoomedLabelSize(0.25);
+    expect(expected).not.toBeNull();
+    expect(parseFloat(String(cy.getElementById('A').style('font-size')))).toBe(expected);
+    expect(parseFloat(String(cy.getElementById('B').style('font-size')))).toBe(expected);
+    expect(cy.getElementById('C').style('label')).toBe('');
+
+    r.select('C');
+    expect(parseFloat(String(cy.getElementById('C').style('font-size')))).toBe(expected);
+
+    cy.zoom(0.1);
+    await frame();
+    expect(parseFloat(String(cy.getElementById('C').style('font-size')))).toBe(zoomedLabelSize(0.1));
+
+    cy.zoom(1);
+    await frame();
+    expect(parseFloat(String(cy.getElementById('C').style('font-size')))).toBe(10);
   });
 
   it('adds a "more" page and removes nodes', async () => {

@@ -6,7 +6,7 @@ import type {
 } from '../../../../../shared/domain/code-graph';
 import { ElectronApiService } from '../../../core/services/electron-api.service';
 import {
-  GraphViewStore, VISIBLE_IDS_LIMIT, VISIBLE_NODE_CAP, edgeId, moreNodeId, type GraphViewChange,
+  GraphViewStore, VISIBLE_ELEMENT_CAP, VISIBLE_IDS_LIMIT, VISIBLE_NODE_CAP, edgeId, moreNodeId, type GraphViewChange,
 } from './graph-view.store';
 
 const P = '/ws/proj';
@@ -83,6 +83,22 @@ function bigGraph(count: number) {
   };
 }
 
+/** `count` root dirs of 500 files each, every file importing the next one and the dir after its own (~1000 edges a dir). */
+function edgyGraph(count: number) {
+  const dirs = Array.from({ length: count }, (_, i) => n(`dir:d${i}`, { childCount: 500 }));
+  return {
+    overview: () => page(dirs),
+    expand: (id: string): GraphViewPage => {
+      const files = Array.from({ length: 500 }, (_, i) => n(`${id}/f${i}`, { kind: 'file', parentId: id, childCount: 0 }));
+      const edges: GraphViewEdge[] = [];
+      for (let i = 0; i < 499; i++) edges.push(e(`${id}/f${i}`, `${id}/f${i + 1}`, 1, 'imports'));
+      for (const d of dirs) if (d.id !== id) edges.push(e(`${id}/f0`, d.id, 1));
+      for (let i = 1; i < 500; i++) edges.push(e(`${id}/f${i}`, `${id}/f0`, 1, 'calls'));
+      return page(files, edges);
+    },
+  };
+}
+
 function makeApi(graph: { overview: (o?: GraphOverviewOptions) => GraphViewPage; expand: (id: string, o?: GraphExpandOptions) => GraphViewPage }) {
   return {
     codeGraphOverview: vi.fn((_p: string, o?: GraphOverviewOptions) => Promise.resolve(graph.overview(o))),
@@ -112,7 +128,7 @@ describe('GraphViewStore (S-44 T-510)', () => {
       expect(api.codeGraphOverview).toHaveBeenCalledWith(P);
       expect(ids(store)).toEqual(['dir:A', 'dir:B', 'dir:C']);
       expect(store.edges()).toEqual([e('dir:A', 'dir:B', 3), e('dir:B', 'dir:C', 1)]);
-      expect(store.visibleCount()).toBe(3);
+      expect(store.visibleCount()).toBe(5);
       expect(store.loading()).toBe(false);
       expect(store.empty()).toBe(false);
       expect(store.error()).toBeNull();
@@ -193,7 +209,7 @@ describe('GraphViewStore (S-44 T-510)', () => {
         e('dir:B', 'dir:C', 1), e('a1', 'dir:B', 2), e('a2', 'dir:B', 1), e('a1', 'a2', 1, 'imports'),
       ]));
       expect([...store.expanded()]).toEqual(['dir:A']);
-      expect(store.visibleCount()).toBe(4);
+      expect(store.visibleCount()).toBe(8);
     });
 
     it('does not request twice: concurrent calls share one request and an expanded node is not re-fetched', async () => {
@@ -308,7 +324,7 @@ describe('GraphViewStore (S-44 T-510)', () => {
       expect(call?.[2]?.offset).toBe(500);
       expect(call?.[2]?.visibleIds).toContain('dir:B');
       expect(ids(store)).not.toContain(moreId);
-      expect(store.visibleCount()).toBe(701);
+      expect(store.visibleCount()).toBe(702);
       expect(store.edges()).toContainEqual(e('f600', 'dir:B'));
 
       store.collapse('dir:A');
@@ -326,7 +342,7 @@ describe('GraphViewStore (S-44 T-510)', () => {
       expect(store.nodes()).toEqual(before.nodes);
       expect(store.edges()).toEqual(before.edges);
       expect(store.expanded().size).toBe(0);
-      expect(store.visibleCount()).toBe(3);
+      expect(store.visibleCount()).toBe(5);
     });
 
     it('round-trips exactly through nested expansions (dir → file → symbol)', async () => {
@@ -400,10 +416,33 @@ describe('GraphViewStore (S-44 T-510)', () => {
       expect(store.expanded().has('dir:d0')).toBe(false);
       expect(store.expanded().has('dir:d9')).toBe(true);
       expect(ids(store)).toContain('dir:d0');
-      expect(store.notice()).toEqual({ key: 'codeGraph.canvas.collapsed_notice', params: { count: 1 } });
+      expect(store.notice()).toEqual({ key: 'codeGraph.canvas.collapsed_notice', params: { count: 1, max: VISIBLE_ELEMENT_CAP } });
 
       store.dismissNotice();
       expect(store.notice()).toBeNull();
+    });
+
+    it(`counts nodes and edges toward ${VISIBLE_ELEMENT_CAP} visible elements and evicts the least recently used expansions`, async () => {
+      const store = setup(makeApi(edgyGraph(8)));
+      await store.loadOverview(P);
+      for (let i = 0; i < 4; i++) await store.expand(`dir:d${i}`);
+      expect(store.notice()).toBeNull();
+      const elements = store.nodes().length + store.edges().length;
+      expect(elements).toBeGreaterThan(6000);
+      expect(store.visibleCount()).toBe(elements);
+
+      store.select('dir:d0/f1');
+      await store.expand('dir:d4');
+      await store.expand('dir:d5');
+      expect(store.nodes().length + store.edges().length).toBeLessThanOrEqual(VISIBLE_ELEMENT_CAP);
+      expect(store.visibleCount()).toBe(store.nodes().length + store.edges().length);
+      expect(store.nodes().length).toBeLessThan(VISIBLE_NODE_CAP);
+      expect(store.expanded().has('dir:d5')).toBe(true);
+      expect(store.expanded().has('dir:d4')).toBe(true);
+      expect(store.expanded().has('dir:d0')).toBe(true);
+      expect(store.expanded().has('dir:d1')).toBe(false);
+      expect(store.notice()?.key).toMatch(/^codeGraph\.canvas\.collapsed_notice/);
+      expect(store.notice()?.params['max']).toBe(VISIBLE_ELEMENT_CAP);
     });
 
     it('treats selecting inside an expansion as a use (LRU)', async () => {
@@ -620,6 +659,107 @@ describe('GraphViewStore (S-44 T-510)', () => {
       expect(api.codeGraphExpand).not.toHaveBeenCalled();
       expect(ids(store)).toEqual(['dir:B', 'dir:C']);
       expect(store.selectedId()).toBeNull();
+    });
+
+    it('keeps the full target (expansions in order and selection) across two revisions during a pending overview', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.show(P, 1);
+      await store.expand('dir:A');
+      await store.expand('a1');
+      store.select('s1');
+      const first = deferred<GraphViewPage>();
+      const second = deferred<GraphViewPage>();
+      api.codeGraphOverview.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      api.codeGraphExpand.mockClear();
+
+      const r1 = store.show(P, 2);
+      const r2 = store.show(P, 3);
+      first.resolve(smallGraph().overview());
+      second.resolve(smallGraph().overview());
+      await Promise.all([r1, r2]);
+      await store.show(P, 4);
+
+      expect(api.codeGraphExpand.mock.calls.map((c) => c[1])).toEqual(['dir:A', 'a1', 'dir:A', 'a1']);
+      expect([...store.expanded()]).toEqual(['dir:A', 'a1']);
+      expect(store.selectedId()).toBe('s1');
+    });
+
+    it('keeps the full target when a revision arrives during the re-expand loop', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.show(P, 1);
+      await store.expand('dir:A');
+      await store.expand('a1');
+      store.select('s1');
+      const gate = deferred<GraphViewPage>();
+      api.codeGraphExpand.mockClear();
+      api.codeGraphExpand.mockImplementationOnce((_p, id, o) => Promise.resolve(smallGraph().expand(id, o)));
+      api.codeGraphExpand.mockImplementationOnce(() => gate.promise);
+
+      const r1 = store.show(P, 2);
+      for (let i = 0; i < 5 && api.codeGraphExpand.mock.calls.length < 2; i++) await flush();
+      expect(api.codeGraphExpand.mock.calls.map((c) => c[1])).toEqual(['dir:A', 'a1']);
+      const r2 = store.show(P, 3);
+      gate.resolve(smallGraph().expand('a1', undefined));
+      await Promise.all([r1, r2]);
+
+      expect([...store.expanded()]).toEqual(['dir:A', 'a1']);
+      expect(store.selectedId()).toBe('s1');
+      expect(ids(store)).toContain('s1');
+    });
+
+    it('never publishes an empty or partial view while reloading, then emits one reload change', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.show(P, 1);
+      await store.expand('dir:A');
+      store.select('a1');
+      const shown = store.nodes();
+      const edges = store.edges();
+      const overview = deferred<GraphViewPage>();
+      const expand = deferred<GraphViewPage>();
+      api.codeGraphOverview.mockReturnValueOnce(overview.promise);
+      api.codeGraphExpand.mockReturnValueOnce(expand.promise);
+      const changes: GraphViewChange[] = [];
+      store.onChange((c) => changes.push(c));
+
+      const reloading = store.show(P, 2);
+      expect(store.reloading()).toBe(true);
+      expect(store.nodes()).toBe(shown);
+      expect(store.edges()).toBe(edges);
+      expect(store.selectedId()).toBe('a1');
+      overview.resolve(smallGraph().overview());
+      await flush();
+      expect(store.nodes()).toBe(shown);
+      expect(store.expanded().has('dir:A')).toBe(true);
+      expand.resolve(smallGraph().expand('dir:A', { visibleIds: ['dir:B', 'dir:C'] }));
+      await reloading;
+
+      expect(store.reloading()).toBe(false);
+      expect(changes.map((c) => c.type)).toEqual(['reload']);
+      const [reload] = changes;
+      expect(reload?.type === 'reload' && reload.nodes.map((x) => x.id)).toEqual(['a1', 'a2', 'dir:B', 'dir:C']);
+      expect(ids(store)).toEqual(['a1', 'a2', 'dir:B', 'dir:C']);
+      expect(store.selectedId()).toBe('a1');
+    });
+
+    it('keeps what the user does during a reload: a new selection and an expansion requested on the old view', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.show(P, 1);
+      await store.expand('dir:A');
+      const overview = deferred<GraphViewPage>();
+      api.codeGraphOverview.mockReturnValueOnce(overview.promise);
+
+      const reloading = store.show(P, 2);
+      store.select('a2');
+      await store.expand('dir:B');
+      overview.resolve(smallGraph().overview());
+      await reloading;
+
+      expect([...store.expanded()]).toEqual(['dir:A', 'dir:B']);
+      expect(store.selectedId()).toBe('a2');
     });
 
     it('stops restoring when the project changes meanwhile', async () => {

@@ -7,13 +7,14 @@ import type {
 
 import type { GraphOverviewNode, GraphViewEdge } from '../../../../../shared/domain/code-graph';
 import {
-  BURST_ANIMATION_MS, BURST_GAP, LayoutQueue, fitViewport, globalLayoutOptions, planBurst, pullBack, pushAway, type RunningLayout,
+  BURST_ANIMATION_MS, BURST_GAP, LayoutQueue, MIN_MOVE_PX, burstSpacing, continueSpiral, fitViewport, globalLayoutOptions, planBurst,
+  pullBack, pushAway, type RunningLayout,
 } from '../utils/graph-layout';
 import {
-  ADJACENT_EDGE_OPACITY, COMMUNITY_PALETTE, EDGE_COLOR, EXPANDED_BORDER_WIDTH, EXPANDED_COLOR, FADED_EDGE_FACTOR,
-  HOVER_BORDER_WIDTH, HOVER_COLOR, HUB_RING_COLOR, HUB_RING_WIDTH, LABEL_COLOR, LABEL_OUTLINE_COLOR, MORE_FILL_COLOR,
-  NEUTRAL_COLOR, SELECTED_BORDER_WIDTH, SELECTED_COLOR, TEST_OPACITY, edgeOpacity, edgeWidth, graphStyle,
-  refreshTheme as forgetResolvedTheme, resolveStyleVars, type ResolvedStyleVars,
+  ADJACENT_EDGE_OPACITY, COMMUNITY_PALETTE, EDGE_COLOR, FADED_EDGE_FACTOR, HOVER_BORDER_WIDTH, HOVER_COLOR, HUB_RING_COLOR,
+  HUB_RING_WIDTH, LABEL_COLOR, LABEL_OUTLINE_COLOR, MORE_BORDER_COLOR, MORE_FILL_COLOR, NEUTRAL_COLOR, SELECTED_BORDER_WIDTH,
+  SELECTED_COLOR, TEST_OPACITY, edgeOpacity, edgeWidth, graphStyle, refreshTheme as forgetResolvedTheme, resolveStyleVars,
+  zoomedLabelSize, type ResolvedStyleVars,
 } from '../utils/graph-style';
 import { edgeId, isMoreNode, type ViewNode } from './graph-view.store';
 
@@ -28,6 +29,15 @@ export interface GraphViewport {
   pan: Position;
   /** False while zoomed out past the label threshold (only hubs and the selection keep theirs). */
   labels: boolean;
+}
+
+export interface SetElementsOptions {
+  /**
+   * The same graph, rebuilt after a change on disk: surviving nodes keep their
+   * position, new ones land next to their parent and the camera stays put. A
+   * fresh layout runs only when too little of the old view survives.
+   */
+  preserve?: boolean;
 }
 
 export interface GraphRendererOptions {
@@ -45,12 +55,12 @@ export interface GraphRendererOptions {
  */
 export interface GraphRenderer {
   mount(el: HTMLElement): void;
-  /** Replaces everything and runs the global layout; resolves when it ends. */
-  setElements(nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void>;
-  /** Adds a page of nodes (a "more" continuation) around their parent's area with a local layout. */
+  /** Replaces everything and runs the global layout (unless `preserve` keeps the old one); resolves when it ends. */
+  setElements(nodes: readonly ViewNode[], edges: readonly GraphViewEdge[], options?: SetElementsOptions): Promise<void>;
+  /** Adds a page of nodes (a "more" continuation) where the "more" node was, flying them out on a spiral. */
   addNodes(parentId: string | null, nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void>;
   removeNode(id: string): void;
-  /** Replaces the parent by its children in place, then lays the children out locally. */
+  /** Replaces the parent by its children in place, flying them out on a spiral and pushing the neighbours aside. */
   explode(parentId: string, nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void>;
   /** Removes `childIds` and puts the parent back where they were. `node` is needed only if the renderer never saw it. */
   collapse(id: string, childIds: readonly string[], restoredEdges: readonly GraphViewEdge[], node?: GraphOverviewNode): void;
@@ -89,8 +99,7 @@ export const GRAPH_RENDERER_FACTORY = new InjectionToken<GraphRendererFactory>('
   },
 });
 
-/** Below this zoom only hubs and the selected node keep their label (labels everywhere cost ~15% fps, T-479). */
-export const LABEL_ZOOM_THRESHOLD = 0.75;
+export { LABEL_ZOOM_THRESHOLD } from '../utils/graph-style';
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 4;
 const FOCUS_ZOOM = 1.2;
@@ -98,6 +107,9 @@ const CAMERA_MS = 300;
 const FIT_PADDING = 40;
 const VIEWPORT_THROTTLE_MS = 16;
 const MORE_NODE_SIZE = 22;
+const LABEL_FONT = 10;
+/** A reload keeps the old layout when at least this share of the new nodes was already on screen. */
+const RELOAD_KEEP_RATIO = 0.3;
 
 type CytoscapeFn = (options?: CytoscapeOptions) => Core;
 interface CytoscapeModule {
@@ -134,7 +146,7 @@ export function buildStylesheet(vars: ResolvedStyleVars): StylesheetJson {
         'background-color': c(NEUTRAL_COLOR),
         'border-width': 0,
         label: 'data(label)',
-        'font-size': 10,
+        'font-size': LABEL_FONT,
         color: c(LABEL_COLOR),
         'text-valign': 'bottom',
         'text-margin-y': 3,
@@ -154,7 +166,7 @@ export function buildStylesheet(vars: ResolvedStyleVars): StylesheetJson {
         'background-color': c(MORE_FILL_COLOR),
         'border-width': 1,
         'border-style': 'dashed',
-        'border-color': c(EXPANDED_COLOR),
+        'border-color': c(MORE_BORDER_COLOR),
         'text-valign': 'center',
         'text-halign': 'right',
         'text-margin-x': 4,
@@ -162,8 +174,10 @@ export function buildStylesheet(vars: ResolvedStyleVars): StylesheetJson {
       },
     },
     { selector: 'node.zo', style: { label: '' } },
-    { selector: 'node.zo.hub, node.zo.sel', style: { label: 'data(label)', 'min-zoomed-font-size': 0 } },
-    { selector: 'node.exp', style: { 'border-style': 'dashed', 'border-width': EXPANDED_BORDER_WIDTH, 'border-color': c(EXPANDED_COLOR) } },
+    {
+      selector: 'node.zo.hub, node.zo.sel',
+      style: { label: 'data(label)', 'min-zoomed-font-size': 0, 'font-size': 'data(zfs)' as never, 'text-max-width': '960px' },
+    },
     { selector: 'node.hover', style: { 'border-width': HOVER_BORDER_WIDTH, 'border-color': c(HOVER_COLOR) } },
     {
       selector: 'node.sel',
@@ -207,6 +221,8 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
   private el: HTMLElement | null = null;
   private destroyed = false;
   private zoomedOut = false;
+  /** Font size of the labels kept below the zoom threshold (data `zfs` of hubs and the selection). */
+  private labelFont = LABEL_FONT;
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
   private filters: GraphFilters = {};
@@ -257,24 +273,97 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     this.zone.runOutsideAngular(() => this.bindEvents());
   }
 
-  setElements(nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void> {
+  setElements(nodes: readonly ViewNode[], edges: readonly GraphViewEdge[], options: SetElementsOptions = {}): Promise<void> {
     const cy = this.cy;
     if (!cy) return Promise.resolve();
-    this.exploded.clear();
+    if (options.preserve) {
+      // Land running animations on their targets: those are the positions the user is about to see.
+      cy.nodes().stop(true, true);
+      void this.queue.enqueue('reload', settled, { preempt: true });
+    }
+    const positions = options.preserve ? this.reloadPositions(cy, nodes) : null;
+    const ids = new Set(nodes.map((node) => node.id));
+    for (const key of [...this.bursts.keys()]) if (!positions || ids.has(key)) this.bursts.delete(key);
+    for (const key of [...this.exploded.keys()]) if (!positions || ids.has(key)) this.exploded.delete(key);
     this.morePositions.clear();
-    this.bursts.clear();
     this.selectedId = null;
     this.hoveredId = null;
     cy.batch(() => {
       cy.elements().remove();
-      cy.add(nodes.map((node) => this.nodeElement(node)));
+      cy.add(nodes.map((node) => {
+        const position = positions?.get(node.id);
+        return position ? { ...this.nodeElement(node), position } : this.nodeElement(node);
+      }));
       cy.add(this.edgeElements(cy, edges));
     });
-    if (nodes.length === 0) return Promise.resolve();
+    if (nodes.length === 0 || positions) return Promise.resolve();
     return this.queue.enqueue('global', () => {
       const running = this.run(cy.elements(), globalLayoutOptions());
       return { stop: running.stop, done: running.done.then(() => this.fitTo(false)) };
     }, { preempt: true });
+  }
+
+  /**
+   * Where each node goes on a reload: the survivors stay, the new ones join the
+   * spiral of their parent's burst (or its old spot, or their siblings), and a
+   * node without any of those goes just outside the graph. Null when too few
+   * survive for the old layout to mean anything.
+   */
+  private reloadPositions(cy: Core, nodes: readonly ViewNode[]): Map<string, Position> | null {
+    const previous = new Map<string, Position>();
+    cy.nodes().forEach((n) => {
+      previous.set(n.id(), { ...n.position() });
+    });
+    const survivors = nodes.filter((node) => previous.has(node.id)).length;
+    if (nodes.length === 0 || survivors < nodes.length * RELOAD_KEEP_RATIO) return null;
+
+    const out = new Map<string, Position>();
+    const fresh = new Map<string, ViewNode[]>();
+    for (const node of nodes) {
+      const position = previous.get(node.id);
+      if (position) {
+        out.set(node.id, position);
+        continue;
+      }
+      const key = node.parentId ?? '';
+      fresh.set(key, [...(fresh.get(key) ?? []), node]);
+    }
+    for (const [key, group] of fresh) {
+      const siblings = nodes.filter((node) => (node.parentId ?? '') === key && previous.has(node.id));
+      const maxSize = Math.max(...[...group, ...siblings].map((node) => this.sizeOf(node)));
+      const anchor = this.reloadAnchor(cy, key, siblings, previous, maxSize);
+      continueSpiral(anchor.center, anchor.taken, group.length, maxSize).forEach((position, i) => {
+        const node = group[i];
+        if (node) out.set(node.id, position);
+      });
+    }
+    return out;
+  }
+
+  private reloadAnchor(
+    cy: Core,
+    parentKey: string,
+    siblings: readonly ViewNode[],
+    previous: ReadonlyMap<string, Position>,
+    maxSize: number,
+  ): { center: Position; taken: number } {
+    const parentSpot = parentKey === '' ? undefined : previous.get(parentKey);
+    if (parentSpot) return { center: parentSpot, taken: 0 };
+    const burst = parentKey === '' ? undefined : this.bursts.get(parentKey);
+    if (burst) return { center: burst.center, taken: siblings.length };
+    const around = siblings.length > 0 ? siblings.map((node) => previous.get(node.id)) : [...previous.values()];
+    const points = around.filter((p): p is Position => p !== undefined);
+    if (points.length === 0) return { center: this.viewCenter(cy), taken: 0 };
+    const x1 = Math.min(...points.map((p) => p.x));
+    const x2 = Math.max(...points.map((p) => p.x));
+    const y1 = Math.min(...points.map((p) => p.y));
+    const y2 = Math.max(...points.map((p) => p.y));
+    const radius = Math.hypot(x2 - x1, y2 - y1) / 2 + maxSize;
+    return { center: { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }, taken: Math.ceil((radius / burstSpacing(maxSize)) ** 2) };
+  }
+
+  private sizeOf(node: ViewNode): number {
+    return isMoreNode(node) ? MORE_NODE_SIZE : graphStyle(node).size;
   }
 
   addNodes(parentId: string | null, nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void> {
@@ -343,14 +432,15 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       const cy = this.cy;
       if (!cy) return settled();
       const targets = new Map<string, Position>();
-      const nodes = cy.nodes().filter((n) => n.id() !== id);
-      nodes.forEach((n) => {
-        let p: Position = { ...n.position() };
+      cy.nodes().forEach((n) => {
+        if (n.id() === id) return;
+        const from = n.position();
+        let p: Position = { ...from };
         const keep = Number(n.data('size')) / 2;
         for (const [, b] of undo) p = pullBack(b.center, p, b.shift, b.reach, b.origin + keep + BURST_GAP);
-        targets.set(n.id(), p);
+        if (moves(from, p)) targets.set(n.id(), p);
       });
-      return this.moveTo(nodes, targets, this.options.reducedMotion);
+      return this.moveTo(cy.nodes().filter((n) => targets.has(n.id())), targets, this.options.reducedMotion);
     });
   }
 
@@ -364,6 +454,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       if (id === null) return;
       const node = cy.getElementById(id);
       if (node.empty()) return;
+      node.data('zfs', this.labelFont);
       node.addClass('sel');
       cy.edges().addClass('faded');
       node.connectedEdges().removeClass('faded').addClass('adj');
@@ -538,21 +629,32 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       this.viewportTimer = null;
       const cy = this.cy;
       if (!cy) return;
-      this.applyZoomClass(cy);
+      this.applyZoom(cy);
       if (this.viewportListeners.size === 0) return;
       const viewport: GraphViewport = { zoom: cy.zoom(), pan: { ...cy.pan() }, labels: !this.zoomedOut };
       this.dispatch(this.viewportListeners, (cb) => cb(viewport));
     }, VIEWPORT_THROTTLE_MS);
   }
 
-  /** Toggles the label class only when the zoom crosses the threshold, never per frame. */
-  private applyZoomClass(cy: Core): void {
-    const zoomedOut = cy.zoom() < LABEL_ZOOM_THRESHOLD;
-    if (zoomedOut === this.zoomedOut) return;
-    this.zoomedOut = zoomedOut;
+  /**
+   * Toggles the label class only when the zoom crosses the threshold, and
+   * below it resizes the few labels that stay (hubs, selection) so they keep a
+   * readable on-screen size: only when the rounded size changes.
+   */
+  private applyZoom(cy: Core): void {
+    const font = zoomedLabelSize(cy.zoom());
+    const zoomedOut = font !== null;
+    if (zoomedOut !== this.zoomedOut) {
+      this.zoomedOut = zoomedOut;
+      cy.batch(() => {
+        if (zoomedOut) cy.nodes().addClass('zo');
+        else cy.nodes().removeClass('zo');
+      });
+    }
+    if (font === null || font === this.labelFont) return;
+    this.labelFont = font;
     cy.batch(() => {
-      if (zoomedOut) cy.nodes().addClass('zo');
-      else cy.nodes().removeClass('zo');
+      cy.nodes('.hub, .sel').data('zfs', font);
     });
   }
 
@@ -597,12 +699,13 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       });
       if (plan.shift > 0) {
         cy.nodes().difference(alive).forEach((n) => {
-          targets.set(n.id(), pushAway(center, n.position(), plan.shift, plan.radius));
+          const to = pushAway(center, n.position(), plan.shift, plan.radius);
+          if (moves(n.position(), to)) targets.set(n.id(), to);
         });
       }
       if (burstId !== null) this.bursts.set(burstId, { center, shift: plan.shift, reach: plan.radius, origin });
       this.reveal(cy, center, plan.radius, plan.duration === 0);
-      return this.moveTo(plan.shift > 0 ? cy.nodes() : alive, targets, plan.duration === 0);
+      return this.moveTo(cy.nodes().filter((n) => targets.has(n.id())), targets, plan.duration === 0);
     });
   }
 
@@ -665,6 +768,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       id: node.id,
       kind: node.kind,
       label: node.label,
+      zfs: this.labelFont,
       size: visual.size,
       shape: visual.shape,
       test: node.isTest === true,
@@ -726,4 +830,8 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
 
 function settled(): RunningLayout {
   return { stop: () => undefined, done: Promise.resolve() };
+}
+
+function moves(from: Position, to: Position): boolean {
+  return Math.hypot(to.x - from.x, to.y - from.y) > MIN_MOVE_PX;
 }
