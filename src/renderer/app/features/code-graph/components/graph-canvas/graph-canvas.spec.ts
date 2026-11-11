@@ -476,6 +476,21 @@ describe('GraphCanvasComponent (S-44 T-510)', () => {
       expect(store.selectedId()).toBe('f:a');
     });
 
+    it('announces every reload, even when the previous announcement had the same text', async () => {
+      await mount(1);
+      const raw = (): string => byId('cg-canvas-live')?.textContent ?? '';
+      fixture.componentRef.setInput('revision', 2);
+      fixture.detectChanges();
+      await settle();
+      const first = raw();
+      expect(first.trim()).toBe('Grafo actualizado');
+      fixture.componentRef.setInput('revision', 3);
+      fixture.detectChanges();
+      await settle();
+      expect(raw().trim()).toBe('Grafo actualizado');
+      expect(raw()).not.toBe(first);
+    });
+
     it('a re-created canvas re-applies the graph the page-level store already holds', async () => {
       await mount(1);
       renderer.emitExpandRequest('dir:src');

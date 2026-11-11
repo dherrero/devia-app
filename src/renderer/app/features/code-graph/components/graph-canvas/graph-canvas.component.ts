@@ -232,7 +232,10 @@ export class GraphCanvasComponent {
 
   private announce(key: string, params: Record<string, unknown>, count?: number): void {
     const resolved = count === undefined ? key : pluralKey(key, count);
-    this.announcement.set(this.translate.instant(resolved, params) as string);
+    const text = this.translate.instant(resolved, params) as string;
+    // A live region only speaks when its text changes: toggle a trailing no-break space so a
+    // repeated message (the second "Grafo actualizado") is announced again.
+    this.announcement.set(text === this.announcement() ? `${text}\u00A0` : text);
   }
 
   private apply(change: GraphViewChange): void {
