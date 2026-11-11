@@ -8,9 +8,11 @@ import { LucideNetwork, LucideX } from '@lucide/angular';
 
 import { AppStateService } from '../../core/services/app-state.service';
 import { CodeGraphEmptyStateComponent } from './components/empty-state/empty-state.component';
+import { GraphCanvasComponent } from './components/graph-canvas/graph-canvas.component';
 import { CodeGraphToolbarComponent } from './components/graph-toolbar/graph-toolbar.component';
 import { CodeGraphIndexProgressComponent } from './components/index-progress/index-progress.component';
 import { CodeGraphStateService } from './services/code-graph-state.service';
+import { GraphViewStore } from './services/graph-view.store';
 
 type CodeGraphView =
   | 'no-project' | 'loading' | 'load-error' | 'unsupported'
@@ -23,8 +25,10 @@ type CodeGraphView =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ButtonComponent, IconComponent, SpinnerComponent, TooltipDirective, TranslateModule,
-    CodeGraphEmptyStateComponent, CodeGraphIndexProgressComponent, CodeGraphToolbarComponent,
+    CodeGraphEmptyStateComponent, CodeGraphIndexProgressComponent, CodeGraphToolbarComponent, GraphCanvasComponent,
   ],
+  // Page-level so the explored view survives the canvas being re-created around a re-index.
+  providers: [GraphViewStore],
   templateUrl: './code-graph-page.component.html',
   styleUrl: './code-graph-page.component.scss',
 })
@@ -32,12 +36,23 @@ export default class CodeGraphPageComponent {
   private readonly appState = inject(AppStateService);
   private readonly router = inject(Router);
   readonly graph = inject(CodeGraphStateService);
+  private readonly viewStore = inject(GraphViewStore);
   private readonly injector = inject(Injector);
 
   readonly LucideNetwork = LucideNetwork;
   readonly LucideX = LucideX;
 
   readonly project = computed(() => this.appState.selectedProject());
+  /** The project whose status is shown (lags the selection while a switch loads). */
+  readonly graphProject = computed(() => this.graph.project() ?? this.project() ?? '');
+  /**
+   * Changes when the graph on disk changed: a full index moves `indexedAt`, an
+   * incremental (auto-)update only the counts or the commit. The canvas reloads its view.
+   */
+  readonly revision = computed(() => {
+    const s = this.graph.status();
+    return s ? `${s.indexedAt ?? ''}|${s.builtAtCommit ?? ''}|${s.nodeCount}|${s.edgeCount}|${s.fileCount}` : undefined;
+  });
 
   private readonly emptyState = viewChild(CodeGraphEmptyStateComponent);
   private readonly progress = viewChild(CodeGraphIndexProgressComponent);
@@ -58,7 +73,10 @@ export default class CodeGraphPageComponent {
   constructor() {
     effect(() => {
       const project = this.project();
-      untracked(() => void (project ? this.graph.open(project) : this.graph.close()));
+      untracked(() => {
+        this.viewStore.reset();
+        void (project ? this.graph.open(project) : this.graph.close());
+      });
     });
     effect(() => this.moveFocusOnTransition(this.view()));
     inject(DestroyRef).onDestroy(() => void this.graph.close());

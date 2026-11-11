@@ -147,6 +147,34 @@ describe('CytoscapeGraphRenderer headless smoke (S-44 T-510)', () => {
     expect(cy.edges().map((x) => x.id())).toEqual([edgeId(e('A', 'B', 3))]);
   });
 
+  it('spreads the children without overlap, moves the neighbours out of the way and back on collapse', async () => {
+    const r = await mounted([n('A', { childCount: 8 }), n('B')], []);
+    const cy = core(r);
+    cy.getElementById('A').position({ x: 0, y: 0 });
+    cy.getElementById('B').position({ x: 120, y: 0 });
+    const kids = Array.from({ length: 8 }, (_, i) => n(`a${i}`, { kind: 'file', parentId: 'A' }));
+
+    await r.explode('A', kids, []);
+    const placed = kids.map((k) => cy.getElementById(k.id));
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        const a = placed[i]?.position();
+        const b = placed[j]?.position();
+        const room = (Number(placed[i]?.data('size')) + Number(placed[j]?.data('size'))) / 2;
+        if (a && b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(room);
+      }
+    }
+    const far = Math.max(...placed.map((k) => Math.hypot(k.position().x, k.position().y)));
+    const b = cy.getElementById('B').position();
+    expect(b.x).toBeGreaterThan(far + Number(cy.getElementById('B').data('size')) / 2);
+    expect(b.y).toBeCloseTo(0);
+
+    r.collapse('A', kids.map((k) => k.id), []);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(cy.getElementById('A').position()).toEqual({ x: 0, y: 0 });
+    expect(cy.getElementById('B').position().x).toBeCloseTo(120);
+  });
+
   it('adds a "more" page and removes nodes', async () => {
     const more: MoreNode = { id: moreNodeId('A', 2), kind: 'more', parentId: 'A', offset: 2, remaining: 3 };
     const r = await mounted([n('a1', { parentId: 'A' }), more], []);
@@ -221,6 +249,24 @@ describe('CytoscapeGraphRenderer headless smoke (S-44 T-510)', () => {
     expect(cy.getElementById('A').hasClass('zo')).toBe(false);
   });
 
+  it('mounts without any Cytoscape console warning (no custom wheel sensitivity)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await mounted([n('A')], []);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('pans by a screen offset', async () => {
+    const r = await mounted([n('A'), n('B')], []);
+    const cy = core(r);
+    const before = { ...cy.pan() };
+    r.panBy(80, -40);
+    expect(cy.pan()).toEqual({ x: before.x + 80, y: before.y - 40 });
+  });
+
   it('destroy() releases the instance and later calls are harmless', async () => {
     const r = await mounted([n('A')], []);
     const cy = core(r);
@@ -231,6 +277,7 @@ describe('CytoscapeGraphRenderer headless smoke (S-44 T-510)', () => {
       r.select('A');
       r.fit();
       r.zoomBy(2);
+      r.panBy(10, 10);
       r.resize();
       r.refreshTheme();
       r.collapse('A', [], []);

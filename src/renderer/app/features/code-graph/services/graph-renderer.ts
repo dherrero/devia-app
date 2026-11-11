@@ -7,7 +7,7 @@ import type {
 
 import type { GraphOverviewNode, GraphViewEdge } from '../../../../../shared/domain/code-graph';
 import {
-  LayoutQueue, globalLayoutOptions, localLayoutOptions, seedChildPositions, type RunningLayout,
+  BURST_ANIMATION_MS, BURST_GAP, LayoutQueue, fitViewport, globalLayoutOptions, planBurst, pullBack, pushAway, type RunningLayout,
 } from '../utils/graph-layout';
 import {
   ADJACENT_EDGE_OPACITY, COMMUNITY_PALETTE, EDGE_COLOR, EXPANDED_BORDER_WIDTH, EXPANDED_COLOR, FADED_EDGE_FACTOR,
@@ -60,6 +60,9 @@ export interface GraphRenderer {
   setFilters(filters: GraphFilters): void;
   fit(): void;
   zoomBy(factor: number): void;
+  /** Moves the view by a rendered (screen) offset. */
+  panBy(dx: number, dy: number): void;
+  /** Re-measures the container (coalesced to one per frame). */
   resize(): void;
   /** Re-reads the `--dv-*` colours after a theme switch. */
   refreshTheme(): void;
@@ -88,14 +91,11 @@ export const GRAPH_RENDERER_FACTORY = new InjectionToken<GraphRendererFactory>('
 
 /** Below this zoom only hubs and the selected node keep their label (labels everywhere cost ~15% fps, T-479). */
 export const LABEL_ZOOM_THRESHOLD = 0.75;
-/** Cytoscape's default (1) jumps several zoom levels per mouse-wheel notch on a dense graph. */
-export const WHEEL_SENSITIVITY = 0.35;
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 4;
 const FOCUS_ZOOM = 1.2;
 const CAMERA_MS = 300;
 const FIT_PADDING = 40;
-const SEED_SPACING = 24;
 const VIEWPORT_THROTTLE_MS = 16;
 const MORE_NODE_SIZE = 22;
 
@@ -211,13 +211,14 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
   private hoveredId: string | null = null;
   private filters: GraphFilters = {};
   private readonly queue = new LayoutQueue();
-  private resizeObserver: ResizeObserver | null = null;
   private viewportTimer: ReturnType<typeof setTimeout> | null = null;
   private resizeFrame: number | null = null;
   /** Nodes removed by an explode, to put back on collapse. */
   private readonly exploded = new Map<string, GraphOverviewNode>();
   /** Where a removed "more" node sat, keyed by its parent ('' for the root), to seed the next page there. */
   private readonly morePositions = new Map<string, Position>();
+  /** Explosions on screen (insertion order): where they burst and how far they pushed the rest, undone on collapse. */
+  private readonly bursts = new Map<string, { center: Position; shift: number; reach: number; origin: number }>();
 
   private readonly selectListeners = new Set<(id: string | null) => void>();
   private readonly expandListeners = new Set<(id: string) => void>();
@@ -246,7 +247,6 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       hideEdgesOnViewport: false,
       motionBlur: false,
       pixelRatio: Math.min(globalThis.devicePixelRatio || 1, 2),
-      wheelSensitivity: WHEEL_SENSITIVITY,
       minZoom: MIN_ZOOM,
       maxZoom: MAX_ZOOM,
       boxSelectionEnabled: false,
@@ -255,10 +255,6 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     const config: CytoscapeOptions = this.headless ? { ...base, headless: true } : { ...base, container: el };
     this.cy = this.zone.runOutsideAngular(() => this.cytoscape(config));
     this.zone.runOutsideAngular(() => this.bindEvents());
-    if (!this.headless && typeof ResizeObserver !== 'undefined') {
-      this.resizeObserver = new ResizeObserver(() => this.scheduleResize());
-      this.resizeObserver.observe(el);
-    }
   }
 
   setElements(nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void> {
@@ -266,6 +262,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     if (!cy) return Promise.resolve();
     this.exploded.clear();
     this.morePositions.clear();
+    this.bursts.clear();
     this.selectedId = null;
     this.hoveredId = null;
     cy.batch(() => {
@@ -274,7 +271,10 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       cy.add(this.edgeElements(cy, edges));
     });
     if (nodes.length === 0) return Promise.resolve();
-    return this.queue.enqueue('global', () => this.run(cy.elements(), globalLayoutOptions()), { preempt: true });
+    return this.queue.enqueue('global', () => {
+      const running = this.run(cy.elements(), globalLayoutOptions());
+      return { stop: running.stop, done: running.done.then(() => this.fitTo(false)) };
+    }, { preempt: true });
   }
 
   addNodes(parentId: string | null, nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): Promise<void> {
@@ -283,7 +283,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     const center = this.morePositions.get(parentId ?? '') ?? this.siblingCenter(cy, parentId) ?? this.viewCenter(cy);
     this.morePositions.delete(parentId ?? '');
     const added = this.addAround(cy, center, nodes, edges);
-    return this.layoutLocal(`more:${parentId ?? ''}`, added);
+    return this.burst(`more:${parentId ?? ''}`, null, center, MORE_NODE_SIZE / 2, added);
   }
 
   removeNode(id: string): void {
@@ -303,6 +303,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     const parent = cy.getElementById(parentId);
     const center = parent.nonempty() ? { ...parent.position() } : this.viewCenter(cy);
     const parentNode = parent.nonempty() ? (parent.data('node') as GraphOverviewNode | undefined) : undefined;
+    const origin = parent.nonempty() ? Number(parent.data('size')) / 2 : 0;
     if (parentNode) this.exploded.set(parentId, parentNode);
     let added: NodeCollection = cy.collection();
     cy.batch(() => {
@@ -311,7 +312,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
       cy.add(this.edgeElements(cy, edges));
     });
     if (this.selectedId === parentId) this.selectedId = null;
-    return this.layoutLocal(`explode:${parentId}`, added);
+    return this.burst(`explode:${parentId}`, parentId, center, origin, added);
   }
 
   collapse(id: string, childIds: readonly string[], restoredEdges: readonly GraphViewEdge[], node?: GraphOverviewNode): void {
@@ -321,7 +322,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     let children = cy.collection();
     for (const childId of childIds) children = children.union(cy.getElementById(childId));
     const box = children.nonempty() ? children.boundingBox() : null;
-    const center = box ? { x: box.x1 + box.w / 2, y: box.y1 + box.h / 2 } : this.viewCenter(cy);
+    const center = this.bursts.get(id)?.center ?? (box ? { x: box.x1 + box.w / 2, y: box.y1 + box.h / 2 } : this.viewCenter(cy));
     cy.batch(() => {
       children.remove();
       if (parentNode && cy.getElementById(id).empty()) cy.add({ ...this.nodeElement(parentNode), position: center });
@@ -330,6 +331,27 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     for (const childId of childIds) this.exploded.delete(childId);
     this.exploded.delete(id);
     if (this.selectedId !== null && childIds.includes(this.selectedId)) this.selectedId = null;
+    this.closeBursts(id, new Set([id, ...childIds]));
+  }
+
+  /** Pulls the neighbours back in, undoing the pushes of the collapsed explosion and of those nested in it (newest first). */
+  private closeBursts(id: string, ids: ReadonlySet<string>): void {
+    const undo = [...this.bursts].filter(([key]) => ids.has(key)).reverse();
+    for (const [key] of undo) this.bursts.delete(key);
+    if (!undo.some(([, b]) => b.shift > 0)) return;
+    void this.queue.enqueue(`collapse:${id}`, () => {
+      const cy = this.cy;
+      if (!cy) return settled();
+      const targets = new Map<string, Position>();
+      const nodes = cy.nodes().filter((n) => n.id() !== id);
+      nodes.forEach((n) => {
+        let p: Position = { ...n.position() };
+        const keep = Number(n.data('size')) / 2;
+        for (const [, b] of undo) p = pullBack(b.center, p, b.shift, b.reach, b.origin + keep + BURST_GAP);
+        targets.set(n.id(), p);
+      });
+      return this.moveTo(nodes, targets, this.options.reducedMotion);
+    });
   }
 
   select(id: string | null): void {
@@ -378,13 +400,21 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
   }
 
   fit(): void {
+    this.fitTo(!this.options.reducedMotion);
+  }
+
+  private fitTo(animate: boolean): void {
     const cy = this.cy;
-    if (!cy) return;
-    if (this.options.reducedMotion) {
-      cy.fit(undefined, FIT_PADDING);
+    if (!cy || this.destroyed) return;
+    const visible = cy.elements(':visible');
+    if (visible.empty()) return;
+    const box = visible.boundingBox();
+    const viewport = fitViewport(box, { width: cy.width(), height: cy.height() }, FIT_PADDING);
+    if (!animate) {
+      cy.viewport(viewport);
       return;
     }
-    this.zone.runOutsideAngular(() => cy.animate({ fit: { eles: cy.elements(), padding: FIT_PADDING } }, { duration: CAMERA_MS }));
+    this.zone.runOutsideAngular(() => cy.animate(viewport, { duration: CAMERA_MS }));
   }
 
   zoomBy(factor: number): void {
@@ -394,8 +424,16 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     cy.zoom({ level, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
   }
 
+  panBy(dx: number, dy: number): void {
+    this.cy?.panBy({ x: dx, y: dy });
+  }
+
   resize(): void {
-    this.cy?.resize();
+    if (this.resizeFrame !== null || this.destroyed || !this.cy) return;
+    this.resizeFrame = requestAnimationFrame(() => {
+      this.resizeFrame = null;
+      this.cy?.resize();
+    });
   }
 
   refreshTheme(): void {
@@ -410,8 +448,6 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     if (this.destroyed) return;
     this.destroyed = true;
     this.queue.dispose();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
     if (this.viewportTimer !== null) clearTimeout(this.viewportTimer);
     this.viewportTimer = null;
     if (this.resizeFrame !== null) cancelAnimationFrame(this.resizeFrame);
@@ -422,6 +458,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     this.viewportListeners.clear();
     this.exploded.clear();
     this.morePositions.clear();
+    this.bursts.clear();
     const cy = this.cy;
     this.cy = null;
     this.el = null;
@@ -508,14 +545,6 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     }, VIEWPORT_THROTTLE_MS);
   }
 
-  private scheduleResize(): void {
-    if (this.resizeFrame !== null || this.destroyed) return;
-    this.resizeFrame = requestAnimationFrame(() => {
-      this.resizeFrame = null;
-      this.cy?.resize();
-    });
-  }
-
   /** Toggles the label class only when the zoom crosses the threshold, never per frame. */
   private applyZoomClass(cy: Core): void {
     const zoomedOut = cy.zoom() < LABEL_ZOOM_THRESHOLD;
@@ -531,7 +560,7 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     return { reducedMotion: this.options.reducedMotion };
   }
 
-  private run(eles: Collection, options: object): RunningLayout {
+  private run(eles: Collection | NodeCollection, options: object): RunningLayout {
     let finish: () => void = () => undefined;
     const done = new Promise<void>((resolve) => (finish = resolve));
     if (this.destroyed || eles.empty()) {
@@ -550,18 +579,60 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     };
   }
 
-  private layoutLocal(key: string, nodes: NodeCollection): Promise<void> {
-    if (nodes.empty()) return Promise.resolve();
+  /**
+   * Flies the new nodes out of `center` onto a spiral and pushes every other node
+   * radially out of the way (planBurst). Positions are read when the queue starts
+   * the job, after any earlier animation has settled.
+   */
+  private burst(key: string, burstId: string | null, center: Position, origin: number, added: NodeCollection): Promise<void> {
+    if (added.empty()) return Promise.resolve();
     return this.queue.enqueue(key, () => {
-      const alive = nodes.filter((n) => n.inside());
-      return this.run(alive.union(alive.edgesWith(alive)), localLayoutOptions(alive.length, this.motion()));
+      const cy = this.cy;
+      const alive = added.filter((n) => n.inside());
+      if (!cy || alive.empty()) return settled();
+      const plan = planBurst(center, alive.map((n) => Number(n.data('size'))), origin, this.motion());
+      const targets = new Map<string, Position>();
+      alive.forEach((n, i) => {
+        targets.set(n.id(), plan.positions[i] ?? center);
+      });
+      if (plan.shift > 0) {
+        cy.nodes().difference(alive).forEach((n) => {
+          targets.set(n.id(), pushAway(center, n.position(), plan.shift, plan.radius));
+        });
+      }
+      if (burstId !== null) this.bursts.set(burstId, { center, shift: plan.shift, reach: plan.radius, origin });
+      this.reveal(cy, center, plan.radius, plan.duration === 0);
+      return this.moveTo(plan.shift > 0 ? cy.nodes() : alive, targets, plan.duration === 0);
+    });
+  }
+
+  /** Brings a burst that would land partly off screen into view, never zooming in. */
+  private reveal(cy: Core, center: Position, radius: number, instant: boolean): void {
+    const box = { x1: center.x - radius, y1: center.y - radius, x2: center.x + radius, y2: center.y + radius };
+    const ext = cy.extent();
+    if (box.x1 >= ext.x1 && box.x2 <= ext.x2 && box.y1 >= ext.y1 && box.y2 <= ext.y2) return;
+    const width = cy.width();
+    const height = cy.height();
+    const zoom = Math.min(cy.zoom(), fitViewport(box, { width, height }, FIT_PADDING).zoom);
+    const viewport = { zoom, pan: { x: width / 2 - zoom * center.x, y: height / 2 - zoom * center.y } };
+    if (instant) cy.viewport(viewport);
+    else this.zone.runOutsideAngular(() => cy.animate(viewport, { duration: BURST_ANIMATION_MS }));
+  }
+
+  private moveTo(nodes: NodeCollection, targets: ReadonlyMap<string, Position>, instant: boolean): RunningLayout {
+    return this.run(nodes, {
+      name: 'preset',
+      positions: (n: NodeSingular) => targets.get(n.id()) ?? n.position(),
+      animate: !instant,
+      animationDuration: instant ? 0 : BURST_ANIMATION_MS,
+      animationEasing: 'ease-out-cubic',
+      fit: false,
     });
   }
 
   private addAround(cy: Core, center: Position, nodes: readonly ViewNode[], edges: readonly GraphViewEdge[]): NodeCollection {
     const fresh = nodes.filter((node) => cy.getElementById(node.id).empty());
-    const seeds = seedChildPositions(center, fresh.length, SEED_SPACING);
-    const defs = fresh.map((node, i) => ({ ...this.nodeElement(node), position: seeds[i] ?? center }));
+    const defs = fresh.map((node) => ({ ...this.nodeElement(node), position: { ...center } }));
     let added: NodeCollection = cy.collection();
     cy.batch(() => {
       added = cy.add(defs).nodes();
@@ -651,4 +722,8 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     const ext = cy.extent();
     return { x: ext.x1 + ext.w / 2, y: ext.y1 + ext.h / 2 };
   }
+}
+
+function settled(): RunningLayout {
+  return { stop: () => undefined, done: Promise.resolve() };
 }

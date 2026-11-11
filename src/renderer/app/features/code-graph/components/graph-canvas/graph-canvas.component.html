@@ -1,0 +1,169 @@
+<div #surface
+     class="gc-surface"
+     data-testid="cg-canvas"
+     role="application"
+     tabindex="0"
+     [attr.aria-label]="'codeGraph.canvas.aria' | translate"
+     [attr.aria-describedby]="helpId"
+     [attr.aria-busy]="showSkeleton() || busy()"
+     (keydown)="onKeydown($event)"></div>
+
+<p class="gc-sr" [id]="helpId">{{ 'codeGraph.canvas.help' | translate }}</p>
+<p class="gc-sr" data-testid="cg-canvas-live" aria-live="polite" aria-atomic="true">{{ announcement() }}</p>
+
+@if (showSkeleton()) {
+  <div class="gc-skeleton" data-testid="cg-canvas-loading" role="status">
+    <div class="gc-skeleton__graph" aria-hidden="true">
+      @for (i of [0, 1, 2, 3, 4, 5, 6]; track i) {
+        <span [class]="'gc-skeleton__node gc-skeleton__node--' + i"></span>
+      }
+    </div>
+    <p class="gc-skeleton__text">{{ 'codeGraph.canvas.loading' | translate }}</p>
+  </div>
+} @else if (loadFailed()) {
+  <div class="gc-state" data-testid="cg-canvas-error" role="alert">
+    <p class="gc-state__title">{{ 'codeGraph.canvas.error' | translate }}</p>
+    @if (store.error(); as raw) {
+      @if (describeLoadError(raw); as detail) {
+        <p class="gc-state__detail">{{ detail }}</p>
+      }
+    }
+    <dv-button size="sm" variant="secondary" data-testid="cg-canvas-retry" (clicked)="retry()">
+      <dv-icon [icon]="LucideRotateCcw" size="sm" />
+      {{ 'codeGraph.canvas.retry' | translate }}
+    </dv-button>
+  </div>
+} @else if (store.empty()) {
+  <div class="gc-state" data-testid="cg-canvas-empty">
+    <p class="gc-state__title">{{ 'codeGraph.canvas.empty' | translate }}</p>
+    <p class="gc-state__detail">{{ 'codeGraph.canvas.empty_hint' | translate }}</p>
+    <dv-button size="sm" variant="secondary" data-testid="cg-canvas-retry" (clicked)="retry()">
+      <dv-icon [icon]="LucideRotateCcw" size="sm" />
+      {{ 'codeGraph.canvas.retry' | translate }}
+    </dv-button>
+  </div>
+}
+
+@if (hasGraph()) {
+  <div class="gc-top">
+    <div class="gc-status">
+      <span class="gc-chip" data-testid="cg-canvas-count">
+        {{ countKey(store.visibleCount()) | translate: { count: store.visibleCount() } }}
+      </span>
+      @if (busy()) {
+        <span class="gc-chip gc-chip--busy" data-testid="cg-canvas-busy">
+          <dv-spinner size="sm" />
+          {{ 'codeGraph.canvas.expanding' | translate }}
+        </span>
+      }
+      @if (store.edgesTruncated()) {
+        <span class="gc-chip gc-chip--muted" data-testid="cg-canvas-truncated">{{ 'codeGraph.canvas.edges_truncated' | translate }}</span>
+      }
+    </div>
+
+    <div class="gc-zoom" role="group" [attr.aria-label]="'codeGraph.canvas.controls' | translate">
+      <dv-button iconOnly variant="ghost" size="sm" data-testid="cg-zoom-in"
+                 [ariaLabel]="'codeGraph.canvas.zoom_in' | translate" (clicked)="zoomIn()">
+        <dv-icon [icon]="LucideZoomIn" size="sm" />
+      </dv-button>
+      <dv-button iconOnly variant="ghost" size="sm" data-testid="cg-zoom-out"
+                 [ariaLabel]="'codeGraph.canvas.zoom_out' | translate" (clicked)="zoomOut()">
+        <dv-icon [icon]="LucideZoomOut" size="sm" />
+      </dv-button>
+      <dv-button iconOnly variant="ghost" size="sm" data-testid="cg-fit"
+                 [ariaLabel]="'codeGraph.canvas.fit' | translate" (clicked)="fit()">
+        <dv-icon [icon]="LucideMaximize" size="sm" />
+      </dv-button>
+    </div>
+  </div>
+
+  <div class="gc-messages">
+    @if (store.notice(); as notice) {
+      <div class="gc-notice" data-testid="cg-canvas-notice" role="status">
+        <span>{{ notice.key | translate: notice.params }}</span>
+        <dv-button iconOnly variant="ghost" size="sm" data-testid="cg-canvas-notice-dismiss"
+                   [ariaLabel]="'codeGraph.canvas.dismiss' | translate" (clicked)="store.dismissNotice()">
+          <dv-icon [icon]="LucideX" size="sm" />
+        </dv-button>
+      </div>
+    }
+    @if (actionError(); as failure) {
+      <dv-alert variant="danger" class="gc-alert" data-testid="cg-canvas-action-error">
+        <div class="gc-alert__row">
+          <div class="gc-alert__text">
+            <p class="gc-alert__message">{{ failure.key | translate }}</p>
+            @if (failure.detail) {
+              <p class="gc-alert__detail">{{ failure.detail }}</p>
+            }
+          </div>
+          <dv-button iconOnly variant="ghost" size="sm" data-testid="cg-canvas-action-error-dismiss"
+                     [ariaLabel]="'codeGraph.canvas.dismiss' | translate" (clicked)="store.dismissError()">
+            <dv-icon [icon]="LucideX" size="sm" />
+          </dv-button>
+        </div>
+      </dv-alert>
+    }
+  </div>
+
+  <div class="gc-bottom">
+    <div class="gc-legend" data-testid="cg-canvas-legend">
+      <p class="gc-legend__title">{{ 'codeGraph.canvas.legend.title' | translate }}</p>
+      <div class="gc-legend__row">
+        <span class="gc-legend__swatches" aria-hidden="true">
+          @for (color of swatches; track color) {
+            <span class="gc-legend__swatch" [style.background]="'var(' + color + ')'"></span>
+          }
+        </span>
+        <span>{{ 'codeGraph.canvas.legend.color' | translate }}</span>
+      </div>
+      <div class="gc-legend__row">
+        <span class="gc-legend__ring" aria-hidden="true"></span>
+        <span>{{ 'codeGraph.canvas.legend.hub' | translate }}</span>
+      </div>
+      <p class="gc-legend__subtitle">{{ 'codeGraph.canvas.legend.shape' | translate }}</p>
+      <ul class="gc-legend__shapes">
+        @for (kind of shapes; track kind) {
+          <li class="gc-legend__row">
+            <span [class]="'gc-shape gc-shape--' + kind" aria-hidden="true"></span>
+            <span>{{ 'codeGraph.canvas.kind.' + kind | translate }}</span>
+          </li>
+        }
+      </ul>
+    </div>
+
+    @if (selected(); as node) {
+      <div class="gc-selection" data-testid="cg-canvas-selection" role="group"
+           [attr.aria-label]="'codeGraph.canvas.selection' | translate">
+        @if (selectedNode(); as real) {
+          <div class="gc-selection__text">
+            <p class="gc-selection__name">{{ real.label }}</p>
+            <p class="gc-selection__meta">
+              <span>{{ 'codeGraph.canvas.kind.' + real.kind | translate }}</span>
+              @if (real.childCount > 0) {
+                <span aria-hidden="true">·</span>
+                <span>{{ childrenKey(real.childCount) | translate: { count: real.childCount } }}</span>
+              }
+              <span aria-hidden="true">·</span>
+              <span class="gc-selection__path" [title]="real.path">{{ real.path }}</span>
+            </p>
+          </div>
+          @if (real.childCount > 0) {
+            <dv-button size="sm" variant="primary" data-testid="cg-canvas-expand" (clicked)="expandSelected()">
+              {{ 'codeGraph.canvas.expand' | translate }}
+            </dv-button>
+          }
+        } @else {
+          <p class="gc-selection__name">{{ 'codeGraph.canvas.kind.more' | translate }}</p>
+          <dv-button size="sm" variant="primary" data-testid="cg-canvas-expand" (clicked)="expandSelected()">
+            {{ 'codeGraph.canvas.show_more' | translate }}
+          </dv-button>
+        }
+        @if (selectionOwner(); as owner) {
+          <dv-button size="sm" variant="secondary" data-testid="cg-canvas-collapse" (clicked)="collapseSelectionOwner()">
+            {{ 'codeGraph.canvas.collapse' | translate: { label: owner.label } }}
+          </dv-button>
+        }
+      </div>
+    }
+  </div>
+}

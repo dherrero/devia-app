@@ -26,10 +26,11 @@
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   background: var(--dv-surf-3);
 }
-.cg-center,
-.cg-slot {
+.cg-center {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 0.5rem; padding: 2rem; text-align: center;
 }
 .cg-message { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--dv-fg); }
-.cg-slot-icon { color: var(--dv-dim); }
+.cg-graph { flex: 1 1 auto; min-height: 0; display: flex; }
+.cg-side { flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; }
+.cg-side:empty { display: none; }

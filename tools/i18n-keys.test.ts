@@ -175,7 +175,8 @@ describe('round trip against the real files', () => {
     // 352: +49 for the code graph empty state, progress and toolbar (es/en only; T-513 translates).
     // 356: +4 plural forms (_plural) for the code graph counts (es/en only; T-513 translates).
     // 358: +2 for the code graph canvas "older nodes collapsed" notice (es/en only; T-513 translates).
-    expect(Object.keys(missing).length).toBe(358);
+    // 413: +55 for the interactive graph canvas (es/en only; T-513 translates).
+    expect(Object.keys(missing).length).toBe(413);
   });
 
   it('extracts nothing for the complete language', () => {

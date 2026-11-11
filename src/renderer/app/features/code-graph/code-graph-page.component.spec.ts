@@ -7,12 +7,23 @@ import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodeGraphProgressPayload, CodeGraphStatusChangedPayload } from '../../../../shared/contracts/events';
-import type { CodeGraphStatus } from '../../../../shared/domain/code-graph';
+import type { CodeGraphStatus, GraphOverviewNode, GraphViewPage } from '../../../../shared/domain/code-graph';
 import { AppStateService } from '../../core/services/app-state.service';
 import { ElectronApiService } from '../../core/services/electron-api.service';
 import CodeGraphPageComponent from './code-graph-page.component';
 import { CodeGraphStateService } from './services/code-graph-state.service';
+import { GRAPH_RENDERER_FACTORY } from './services/graph-renderer';
+import { GraphViewStore } from './services/graph-view.store';
 import { graphStatus } from './testing/fake-code-graph-state';
+import { FakeGraphRenderer } from './testing/fake-graph-renderer';
+
+function dir(id: string, childCount = 1): GraphOverviewNode {
+  return { id, kind: 'dir', label: id, path: id, childCount };
+}
+
+function overview(ids: string[]): GraphViewPage {
+  return { nodes: ids.map((id) => dir(id)), edges: [], total: ids.length, hasMore: false };
+}
 
 function makeApi() {
   const progressListeners = new Set<(e: CodeGraphProgressPayload) => void>();
@@ -29,6 +40,8 @@ function makeApi() {
     codeGraphSetAutoUpdate: vi.fn<(p: string, on: boolean) => Promise<void>>(() => Promise.resolve()),
     codeGraphWatch: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
     codeGraphUnwatch: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
+    codeGraphOverview: vi.fn<(p: string) => Promise<GraphViewPage>>(() => Promise.resolve(overview(['src', 'lib']))),
+    codeGraphExpand: vi.fn<(p: string, id: string) => Promise<GraphViewPage>>(() => Promise.resolve(overview([]))),
     onCodeGraphProgress: vi.fn((cb: (e: CodeGraphProgressPayload) => void) => {
       progressListeners.add(cb);
       return () => progressListeners.delete(cb);
@@ -44,11 +57,20 @@ describe('CodeGraphPageComponent', () => {
   let fixture: ComponentFixture<CodeGraphPageComponent>;
   let api: ReturnType<typeof makeApi>;
   let graph: CodeGraphStateService;
+  let renderers: FakeGraphRenderer[];
   const selectedProject = signal<string | null>('proj-a');
   const navigateByUrl = vi.fn(() => Promise.resolve(true));
 
   async function settle(): Promise<void> {
     await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  async function flush(): Promise<void> {
+    for (let i = 0; i < 3; i++) {
+      await settle();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
     fixture.detectChanges();
   }
 
@@ -64,6 +86,7 @@ describe('CodeGraphPageComponent', () => {
     api = makeApi();
     selectedProject.set('proj-a');
     navigateByUrl.mockClear();
+    renderers = [];
     await TestBed.configureTestingModule({
       imports: [CodeGraphPageComponent, TranslateModule.forRoot()],
       providers: [
@@ -71,6 +94,14 @@ describe('CodeGraphPageComponent', () => {
         { provide: ElectronApiService, useValue: api },
         { provide: DialogService, useValue: { confirm: vi.fn(() => of(true)) } },
         { provide: Router, useValue: { navigateByUrl } },
+        {
+          provide: GRAPH_RENDERER_FACTORY,
+          useValue: () => {
+            const renderer = new FakeGraphRenderer();
+            renderers.push(renderer);
+            return Promise.resolve(renderer);
+          },
+        },
       ],
     }).compileComponents();
     graph = TestBed.inject(CodeGraphStateService);
@@ -126,13 +157,77 @@ describe('CodeGraphPageComponent', () => {
     expect(host().querySelector('ds-cg-index-progress')).not.toBeNull();
   });
 
-  it.each(['ready', 'stale'] as const)('%s: mounts the toolbar above the graph slot', async (state) => {
+  it.each(['ready', 'stale'] as const)('%s: mounts the graph canvas below the toolbar, with an empty side column', async (state) => {
     await mount(graphStatus({ state }));
+    await flush();
     const toolbar = host().querySelector('ds-cg-toolbar');
-    const slotEl = byId('cg-graph-slot');
+    const canvas = host().querySelector('ds-graph-canvas');
+    expect(byId('cg-graph-slot')).toBeNull();
     expect(toolbar).not.toBeNull();
-    expect(slotEl).not.toBeNull();
-    expect(toolbar?.compareDocumentPosition(slotEl as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(canvas).not.toBeNull();
+    expect(toolbar?.compareDocumentPosition(canvas as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const side = byId('cg-side');
+    expect(side).not.toBeNull();
+    expect(side?.textContent?.trim()).toBe('');
+    expect(api.codeGraphOverview).toHaveBeenCalledWith('proj-a');
+    expect(renderers.at(-1)?.callsOf('setElements').length).toBeGreaterThan(0);
+  });
+
+  it('provides the graph view store at the page level', async () => {
+    await mount(graphStatus({ state: 'ready' }));
+    expect(fixture.debugElement.injector.get(GraphViewStore)).toBeInstanceOf(GraphViewStore);
+    expect(() => TestBed.inject(GraphViewStore)).toThrow();
+  });
+
+  it('reloads the overview when the graph changes on disk and keeps the selection', async () => {
+    await mount(graphStatus({ state: 'ready', indexedAt: 1 }));
+    await flush();
+    const store = fixture.debugElement.injector.get(GraphViewStore);
+    renderers.at(-1)?.emitSelect('lib');
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ state: 'ready', indexedAt: 2 }) });
+    await flush();
+    expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+    expect(store.selectedId()).toBe('lib');
+  });
+
+  it('reloads after an incremental update, which changes the counts but not indexedAt', async () => {
+    await mount(graphStatus({ state: 'ready', indexedAt: 1, nodeCount: 10, edgeCount: 4 }));
+    await flush();
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ state: 'ready', indexedAt: 1, nodeCount: 11, edgeCount: 6 }) });
+    await flush();
+    expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ state: 'stale', indexedAt: 1, nodeCount: 11, edgeCount: 6 }) });
+    await flush();
+    expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the view across a re-index (the canvas is re-created) and drops a selection that disappeared', async () => {
+    await mount(graphStatus({ state: 'ready', indexedAt: 1 }));
+    await flush();
+    const store = fixture.debugElement.injector.get(GraphViewStore);
+    renderers.at(-1)?.emitSelect('lib');
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ state: 'indexing' }) });
+    await flush();
+    expect(host().querySelector('ds-graph-canvas')).toBeNull();
+    expect(renderers.at(-1)?.destroyed).toBe(true);
+    api.codeGraphOverview.mockResolvedValueOnce(overview(['src', 'docs']));
+    api.emitStatus({ project: 'proj-a', status: graphStatus({ state: 'ready', indexedAt: 5 }) });
+    await flush();
+    expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+    expect(store.nodes().map((x) => x.id)).toEqual(['src', 'docs']);
+    expect(store.selectedId()).toBeNull();
+  });
+
+  it('starts from a clean view when the project changes', async () => {
+    await mount(graphStatus({ state: 'ready', indexedAt: 1 }));
+    await flush();
+    const store = fixture.debugElement.injector.get(GraphViewStore);
+    renderers.at(-1)?.emitSelect('lib');
+    api.codeGraphStatus.mockResolvedValueOnce(graphStatus({ state: 'none' }));
+    selectedProject.set('proj-b');
+    await flush();
+    expect(store.selectedId()).toBeNull();
+    expect(store.nodes()).toEqual([]);
   });
 
   it('unsupported: renders the unsupported variant with no toolbar', async () => {

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  LOCAL_ANIMATION_MS, LayoutQueue, globalLayoutOptions, localLayoutOptions, seedChildPositions,
-  type RunningLayout,
+  BURST_ANIMATION_MS, BURST_GAP, FIT_MAX_ZOOM, LayoutQueue, fitViewport, globalLayoutOptions, planBurst, pullBack, pushAway,
+  seedChildPositions, type Point, type RunningLayout,
 } from './graph-layout';
 
 function controllable() {
@@ -16,33 +16,98 @@ function controllable() {
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe('fcose option sets (S-44 T-510)', () => {
-  it('lays the first load out globally in draft quality, fitted, without packing', () => {
+  it('lays the first load out globally in draft quality, without packing, leaving the fit to fitViewport', () => {
     const o = globalLayoutOptions();
-    expect(o).toMatchObject({ name: 'fcose', quality: 'draft', randomize: true, fit: true, animate: false, packComponents: false });
+    expect(o).toMatchObject({ name: 'fcose', quality: 'draft', randomize: true, fit: false, animate: false, packComponents: false });
+  });
+});
+
+describe('burst placement (S-44 T-510)', () => {
+  const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  it('places the children around the parent with room for each node and its label', () => {
+    const sizes = [60, 60, 40, 60, 60, 60, 60, 60];
+    const plan = planBurst({ x: 100, y: 100 }, sizes, 30);
+    expect(plan.positions).toHaveLength(8);
+    for (let i = 0; i < plan.positions.length; i++) {
+      for (let j = i + 1; j < plan.positions.length; j++) {
+        const a = plan.positions[i];
+        const b = plan.positions[j];
+        if (a && b) expect(dist(a, b)).toBeGreaterThanOrEqual(60 + BURST_GAP);
+      }
+    }
+    expect(plan.duration).toBe(BURST_ANIMATION_MS);
   });
 
-  it('lays an explosion out locally: randomize, animated 250 ms, never fitting the viewport', () => {
-    const o = localLayoutOptions(20, { reducedMotion: false });
-    expect(o).toMatchObject({
-      name: 'fcose', quality: 'draft', randomize: true, animate: true, animationDuration: LOCAL_ANIMATION_MS,
-      fit: false, packComponents: false,
-    });
-    expect(LOCAL_ANIMATION_MS).toBe(250);
-    expect(o.nodeRepulsion).toBe(localLayoutOptions(400, { reducedMotion: false }).nodeRepulsion);
+  it('measures how far the neighbours must move so the burst never covers them', () => {
+    const plan = planBurst({ x: 0, y: 0 }, [20, 20, 20, 20, 20], 10);
+    const far = Math.max(...plan.positions.map((p) => Math.hypot(p.x, p.y)));
+    expect(plan.radius).toBeGreaterThanOrEqual(far + 10);
+    expect(plan.shift).toBeCloseTo(plan.radius - 10);
+    expect(planBurst({ x: 0, y: 0 }, [], 30).shift).toBe(0);
   });
 
-  it('skips the animation when reduced motion is requested', () => {
-    const o = localLayoutOptions(20, { reducedMotion: true });
-    expect(o.animate).toBe(false);
-    expect(o.animationDuration).toBe(0);
-    expect(o.randomize).toBe(true);
+  it('pushes a nearby neighbour radially away by the whole shift and pulls it back exactly', () => {
+    const c = { x: 10, y: 10 };
+    const pushed = pushAway(c, { x: 40, y: 50 }, 100, 80);
+    expect(dist(pushed, c)).toBeCloseTo(150);
+    expect((pushed.y - c.y) / (pushed.x - c.x)).toBeCloseTo(40 / 30);
+    const back = pullBack(c, pushed, 100, 80, 20);
+    expect(back.x).toBeCloseTo(40);
+    expect(back.y).toBeCloseTo(50);
   });
 
-  it('scales the ideal edge length with the number of children, bounded', () => {
-    const few = localLayoutOptions(3, { reducedMotion: false }).idealEdgeLength;
-    const many = localLayoutOptions(500, { reducedMotion: false }).idealEdgeLength;
-    expect(many).toBeGreaterThan(few);
-    expect(localLayoutOptions(1e6, { reducedMotion: false }).idealEdgeLength).toBe(localLayoutOptions(1e7, { reducedMotion: false }).idealEdgeLength);
+  it('keeps the push local: far nodes barely move, so repeated explosions do not inflate the graph', () => {
+    const c = { x: 0, y: 0 };
+    const far = pushAway(c, { x: 3000, y: 0 }, 200, 250);
+    expect(far.x - 3000).toBeLessThan(10);
+    const back = pullBack(c, far, 200, 250, 0);
+    expect(back.x).toBeCloseTo(3000);
+  });
+
+  it('never reorders nodes along a ray (monotonic), so pushed nodes cannot land on each other', () => {
+    const c = { x: 0, y: 0 };
+    let previous = -Infinity;
+    for (let d = 0; d < 3000; d += 7) {
+      const x = pushAway(c, { x: d, y: 0 }, 300, 200).x;
+      expect(x).toBeGreaterThan(previous);
+      expect(pullBack(c, { x, y: 0 }, 300, 200, 0).x).toBeCloseTo(d);
+      previous = x;
+    }
+  });
+
+  it('never pulls a node into the restored parent, and moves a node at the centre in some direction', () => {
+    const c = { x: 0, y: 0 };
+    expect(pullBack(c, { x: 50, y: 0 }, 100, 80, 40)).toEqual({ x: 50, y: 0 });
+    expect(dist(pushAway(c, c, 30, 50), c)).toBeCloseTo(30);
+  });
+
+  it('does not animate under reduced motion', () => {
+    expect(planBurst({ x: 0, y: 0 }, [20], 10, { reducedMotion: true }).duration).toBe(0);
+  });
+});
+
+describe('fitViewport (S-44 T-510)', () => {
+  const view = { width: 1000, height: 600 };
+
+  it('fits a large graph inside the padded view, centred', () => {
+    const v = fitViewport({ x1: 0, y1: 0, x2: 2000, y2: 600 }, view, 50);
+    expect(v.zoom).toBeCloseTo(0.45);
+    expect(v.pan.x).toBeCloseTo(50);
+    expect(v.pan.y).toBeCloseTo(300 - 0.45 * 300);
+  });
+
+  it('never zooms a small graph past FIT_MAX_ZOOM (no giant nodes for a two-directory overview)', () => {
+    const v = fitViewport({ x1: 100, y1: 100, x2: 200, y2: 140 }, view, 40);
+    expect(v.zoom).toBe(FIT_MAX_ZOOM);
+    expect(150 * v.zoom + v.pan.x).toBeCloseTo(500);
+    expect(120 * v.zoom + v.pan.y).toBeCloseTo(300);
+  });
+
+  it('handles an empty or zero-size view without NaN', () => {
+    const v = fitViewport({ x1: 5, y1: 5, x2: 5, y2: 5 }, { width: 0, height: 0 }, 40);
+    expect(Number.isFinite(v.zoom) && v.zoom > 0).toBe(true);
+    expect(Number.isFinite(v.pan.x) && Number.isFinite(v.pan.y)).toBe(true);
   });
 });
 

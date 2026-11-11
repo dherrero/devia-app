@@ -527,12 +527,119 @@ describe('GraphViewStore (S-44 T-510)', () => {
       const [reset, explode, collapse] = changes;
       expect(reset?.type === 'reset' && reset.nodes.map((x) => x.id)).toEqual(['dir:A', 'dir:B', 'dir:C']);
       expect(explode?.type === 'explode' && explode.parentId).toBe('dir:A');
+      expect(explode?.type === 'explode' && explode.parent.label).toBe('dir:A');
       expect(explode?.type === 'explode' && explode.nodes.map((x) => x.id)).toEqual(['a1', 'a2']);
       expect(explode?.type === 'explode' && explode.edges).toHaveLength(3);
       if (collapse?.type !== 'collapse') throw new Error('expected a collapse');
       expect(collapse.node.id).toBe('dir:A');
       expect([...collapse.removedIds].sort()).toEqual(['a1', 'a2']);
       expect(collapse.restoredEdges).toEqual([e('dir:A', 'dir:B', 3)]);
+    });
+  });
+
+  describe('show', () => {
+    it('loads once per project and revision, reloads (keeping the view) when only the revision changes', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.show(P, 1);
+      await store.expand('dir:A');
+      store.select('a1');
+      await store.show(P, 1);
+      expect(api.codeGraphOverview).toHaveBeenCalledTimes(1);
+
+      await store.show(P, 2);
+      expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+      expect([...store.expanded()]).toEqual(['dir:A']);
+      expect(store.selectedId()).toBe('a1');
+    });
+
+    it('starts from scratch for another project and after reset, and retries after an error', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.show(P, 1);
+      await store.expand('dir:A');
+      await store.show('/ws/other', 1);
+      expect(store.expanded().size).toBe(0);
+      store.reset();
+      await store.show('/ws/other', 1);
+      expect(api.codeGraphOverview).toHaveBeenCalledTimes(3);
+
+      api.codeGraphOverview.mockRejectedValueOnce(new Error('boom'));
+      await store.show(P, 5);
+      expect(store.error()).toBe('boom');
+      await store.show(P, 5);
+      expect(store.error()).toBeNull();
+      expect(ids(store)).toEqual(['dir:A', 'dir:B', 'dir:C']);
+    });
+  });
+
+  describe('ownerOf', () => {
+    it('returns the expansion a visible node came from, or null for root entries', async () => {
+      const store = setup(makeApi(smallGraph()));
+      await store.loadOverview(P);
+      await store.expand('dir:A');
+      await store.expand('a1');
+      expect(store.ownerOf('s1')).toBe('a1');
+      expect(store.ownerOf('a2')).toBe('dir:A');
+      expect(store.ownerOf('dir:B')).toBeNull();
+      store.collapse('dir:A');
+      expect(store.ownerOf('a2')).toBeNull();
+    });
+  });
+
+  describe('reload', () => {
+    it('reloads the overview, re-opens the expansions that still exist in order and keeps the selection', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      await store.expand('dir:A');
+      await store.expand('a1');
+      store.select('s1');
+      api.codeGraphExpand.mockClear();
+
+      await store.reload(P);
+
+      expect(api.codeGraphOverview).toHaveBeenCalledTimes(2);
+      expect(api.codeGraphExpand.mock.calls.map((c) => c[1])).toEqual(['dir:A', 'a1']);
+      expect([...store.expanded()]).toEqual(['dir:A', 'a1']);
+      expect(store.selectedId()).toBe('s1');
+    });
+
+    it('drops the selection and the expansions whose nodes no longer exist', async () => {
+      const graph = smallGraph();
+      const api = makeApi(graph);
+      const store = setup(api);
+      await store.loadOverview(P);
+      await store.expand('dir:A');
+      store.select('a2');
+      api.codeGraphOverview.mockImplementationOnce(() => Promise.resolve(page([n('dir:B'), n('dir:C', { childCount: 0 })])));
+      api.codeGraphExpand.mockClear();
+
+      await store.reload(P);
+
+      expect(api.codeGraphExpand).not.toHaveBeenCalled();
+      expect(ids(store)).toEqual(['dir:B', 'dir:C']);
+      expect(store.selectedId()).toBeNull();
+    });
+
+    it('stops restoring when the project changes meanwhile', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      await store.expand('dir:A');
+      store.select('a1');
+      const slow = deferred<GraphViewPage>();
+      api.codeGraphOverview.mockImplementationOnce(() => slow.promise);
+      api.codeGraphExpand.mockClear();
+
+      const reloading = store.reload(P);
+      store.reset();
+      slow.resolve(smallGraph().overview());
+      await reloading;
+
+      expect(api.codeGraphExpand).not.toHaveBeenCalled();
+      expect(store.nodes()).toEqual([]);
+      expect(store.selectedId()).toBeNull();
     });
   });
 });

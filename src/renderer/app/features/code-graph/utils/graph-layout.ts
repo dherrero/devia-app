@@ -29,7 +29,10 @@ export interface FcoseLayoutOptions {
   numIter: number;
 }
 
-export const LOCAL_ANIMATION_MS = 250;
+/** Children fly out of their parent in this time (the spec allows up to 300 ms). */
+export const BURST_ANIMATION_MS = 250;
+/** Room around a node for its label below it and some air. */
+export const BURST_GAP = 24;
 const NODE_REPULSION = 6500;
 
 export function globalLayoutOptions(): FcoseLayoutOptions {
@@ -40,7 +43,8 @@ export function globalLayoutOptions(): FcoseLayoutOptions {
     // The first frame is a fresh graph: animating ~1 s of layout from random spots is noise, not context.
     animate: false,
     animationDuration: 0,
-    fit: true,
+    // fcose's own fit zooms a tiny overview to the 4x maximum; the renderer fits with fitViewport() instead.
+    fit: false,
     padding: 40,
     packComponents: false,
     nodeDimensionsIncludeLabels: false,
@@ -51,22 +55,31 @@ export function globalLayoutOptions(): FcoseLayoutOptions {
   };
 }
 
-export function localLayoutOptions(childCount: number, motion: MotionPreference): FcoseLayoutOptions {
-  const n = Math.max(1, childCount);
+/** Fitting never zooms in past this: a two-directory overview would otherwise fill the screen with two giant tiles. */
+export const FIT_MAX_ZOOM = 1.5;
+const FIT_MIN_ZOOM = 0.05;
+
+export interface Box {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+export interface Viewport {
+  zoom: number;
+  pan: Point;
+}
+
+/** The viewport that shows `box` centred in a `view` with `padding`, zoom clamped to [0.05, FIT_MAX_ZOOM]. */
+export function fitViewport(box: Box, view: { width: number; height: number }, padding: number): Viewport {
+  const w = Math.max(1, box.x2 - box.x1);
+  const h = Math.max(1, box.y2 - box.y1);
+  const raw = Math.min((view.width - 2 * padding) / w, (view.height - 2 * padding) / h);
+  const zoom = Math.min(FIT_MAX_ZOOM, Math.max(FIT_MIN_ZOOM, Number.isFinite(raw) ? raw : FIT_MAX_ZOOM));
   return {
-    name: 'fcose',
-    quality: 'draft',
-    randomize: true,
-    animate: !motion.reducedMotion,
-    animationDuration: motion.reducedMotion ? 0 : LOCAL_ANIMATION_MS,
-    fit: false,
-    padding: 0,
-    packComponents: false,
-    nodeDimensionsIncludeLabels: false,
-    nodeRepulsion: NODE_REPULSION,
-    idealEdgeLength: Math.round(Math.min(140, 40 + 4 * Math.sqrt(n))),
-    edgeElasticity: 0.45,
-    numIter: 1000,
+    zoom,
+    pan: { x: (view.width - zoom * (box.x1 + box.x2)) / 2, y: (view.height - zoom * (box.y1 + box.y2)) / 2 },
   };
 }
 
@@ -165,4 +178,71 @@ export class LayoutQueue {
     };
     layout.done.then(settle, settle);
   }
+}
+
+export interface Burst {
+  positions: Point[];
+  /** Radius of the circle the children (with their size and gap) occupy. */
+  radius: number;
+  /** How far every other node moves away from the centre so nothing is covered. */
+  shift: number;
+  duration: number;
+}
+
+/**
+ * Where an explosion puts its children: a sunflower spiral around the parent,
+ * spaced by the largest child plus BURST_GAP (the spiral's nearest neighbours sit
+ * ≥ 0.75 × spacing apart), and how far the neighbours must move out of its way.
+ * Deterministic and O(n), so exploding never waits for a force layout.
+ */
+export function planBurst(
+  center: Point,
+  sizes: readonly number[],
+  originRadius: number,
+  motion: MotionPreference = { reducedMotion: false },
+): Burst {
+  const duration = motion.reducedMotion ? 0 : BURST_ANIMATION_MS;
+  if (sizes.length === 0) return { positions: [], radius: originRadius, shift: 0, duration };
+  const maxSize = Math.max(...sizes);
+  const positions = seedChildPositions(center, sizes.length, (maxSize + BURST_GAP) / 0.75);
+  const far = Math.max(...positions.map((p) => Math.hypot(p.x - center.x, p.y - center.y)));
+  const radius = far + maxSize / 2 + BURST_GAP;
+  return { positions, radius, shift: Math.max(0, radius - originRadius), duration };
+}
+
+/**
+ * Radial displacement of a node at distance `d` from a burst: the whole `shift`
+ * up to `reach`, then fading out (e-fold every 2 × shift). Its slope stays ≥ 0.5,
+ * so the order along a ray is kept (nothing lands on a neighbour) and far
+ * nodes barely move, so repeated explosions do not inflate the graph.
+ */
+function displaced(d: number, shift: number, reach: number): number {
+  if (shift <= 0) return d;
+  return d <= reach ? d + shift : d + shift * Math.exp(-(d - reach) / (2 * shift));
+}
+
+function alongRay(center: Point, p: Point, d: number, target: number): Point {
+  if (d < 1e-6) return { x: center.x + target, y: center.y };
+  const k = target / d;
+  return { x: center.x + (p.x - center.x) * k, y: center.y + (p.y - center.y) * k };
+}
+
+export function pushAway(center: Point, p: Point, shift: number, reach: number): Point {
+  const d = Math.hypot(p.x - center.x, p.y - center.y);
+  return alongRay(center, p, d, displaced(d, shift, reach));
+}
+
+/** The inverse of pushAway, except that a node never ends closer than `minDistance` to the centre. */
+export function pullBack(center: Point, p: Point, shift: number, reach: number, minDistance: number): Point {
+  const d = Math.hypot(p.x - center.x, p.y - center.y);
+  let lo = Math.max(0, d - shift);
+  let hi = d;
+  for (let i = 0; i < 40 && hi - lo > 1e-4; i++) {
+    const mid = (lo + hi) / 2;
+    if (displaced(mid, shift, reach) < d) lo = mid;
+    else hi = mid;
+  }
+  const original = (lo + hi) / 2;
+  if (original < minDistance) return p;
+  return alongRay(center, p, d, original);
 }

@@ -33,7 +33,13 @@ export interface GraphViewNotice {
 /** Deltas for a renderer, emitted synchronously after each state change. */
 export type GraphViewChange =
   | { type: 'reset'; nodes: readonly ViewNode[]; edges: readonly GraphViewEdge[] }
-  | { type: 'explode'; parentId: string; nodes: readonly ViewNode[]; edges: readonly GraphViewEdge[] }
+  | {
+    type: 'explode';
+    parentId: string;
+    parent: GraphOverviewNode;
+    nodes: readonly ViewNode[];
+    edges: readonly GraphViewEdge[];
+  }
   | {
     type: 'collapse';
     id: string;
@@ -123,6 +129,8 @@ export class GraphViewStore {
   readonly empty = this._empty.asReadonly();
 
   private project: string | null = null;
+  /** The graph revision last requested through show() (opaque: changes when the graph on disk changed). */
+  private revision: string | number | undefined = undefined;
   private generation = 0;
   private seq = 0;
   private clock = 0;
@@ -132,11 +140,31 @@ export class GraphViewStore {
   /** Child id → the expanded node it came from. */
   private parentOf = new Map<string, string>();
   private inflight = new Map<string, Promise<void>>();
+  private pendingLoad: Promise<void> | null = null;
   private listeners = new Set<(change: GraphViewChange) => void>();
 
   onChange(cb: (change: GraphViewChange) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
+  }
+
+  /**
+   * Shows `project` as of `revision`: a no-op when it is already shown (or
+   * loading), a reload that keeps the view when only the revision changed, a
+   * fresh load otherwise. A failed load is retried.
+   */
+  show(project: string, revision?: string | number): Promise<void> {
+    if (this.project === project && this.revision === revision && this._error() === null) {
+      return this.pendingLoad ?? Promise.resolve();
+    }
+    const keepView = this.project === project && this.nodeMap.size > 0;
+    const run = keepView ? this.reload(project) : this.loadOverview(project);
+    this.revision = revision;
+    const pending = run.finally(() => {
+      if (this.pendingLoad === pending) this.pendingLoad = null;
+    });
+    this.pendingLoad = pending;
+    return pending;
   }
 
   async loadOverview(project: string): Promise<void> {
@@ -202,7 +230,38 @@ export class GraphViewStore {
     if (this.nodeMap.has(id)) this.select(id);
   }
 
+  /**
+   * Reloads after the graph changed on disk (reindex/update), re-opening the
+   * expansions whose nodes still exist (parents before children: map order)
+   * and keeping the selection when its node survived.
+   */
+  async reload(project: string): Promise<void> {
+    const selected = this._selectedId();
+    const expanded = [...this.expansions.keys()];
+    const loading = this.loadOverview(project);
+    const token = this.generation;
+    await loading;
+    for (const id of expanded) {
+      if (token !== this.generation) return;
+      if (this.nodeMap.has(id) && !this.expansions.has(id)) await this.expand(id);
+    }
+    if (token !== this.generation) return;
+    if (selected !== null && this.nodeMap.has(selected)) this.select(selected);
+  }
+
+  /** The expanded node a visible node came from; null for root entries. */
+  ownerOf(id: string): string | null {
+    return this.parentOf.get(id) ?? null;
+  }
+
+  /** The node an expansion replaced (it is off screen while expanded). */
+  expandedNode(id: string): GraphOverviewNode | null {
+    return this.expansions.get(id)?.node ?? null;
+  }
+
   reset(): void {
+    this.revision = undefined;
+    this.pendingLoad = null;
     this.clear();
     this.emit({ type: 'reset', nodes: [], edges: [] });
   }
@@ -322,7 +381,7 @@ export class GraphViewStore {
     this.touch(parent.id);
     const edges = this.addEdges(page.edges);
     if (page.edgesTruncated) this._edgesTruncated.set(true);
-    this.emit({ type: 'explode', parentId: parent.id, nodes: children, edges });
+    this.emit({ type: 'explode', parentId: parent.id, parent, nodes: children, edges });
   }
 
   private collapseInternal(id: string): boolean {

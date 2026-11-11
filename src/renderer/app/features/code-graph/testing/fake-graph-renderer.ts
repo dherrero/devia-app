@@ -63,6 +63,10 @@ export class FakeGraphRenderer implements GraphRenderer {
     this.calls.push(['zoomBy', factor]);
   }
 
+  panBy(dx: number, dy: number): void {
+    this.calls.push(['panBy', dx, dy]);
+  }
+
   resize(): void {
     this.calls.push(['resize']);
   }

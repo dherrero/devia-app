@@ -47,11 +47,11 @@
     }
     @case ('graph') {
       <ds-cg-toolbar />
-      <!-- Placeholder: T-510 mounts the graph view here. -->
-      <section class="cg-slot" data-testid="cg-graph-slot">
-        <dv-icon class="cg-slot-icon" [icon]="LucideNetwork" size="lg" />
-        <p class="cg-message">{{ 'codeGraph.state.' + graph.status()?.state | translate }}</p>
-      </section>
+      <div class="cg-graph">
+        <ds-graph-canvas [project]="graphProject()" [revision]="revision()" />
+        <!-- T-511 mounts the node detail panel here. -->
+        <aside class="cg-side" data-testid="cg-side"></aside>
+      </div>
     }
   }
 </div>
