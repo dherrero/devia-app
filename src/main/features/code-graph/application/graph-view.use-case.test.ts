@@ -775,10 +775,10 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
   const COLD_RUNS = 5;
 
   /** Best time of `op` on a fresh use case (no cached derivatives) per run; only `op` is timed. */
-  const coldBest = <T>(target: Env, op: (fresh: GraphViewUseCase) => T): { ms: number; value: T } => {
+  const coldBest = <T>(target: Env, op: (fresh: GraphViewUseCase) => T, runs = COLD_RUNS): { ms: number; value: T } => {
     let best = Infinity;
     let value: T | undefined;
-    for (let i = 0; i < COLD_RUNS; i++) {
+    for (let i = 0; i < runs; i++) {
       const fresh = new GraphViewUseCase({ store: target.store });
       const start = performance.now();
       value = op(fresh);
@@ -904,7 +904,8 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     expect(r.value.nodes).toHaveLength(GRAPH_EXPAND_LIMIT);
     expect(r.value.edges.length).toBeGreaterThan(0);
     expect(r.ms).toBeLessThan(perfBudget(200));
-    const cold = coldBest(env, (fresh) => fresh.expand(env.project, 'dir:big', { visibleIds }));
+    // Same starvation as above under the parallel suite: sample as many cold runs as warm ones.
+    const cold = coldBest(env, (fresh) => fresh.expand(env.project, 'dir:big', { visibleIds }), 20);
     timings['expand800Cold'] = cold.ms;
     expect(cold.value.nodes).toHaveLength(GRAPH_EXPAND_LIMIT);
     expect(cold.ms).toBeLessThan(perfBudget(200));
