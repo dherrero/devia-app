@@ -10,7 +10,8 @@ import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome
 import { postIndex } from './post-index';
 import { CONFIG_HASHES_KEY, isResolutionConfig, resolutionConfigHashes } from './resolution-config';
 
-export const EXTRACTION_VERSION = 1;
+/** Bump when extractors change what they store: v2 adds receiver type facts (S-44 T-515). */
+export const EXTRACTION_VERSION = 2;
 export const GRAPH_DB_FILE = 'graph.db';
 export const BUILDING_DB_FILE = 'graph.db.building';
 

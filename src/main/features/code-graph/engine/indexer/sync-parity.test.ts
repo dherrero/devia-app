@@ -115,6 +115,53 @@ describe('sync parity with a full reindex', () => {
     await syncAndCompare('bring the Go method back');
   });
 
+  it('matches a fresh index when receiver types change in files the caller never imports (T-515)', async () => {
+    const RECEIVERS: Record<string, string> = {
+      'src/models/user.ts': 'export class User {\n  hello(): void {}\n}\nexport class Other {\n  hello(): void {}\n}\n',
+      'src/models/index.ts': "export { User, Other } from './user';\n",
+      'src/user-service.ts':
+        "import { User } from './models';\nexport class UserService {\n  find(): User {\n    return new User();\n  }\n}\n",
+      'src/repo.ts': 'export class Repo<T> {\n  get(): T {\n    throw new Error();\n  }\n}\n',
+      'src/app.ts':
+        "import { UserService } from './user-service';\nimport { Repo } from './repo';\nimport type { User } from './models';\nexport class App {\n  private repo = new Repo<User>();\n  constructor(private readonly users: UserService) {}\n  run(): void {\n    this.users.find().hello();\n    const u = this.repo.get();\n    u.hello();\n  }\n}\n",
+    };
+    project.writeAll(RECEIVERS);
+    await fullIndex(project.root, dataDir);
+    const initial = snapshotGraph(dataDir);
+    // find, get and hello twice: both receivers resolved.
+    expect(initial.edges.filter((e) => e.includes('"kind":"calls"'))).toHaveLength(4);
+
+    project.write('src/models/index.ts', "export { Other } from './user';\n");
+    await syncAndCompare('a re-export the declaring file relies on disappears');
+
+    project.write('src/models/index.ts', RECEIVERS['src/models/index.ts'] ?? '');
+    await syncAndCompare('the re-export comes back');
+
+    project.write('src/repo.ts', 'export class Repo<T> {\n  get() {\n    throw new Error();\n  }\n}\n');
+    await syncAndCompare('a generic return type is dropped');
+
+    project.write('src/repo.ts', RECEIVERS['src/repo.ts'] ?? '');
+    await syncAndCompare('the generic return type comes back');
+
+    project.write('src/user-service.ts', (RECEIVERS['src/user-service.ts'] ?? '').replace('find(): User', 'find(): Other').replace("{ User }", '{ Other, User }'));
+    await syncAndCompare('a declared return type changes');
+
+    project.write('src/models/user.ts', 'export class User {\n  hi(): void {}\n}\nexport class Other {\n  bye(): void {}\n}\n');
+    await syncAndCompare('the target methods are renamed');
+
+    // The caller reaches bus.ts only through a re-export and has no edge into it: only the
+    // recorded receiver dependencies can tell that its field types matter.
+    project.writeAll({
+      'src/log.ts': 'export class Logger {\n  info(): void {}\n}\nexport class Audit {\n  info(): void {}\n}\n',
+      'src/bus.ts': "import { Logger, Audit } from './log';\nexport class Bus {\n  readonly sink: Logger = new Logger();\n}\n",
+      'src/hub.ts': "export { Bus } from './bus';\n",
+      'src/main.ts': "import { Bus } from './hub';\nexport function main(bus: Bus): void {\n  bus.sink.info();\n}\n",
+    });
+    await syncAndCompare('add a field-typed receiver chain');
+    project.write('src/bus.ts', (project.read('src/bus.ts')).replace('sink: Logger = new Logger()', 'sink: Audit = new Audit()'));
+    await syncAndCompare('the field type changes in a file the caller does not import');
+  });
+
   it('matches a fresh index after each of 30 seeded random edits over TS, Python and a Go package', async () => {
     const rand = mulberry32(0x5eed);
     const pick = <T>(items: readonly T[]): T => {

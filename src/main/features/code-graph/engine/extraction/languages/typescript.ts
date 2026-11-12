@@ -15,6 +15,8 @@ import {
   type LanguageExtractor,
   type SymbolInit,
 } from '../extractor';
+import { FACT_RETURNS, FACT_TYPE, FACT_TYPE_PARAMS, FIELD_FACT_PREFIX } from '../type-facts';
+import { FUNCTION_LIKE, LocalScopes, typeFact, typeParamsFact } from './typescript-types';
 
 // Adapted from codegraph (MIT), src/extraction/languages/typescript.ts and javascript.ts.
 //
@@ -103,6 +105,8 @@ interface Ctx {
   exportedLocals: Map<string, boolean>;
   /** Syntax node id → the symbol it declares (or whose members it holds). */
   owners: Map<number, GraphNode>;
+  /** Locals and parameters in scope, for receiver type facts (typescript-types.ts). */
+  locals: LocalScopes;
 }
 
 function createExtractor(language: CodeGraphLanguage, extensions: string[]): LanguageExtractor {
@@ -111,10 +115,11 @@ function createExtractor(language: CodeGraphLanguage, extensions: string[]): Lan
     extensions,
     extract(relPath: string, source: string, tree: Tree): FileExtraction {
       const b = new ExtractionBuilder(relPath, language, tree.rootNode);
-      const ctx: Ctx = { source, b, exportedLocals: new Map(), owners: new Map() };
+      const ctx: Ctx = { source, b, exportedLocals: new Map(), owners: new Map(), locals: new LocalScopes(source) };
       try {
         walk(tree.rootNode, (node) => {
           b.noteSyntaxError(node);
+          declareBindings(node, ctx);
           return HANDLERS[node.type]?.(node, ctx);
         });
         markExportedLocals(ctx);
@@ -152,7 +157,9 @@ function declare(node: Node, kind: NodeKind, ctx: Ctx): boolean {
   };
   addModifiers(init, node, nameNode, fnValue);
   addDocAndDecorators(init, node, wrapper, ctx);
-  if (exportDefault) init.metadata = { exportDefault: true };
+  const facts = declarationFacts(node, kind, fnValue, ctx);
+  if (exportDefault) facts['exportDefault'] = true;
+  if (Object.keys(facts).length > 0) init.metadata = facts;
 
   const symbol = b.addSymbol(init, parent);
   ctx.owners.set(node.id, symbol);
@@ -168,7 +175,10 @@ function declare(node: Node, kind: NodeKind, ctx: Ctx): boolean {
 function visitVariables(node: Node, ctx: Ctx): boolean {
   const { b, source } = ctx;
   const parent = parentSymbol(node, ctx, false);
-  if (!parent) return true;
+  if (!parent) {
+    declareLocals(node, ctx);
+    return true;
+  }
   const wrapper = statementOf(node);
   const isConst = node.children.some((c) => c?.type === 'const');
   for (const declarator of node.namedChildren) {
@@ -192,6 +202,17 @@ function visitVariables(node: Node, ctx: Ctx): boolean {
       isExported: wrapper.type === 'export_statement',
     };
     if (fn && hasToken(fn, 'async')) init.isAsync = true;
+    const facts: RefMetadata = {};
+    if (fn) {
+      const returns = typeFact(fn.childForFieldName('return_type'), source);
+      if (returns) facts[FACT_RETURNS] = returns;
+      const params = typeParamsFact(fn, source);
+      if (params) facts[FACT_TYPE_PARAMS] = params;
+    } else if (!classValue) {
+      const type = typeFact(declarator.childForFieldName('type'), source) ?? ctx.locals.exprFact(value);
+      if (type) facts[FACT_TYPE] = type;
+    }
+    if (Object.keys(facts).length > 0) init.metadata = facts;
     const doc = jsDocOf(wrapper, source);
     if (doc) init.docstring = doc;
     const symbol = b.addSymbol(init, parent);
@@ -316,15 +337,67 @@ function visitCall(node: Node, ctx: Ctx): boolean {
     return true;
   }
   const name = calleeName(callee, source);
-  if (name) b.addRef(b.scopeAt(node).node.id, name, 'calls', node);
+  if (name) b.addRef(b.scopeAt(node).node.id, name, 'calls', node, ctx.locals.receiverMetadata(callee));
   return true;
 }
 
 function visitNew(node: Node, ctx: Ctx): boolean {
   const ctor = node.childForFieldName('constructor');
   const name = ctor ? calleeName(ctor, ctx.source) : undefined;
-  if (name) ctx.b.addRef(ctx.b.scopeAt(node).node.id, name, 'instantiates', node);
+  if (name && ctor) ctx.b.addRef(ctx.b.scopeAt(node).node.id, name, 'instantiates', node, ctx.locals.receiverMetadata(ctor));
   return true;
+}
+
+/** Receiver facts a declaration carries: generics, declared return type, a property's type. */
+function declarationFacts(node: Node, kind: NodeKind, fnValue: Node | undefined, ctx: Ctx): RefMetadata {
+  const facts: RefMetadata = {};
+  const { source } = ctx;
+  const params = typeParamsFact(fnValue ?? node, source);
+  if (params) facts[FACT_TYPE_PARAMS] = params;
+  if (kind === 'function' || kind === 'method' || kind === 'component') {
+    const returns = typeFact((fnValue ?? node).childForFieldName('return_type'), source);
+    if (returns) facts[FACT_RETURNS] = returns;
+  } else if (kind === 'property') {
+    const type = typeFact(node.childForFieldName('type'), source) ?? ctx.locals.exprFact(node.childForFieldName('value'));
+    if (type) facts[FACT_TYPE] = type;
+  }
+  return facts;
+}
+
+/**
+ * Names a node brings into lexical scope before its children are walked: parameters (and the
+ * class fields that constructor parameter properties declare), catch and for-in/of variables.
+ */
+function declareBindings(node: Node, ctx: Ctx): void {
+  if (FUNCTION_LIKE.has(node.type)) {
+    const props = ctx.locals.declareParameters(node);
+    if (props.length === 0) return;
+    const cls = node.parent?.parent ? ctx.owners.get(node.parent.parent.id) : undefined;
+    if (!cls) return;
+    for (const p of props) if (p.fact) cls.metadata = { ...cls.metadata, [`${FIELD_FACT_PREFIX}${p.name}`]: p.fact };
+  } else if (node.type === 'catch_clause') {
+    const param = node.childForFieldName('parameter');
+    if (param) ctx.locals.declarePattern(param, typeFact(node.childForFieldName('type'), ctx.source), node);
+  } else if (node.type === 'for_in_statement' && node.childForFieldName('kind')) {
+    const left = node.childForFieldName('left');
+    if (left) ctx.locals.declarePattern(left, undefined, node);
+  }
+}
+
+/** `const/let/var` that are not symbols: locals, with the type their declaration says. */
+function declareLocals(node: Node, ctx: Ctx): void {
+  const isVar = node.type === 'variable_declaration';
+  let scope: Node | null = node.parent;
+  if (isVar) while (scope && !FUNCTION_LIKE.has(scope.type) && scope.type !== 'program') scope = scope.parent;
+  if (!scope) return;
+  for (const declarator of node.namedChildren) {
+    if (declarator?.type !== 'variable_declarator') continue;
+    const nameNode = declarator.childForFieldName('name');
+    const value = declarator.childForFieldName('value');
+    if (!nameNode || (value && requireSpecifier(value, ctx.source) !== undefined)) continue;
+    const fact = typeFact(declarator.childForFieldName('type'), ctx.source) ?? ctx.locals.exprFact(value);
+    ctx.locals.declarePattern(nameNode, fact, scope);
+  }
 }
 
 function visitJsx(node: Node, ctx: Ctx): boolean {

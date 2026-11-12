@@ -273,6 +273,10 @@ async function planSync(
  * the resolvers search beyond the directory: TS `x.ts` vs `x/index.ts`, Go/Java packages by
  * directory, Java FQNs and Python roots by path suffix, tsconfig `paths` fallbacks to any
  * folder. Hence same directory, the `x/` subtree, and the same stem anywhere.
+ * (5) Receiver type inference (`resolution_deps`): files whose resolution read facts or import
+ * bindings of a changed file OR of a dependent from rules 1-4 (its bindings may move), or looked
+ * up a name the changed files had or now have. One level is enough: a file that only depends
+ * through (5) keeps its own bindings, which is all another file can read from it.
  */
 function findDependents(
   q: GraphQueries,
@@ -324,6 +328,9 @@ function findDependents(
     for (const f of q.referencingFiles([...near].map((f) => makeNodeId(f, 'file', f, 1)))) deps.add(f);
   }
 
+  for (const f of q.filesDependingOn('file', [...paths, ...deps])) deps.add(f);
+  for (const f of q.filesDependingOn('name', [...names])) deps.add(f);
+
   for (const p of paths) deps.delete(p);
   return deps;
 }
@@ -339,6 +346,7 @@ function applyPlan(db: GraphDb, q: GraphQueries, root: string, plan: SyncPlan): 
     for (const p of changed.keys()) q.deleteFile(p);
     q.deleteEdgesOwnedBy(q.nodeRefsInFiles(depPaths).map((n) => n.id));
     q.deleteUnresolvedInFiles(depPaths);
+    q.deleteResolutionDepsOf(depPaths);
     for (const outcome of dependents.values()) {
       q.insertEdges(outcome.extraction.edges);
       q.insertUnresolved(outcome.extraction.unresolved);
