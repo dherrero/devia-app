@@ -5,7 +5,7 @@ import type { CodeGraphLanguage, IndexProgress } from '../../../../../shared/dom
 import { openGraphDb, type GraphDb } from '../db/connection';
 import { GraphQueries } from '../db/queries';
 import { acquireWriterLock } from '../db/writer-lock';
-import { discoverFiles } from '../discovery/discover';
+import { discoverFiles, type SkipReason } from '../discovery/discover';
 import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome } from './extract-file';
 import { postIndex } from './post-index';
 import { CONFIG_HASHES_KEY, isResolutionConfig, resolutionConfigHashes } from './resolution-config';
@@ -23,11 +23,21 @@ const SWAP_ATTEMPTS = 8;
 const SWAP_BASE_DELAY_MS = 100;
 const SWAP_MAX_DELAY_MS = 800;
 
+/** Why a source file is not in the graph: a discovery rule, or extraction could not read or store it. */
+export type IndexSkipReason = Exclude<SkipReason, 'ignored'> | 'parse-failed';
+
+export interface SkippedFile {
+  path: string;
+  reason: IndexSkipReason;
+}
+
 export interface IndexResult {
   nodes: number;
   edges: number;
   files: number;
   skipped: number;
+  /** One entry per skipped path (`skipped` is its length); ignored paths are not listed. */
+  skippedFiles: SkippedFile[];
   durationMs: number;
   languages: Partial<Record<CodeGraphLanguage, number>>;
 }
@@ -160,7 +170,8 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
     const discovered = await discoverFiles(root, signal ? { ...discoverOpts, signal } : discoverOpts);
     throwIfAborted(signal);
     filesTotal = discovered.files.length;
-    let skipped = discovered.skipped.filter((s) => s.reason !== 'ignored').length;
+    const skippedFiles: SkippedFile[] = [];
+    for (const s of discovered.skipped) if (s.reason !== 'ignored') skippedFiles.push({ path: s.path, reason: s.reason });
 
     db = openGraphDb(buildingPath);
     const q = new GraphQueries(db);
@@ -181,17 +192,17 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
         for (const outcome of batch) {
           filesDone++;
           if (outcome.kind === 'unreadable') {
-            skipped++;
+            skippedFiles.push({ path: outcome.path, reason: 'unreadable' });
           } else if (outcome.kind === 'failed') {
             q.upsertFile(outcome.row);
-            skipped++;
+            skippedFiles.push({ path: outcome.row.path, reason: 'parse-failed' });
           } else if (writeExtraction(writeDb, q, outcome)) {
             indexed++;
             nodes += outcome.extraction.nodes.length;
             edges += outcome.extraction.edges.length;
             languages[outcome.row.language] = (languages[outcome.row.language] ?? 0) + 1;
           } else {
-            skipped++;
+            skippedFiles.push({ path: outcome.row.path, reason: 'parse-failed' });
           }
         }
       });
@@ -232,7 +243,8 @@ export async function indexProject(opts: IndexProjectOptions): Promise<IndexResu
       nodes: counts.nodes,
       edges: counts.edges,
       files: indexed,
-      skipped,
+      skipped: skippedFiles.length,
+      skippedFiles,
       durationMs: Date.now() - started,
       languages,
     };

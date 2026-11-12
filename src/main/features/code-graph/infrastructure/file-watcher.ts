@@ -33,6 +33,18 @@ export interface FileWatcherOptions {
   onDegraded?: () => void;
 }
 
+/** The OS ran out of watch handles (inotify limit, fd limit): retrying more directories only fails again. */
+const OUT_OF_WATCHES = new Set(['ENOSPC', 'EMFILE', 'ENFILE']);
+
+export class WatchRootGoneError extends Error {
+  readonly code = 'WATCH_ROOT_GONE';
+
+  constructor(root: string) {
+    super(`The watched folder no longer exists: ${root}`);
+    this.name = 'WatchRootGoneError';
+  }
+}
+
 const defaultWatch: WatchFn = (dir, opts, listener) =>
   fs.watch(dir, { recursive: opts.recursive }, (event, filename) => listener(event, filename));
 
@@ -120,22 +132,48 @@ export function createFileWatcher(
     }
   };
 
+  const closeAll = (): void => {
+    for (const w of watchers.values()) {
+      try {
+        w.close();
+      } catch {
+        // already closed
+      }
+    }
+    watchers.clear();
+  };
+
+  // Deleting the project folder gives no watcher error (macOS reports a plain change of the
+  // root's own name), and a recreated folder is a new inode nobody watches: say so once and stop.
+  let rootGone = false;
+  const checkRoot = (): boolean => {
+    if (rootGone) return false;
+    if (fs.existsSync(root)) return true;
+    rootGone = true;
+    reportError(new WatchRootGoneError(root));
+    markDegraded();
+    closeAll();
+    return false;
+  };
+
   const watchDir = (dir: string): void => {
-    if (closed || watchers.has(dir)) return;
+    if (closed || degraded || watchers.has(dir)) return;
     if (watchers.size >= maxDirs) {
       markDegraded();
       return;
     }
     try {
       attach(dir, false, (_event, filename) => {
-        if (closed || filename === null) return;
+        if (closed || rootGone || filename === null) return;
         const abs = path.join(dir, filename.toString());
         const rel = path.relative(root, abs).replace(/\\/g, '/');
+        if (dir === root && !checkRoot()) return;
         accept(rel);
         if (rel !== '' && !ignored(rel, true)) walkIfDir(abs);
       });
     } catch (err) {
       reportError(err);
+      if (OUT_OF_WATCHES.has((err as { code?: unknown }).code as string)) markDegraded();
     }
   };
 
@@ -164,8 +202,11 @@ export function createFileWatcher(
 
   try {
     attach(root, true, (_event, filename) => {
-      if (closed || filename === null) return;
-      accept(toRel(root, filename.toString()));
+      if (closed || rootGone || filename === null) return;
+      const rel = toRel(root, filename.toString());
+      // Only a top-level name can be the root itself; deeper events skip the stat.
+      if (!rel.includes('/') && !checkRoot()) return;
+      accept(rel);
     });
   } catch {
     walkIfDir(root);
@@ -182,14 +223,7 @@ export function createFileWatcher(
       if (timer !== undefined) clearTimer(timer);
       timer = undefined;
       pending = new Set();
-      for (const w of watchers.values()) {
-        try {
-          w.close();
-        } catch {
-          // already closed
-        }
-      }
-      watchers.clear();
+      closeAll();
     },
   };
 }

@@ -77,7 +77,7 @@ function setup(over: Partial<CodeGraphUseCaseDeps> = {}) {
     runIndex: (o): IndexRun => ({
       promise: Promise.resolve().then(() => {
         writeGraph(o.dataDir);
-        return { nodes: 0, edges: 0, files: 1, skipped: 0, durationMs: 1, languages: {} };
+        return { nodes: 0, edges: 0, files: 1, skipped: 0, skippedFiles: [], durationMs: 1, languages: {} };
       }),
       cancel: () => undefined,
     }),
@@ -308,7 +308,7 @@ describe('CodeGraphUseCase.watch', () => {
       runIndex: (o): IndexRun => ({
         promise: g.promise.then(() => {
           writeGraph(o.dataDir);
-          return { nodes: 0, edges: 0, files: 1, skipped: 0, durationMs: 1, languages: {} };
+          return { nodes: 0, edges: 0, files: 1, skipped: 0, skippedFiles: [], durationMs: 1, languages: {} };
         }),
         cancel: () => undefined,
       }),

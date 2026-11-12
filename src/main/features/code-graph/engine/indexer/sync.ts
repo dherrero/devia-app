@@ -15,7 +15,7 @@ import { makeNodeId } from '../extraction/node-id';
 import { fileStem } from '../resolution/resolver';
 import { detectChanges, type ChangeSet } from './change-detection';
 import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome } from './extract-file';
-import { EXTRACTION_VERSION, GRAPH_DB_FILE } from './orchestrator';
+import { EXTRACTION_VERSION, GRAPH_DB_FILE, removeBuildingFiles } from './orchestrator';
 import { resolveGraph } from './post-index';
 import { isResolutionConfig, resolutionConfigHashes, sameConfigHashes, storedConfigHashes } from './resolution-config';
 
@@ -84,6 +84,10 @@ export async function syncProject(opts: SyncOptions): Promise<SyncResult> {
   if (!fs.existsSync(dbPath)) throw new GraphNotFoundError(dataDir);
   const lock = acquireWriterLock(dataDir, 'sync');
   if (!lock) return { ...EMPTY, skippedBusy: true };
+  // Holding the writer lock means no full index is building: a `.building` file is the orphan of
+  // an index process that was killed (no finally ran), possibly hundreds of MB. Since the app's
+  // first writer after a restart is usually a sync, it is removed here as well as by the next index.
+  removeBuildingFiles(dataDir);
 
   const started = Date.now();
   const timeLeft = (): boolean => opts.deadlineMs === undefined || Date.now() - started < opts.deadlineMs;
@@ -207,7 +211,7 @@ async function planSync(
       for (const [p, kind] of changed) {
         if (kind === 'deleted' || outcomes.has(p)) continue;
         const file = await locate(p);
-        const outcome: FileOutcome = file ? await extractFile(file, pool) : { kind: 'unreadable' };
+        const outcome: FileOutcome = file ? await extractFile(file, pool) : { kind: 'unreadable', path: p };
         outcomes.set(p, outcome);
         // Gone or unreadable since detection: its row is dropped like a deletion, so rule 4
         // (importers of neighbouring paths) must see it as one.
@@ -253,13 +257,11 @@ async function planSync(
     await close();
   }
   for (const p of changed.keys()) dependents.delete(p);
-  return {
-    changed,
-    outcomes,
-    dependents,
-    touched: changes.touched,
-    truncated: ordered.some((p) => !changed.has(p)),
-  };
+  const truncated = ordered.some((p) => !changed.has(p));
+  // A new file that cannot be read gets no row, so it is "added" again by every sync: it was
+  // never applied and must not be reported (nor trigger a write).
+  for (const [p, kind] of changed) if (kind === 'added' && outcomes.get(p)?.kind === 'unreadable') changed.delete(p);
+  return { changed, outcomes, dependents, touched: changes.touched, truncated };
 }
 
 /**

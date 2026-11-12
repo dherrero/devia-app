@@ -59,7 +59,7 @@ function writeGraph(dataDir: string, fileCount: number): IndexResult {
   } finally {
     db.close();
   }
-  return { nodes: fileCount, edges: 0, files: fileCount, skipped: 0, durationMs: 1, languages: {} };
+  return { nodes: fileCount, edges: 0, files: fileCount, skipped: 0, skippedFiles: [], durationMs: 1, languages: {} };
 }
 
 interface Gate {
@@ -384,6 +384,35 @@ describe('CodeGraphUseCase races and job lifecycle', () => {
     expect((await uc.status(project)).state).toBe('none');
     await new Promise((r) => setTimeout(r, 20));
     expect(fs.existsSync(store.dataDir(project))).toBe(false);
+  });
+
+  it('an index requested during a reset runs after it, so the reset never deletes the new graph', async () => {
+    const g = gate();
+    let runs = 0;
+    const { uc } = makeUseCase({
+      runIndex: (o) => {
+        runs++;
+        const first = runs === 1;
+        return {
+          promise: (first ? g.promise : Promise.resolve()).then(() => writeGraph(o.dataDir, first ? 1 : 3)),
+          cancel: () => undefined,
+        };
+      },
+    });
+    const idx = uc.index(project, noProgress).catch((e: Error) => e.name);
+    const rst = uc.reset(project);
+    expect(uc.reset(project)).toBe(rst);
+    const again = uc.index(project, noProgress);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(runs).toBe(1);
+    g.open();
+    await rst;
+    expect(await idx).toBe('AbortError');
+    const st = await again;
+    expect(runs).toBe(2);
+    expect(st).toMatchObject({ state: 'ready', fileCount: 3 });
+    expect(fs.existsSync(store.dbPath(project))).toBe(true);
+    expect(store.loadDoc(project)).toBeDefined();
   });
 
   it('reset while syncing waits for the sync and does not recreate the doc', async () => {

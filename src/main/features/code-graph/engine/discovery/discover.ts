@@ -150,13 +150,20 @@ export async function discoverFiles(
   return { files, configs, skipped };
 }
 
-/** Normalises a project path to its stored form (relative, `/`), or undefined if it leaves the root. */
-export function toProjectPath(root: string, p: string): string | undefined {
-  const abs = path.resolve(root, p);
-  const rel = path.relative(path.resolve(root), abs);
-  if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel))
+/**
+ * Normalises a project path to its stored form (relative, `/`), or undefined if it leaves the root.
+ * `paths` is the platform's path module; tests pass `path.win32` to check the Windows spelling.
+ */
+export function toProjectPath(
+  root: string,
+  p: string,
+  paths: typeof path.posix = path,
+): string | undefined {
+  const abs = paths.resolve(root, p);
+  const rel = paths.relative(paths.resolve(root), abs);
+  if (rel === '' || rel === '..' || rel.startsWith(`..${paths.sep}`) || paths.isAbsolute(rel))
     return undefined;
-  return rel.split(path.sep).join('/');
+  return rel.split(paths.sep).join('/');
 }
 
 /**

@@ -16,7 +16,7 @@ const GENERATED_HEAD_BYTES = 2048;
 export type FileOutcome =
   | { kind: 'ok'; row: FileRow; extraction: FileExtraction }
   | { kind: 'failed'; row: FileRow }
-  | { kind: 'unreadable' };
+  | { kind: 'unreadable'; path: string };
 
 export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -56,12 +56,12 @@ export class ParserPool {
 export async function extractFile(file: DiscoveredFile, pool: ParserPool): Promise<FileOutcome> {
   const lang = languageForPath(file.relPath);
   const extractor = lang ? extractorFor(lang) : undefined;
-  if (!lang || !extractor) return { kind: 'unreadable' };
+  if (!lang || !extractor) return { kind: 'unreadable', path: file.relPath };
   let buf: Buffer;
   try {
     buf = await fs.promises.readFile(file.absPath);
   } catch {
-    return { kind: 'unreadable' };
+    return { kind: 'unreadable', path: file.relPath };
   }
   const isTest = isTestFile(file.relPath, lang);
   const row: FileRow = {

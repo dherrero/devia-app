@@ -47,10 +47,13 @@ const root = path.join(os.tmpdir(), 'cg-fw-root');
 const tsOnly = (rel: string): boolean => rel.endsWith('.ts');
 
 beforeEach(() => {
+  // The watcher checks that its root still exists on top-level events.
+  fs.mkdirSync(root, { recursive: true });
   vi.useFakeTimers();
 });
 afterEach(() => {
   vi.useRealTimers();
+  fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe('createFileWatcher (fake watchFn)', () => {
@@ -233,6 +236,79 @@ describe('createFileWatcher degraded walk', () => {
   });
 });
 
+describe('createFileWatcher out of watch handles and deleted root', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-fw-nospc-'));
+    fs.mkdirSync(path.join(dir, 'a', 'b', 'c', 'd', 'e'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'x', 'y'), { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('stops the per-directory fallback at the first ENOSPC instead of failing on every directory', () => {
+    const calls: string[] = [];
+    const readdir = vi.fn((d: string) => fs.readdirSync(d, { withFileTypes: true }));
+    const onError = vi.fn();
+    const onDegraded = vi.fn();
+    const w = createFileWatcher(dir, tsOnly, vi.fn(), {
+      watchFn: (d) => {
+        calls.push(d);
+        throw Object.assign(new Error('ENOSPC: System limit for number of file watchers reached'), { code: 'ENOSPC' });
+      },
+      readdirFn: readdir,
+      onError,
+      onDegraded,
+    });
+    expect(onDegraded).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(2);
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(readdir).not.toHaveBeenCalled();
+    w.close();
+  });
+
+  it('keeps the directories already watched when ENOSPC hits midway, and reports degraded', () => {
+    let attached = 0;
+    const onDegraded = vi.fn();
+    const fake = fakeWatch(true);
+    const w = createFileWatcher(dir, tsOnly, vi.fn(), {
+      watchFn: (d, o, l) => {
+        if (!o.recursive && ++attached > 2) throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+        return fake.watchFn(d, o, l);
+      },
+      onDegraded,
+      onError: () => undefined,
+    });
+    expect(onDegraded).toHaveBeenCalledTimes(1);
+    expect(fake.calls.filter((c) => !c.recursive)).toHaveLength(2);
+    expect(attached).toBe(3);
+    w.close();
+    expect(fake.closed).toBe(2);
+  });
+
+  it('reports a deleted root once, closes its watchers and ignores later events', () => {
+    const fake = fakeWatch();
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    const onDegraded = vi.fn();
+    const w = createFileWatcher(dir, tsOnly, onChange, { watchFn: fake.watchFn, onError, onDegraded });
+    fake.emit('a.ts');
+    fs.rmSync(dir, { recursive: true, force: true });
+    fake.emit(path.basename(dir));
+    fake.emit('b.ts');
+    vi.advanceTimersByTime(1000);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[0]).toMatchObject({ code: 'WATCH_ROOT_GONE' });
+    expect(onDegraded).toHaveBeenCalledTimes(1);
+    expect(fake.closed).toBe(1);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(['a.ts'], false);
+    w.close();
+    expect(fake.closed).toBe(1);
+  });
+});
+
 describe('createFileWatcher (real fs)', () => {
   let dir: string;
   let handle: WatcherHandle | undefined;
@@ -246,6 +322,23 @@ describe('createFileWatcher (real fs)', () => {
     handle = undefined;
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  // Verified on macOS (FSEvents reports a change of the root's own name). Linux and Windows report
+  // a deleted watched root differently (or refuse to delete it); the fake tests above cover the logic.
+  it.skipIf(process.platform !== 'darwin')('reports the project folder being deleted', async () => {
+    const errors: unknown[] = [];
+    let degraded = false;
+    handle = createFileWatcher(dir, tsOnly, () => undefined, {
+      onError: (e) => errors.push(e),
+      onDegraded: () => (degraded = true),
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    fs.rmSync(dir, { recursive: true, force: true });
+    const deadline = Date.now() + 10_000;
+    while (!degraded && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    expect(degraded).toBe(true);
+    expect(errors).toEqual([expect.objectContaining({ code: 'WATCH_ROOT_GONE' })]);
+  }, 15_000);
 
   it('batches three quick writes into one callback and ignores node_modules', async () => {
     const batches: string[][] = [];

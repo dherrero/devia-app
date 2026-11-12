@@ -72,6 +72,8 @@ function codedError(code: string, message: string): Error {
 
 export class CodeGraphUseCase {
   private readonly jobs = new Map<string, Job>();
+  /** Resets in progress: a new index waits for them, a sync is skipped, so nothing writes under `store.remove`. */
+  private readonly resets = new Map<string, Promise<void>>();
   private readonly jobEnd = new WeakMap<Job, () => void>();
   private readonly configStale = new Set<string>();
   private readonly updatedAt = new Map<string, number>();
@@ -141,6 +143,7 @@ export class CodeGraphUseCase {
   }
 
   async index(projectAbs: string, onProgress: (p: IndexProgress) => void): Promise<CodeGraphStatus> {
+    for (let pending = this.resets.get(projectAbs); pending; pending = this.resets.get(projectAbs)) await pending;
     if (this.jobs.has(projectAbs)) throw codedError('INDEX_BUSY', 'A code graph job is already running for this project');
     const run = this.runIndex({ root: projectAbs, dataDir: this.store.dataDir(projectAbs), onProgress });
     const job = this.startJob(projectAbs, 'index', () => run.cancel());
@@ -181,12 +184,21 @@ export class CodeGraphUseCase {
     job.cancel();
   }
 
-  async reset(projectAbs: string): Promise<void> {
-    const job = this.jobs.get(projectAbs);
-    this.cancel(projectAbs);
+  reset(projectAbs: string): Promise<void> {
+    const running = this.resets.get(projectAbs);
+    if (running) return running;
+    const done = this.runReset(projectAbs).finally(() => this.resets.delete(projectAbs));
+    this.resets.set(projectAbs, done);
+    return done;
+  }
+
+  private async runReset(projectAbs: string): Promise<void> {
     const watch = this.watches.get(projectAbs);
     if (watch) this.closeWatch(watch);
-    if (job) await job.settled;
+    for (let job = this.jobs.get(projectAbs); job; job = this.jobs.get(projectAbs)) {
+      this.cancel(projectAbs);
+      await job.settled;
+    }
     this.configStale.delete(projectAbs);
     this.updatedAt.delete(projectAbs);
     this.store.remove(projectAbs);
@@ -446,7 +458,7 @@ export class CodeGraphUseCase {
   }
 
   async syncNow(projectAbs: string, opts: SyncNowOptions = {}): Promise<SyncNowResult> {
-    if (this.jobs.has(projectAbs)) {
+    if (this.jobs.has(projectAbs) || this.resets.has(projectAbs)) {
       return { added: 0, modified: 0, deleted: 0, skippedBusy: true, truncated: false, fullIndexRequired: false };
     }
     const job = this.startJob(projectAbs, 'sync', () => undefined);
