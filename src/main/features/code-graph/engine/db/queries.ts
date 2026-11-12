@@ -981,23 +981,26 @@ export class GraphQueries {
     const kinds = query.kinds.map(() => '?').join(',');
     this.viewRep = query.rep;
     this.viewIn = query.inScope;
+    // A directory holding every node (a lone `src/`) has no incoming edge from outside: the
+    // second arm would only probe the target index once per node for nothing.
+    const incoming = !byDir || this.hasNodesOutside(bounds[0] as string, bounds[1] as string);
     try {
       // The scoped side is materialized so `rep` runs once per node rather than once per edge.
+      const outArm = `SELECT n.r AS s, ${VIEW_REP_FN}(o.file_path, o.id) AS t
+           FROM n CROSS JOIN edges e CROSS JOIN nodes o ${this.byIdFile()}
+           WHERE e.source = n.id AND e.kind IN (${kinds}) AND o.id = e.target`;
+      const inArm = `SELECT ${VIEW_REP_FN}(o.file_path, o.id), n.r
+           FROM n CROSS JOIN edges e CROSS JOIN nodes o ${this.byIdFile()}
+           WHERE e.target = n.id AND e.kind IN (${kinds}) AND o.id = e.source
+             AND NOT (${inO} AND ${VIEW_IN_FN}(o.file_path))`;
       const rows = this.stmt(
         `WITH n AS MATERIALIZED (
            SELECT id, ${VIEW_REP_FN}(file_path, id) AS r FROM nodes WHERE ${inN} AND ${VIEW_IN_FN}(file_path)
          )
          SELECT s AS source, t AS target, COUNT(*) AS weight FROM (
-           SELECT n.r AS s, ${VIEW_REP_FN}(o.file_path, o.id) AS t
-           FROM n CROSS JOIN edges e CROSS JOIN nodes o ${this.byIdFile()}
-           WHERE e.source = n.id AND e.kind IN (${kinds}) AND o.id = e.target
-           UNION ALL
-           SELECT ${VIEW_REP_FN}(o.file_path, o.id), n.r
-           FROM n CROSS JOIN edges e CROSS JOIN nodes o ${this.byIdFile()}
-           WHERE e.target = n.id AND e.kind IN (${kinds}) AND o.id = e.source
-             AND NOT (${inO} AND ${VIEW_IN_FN}(o.file_path))
+           ${incoming ? `${outArm}\n           UNION ALL\n           ${inArm}` : outArm}
          ) GROUP BY s, t ORDER BY s, t`,
-      ).all(...bounds, ...query.kinds, ...query.kinds, ...bounds) as unknown as {
+      ).all(...bounds, ...query.kinds, ...(incoming ? [...query.kinds, ...bounds] : [])) as unknown as {
         source: string | null;
         target: string | null;
         weight: number;
@@ -1009,6 +1012,13 @@ export class GraphQueries {
       this.viewRep = () => null;
       this.viewIn = () => false;
     }
+  }
+
+  private hasNodesOutside(from: string, to: string): boolean {
+    return (
+      this.stmt('SELECT 1 FROM nodes WHERE file_path < ? LIMIT 1').get(from) !== undefined ||
+      this.stmt('SELECT 1 FROM nodes WHERE file_path >= ? LIMIT 1').get(to) !== undefined
+    );
   }
 
   private idFileIndex: boolean | undefined;

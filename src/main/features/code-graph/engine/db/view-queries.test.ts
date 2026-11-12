@@ -230,6 +230,15 @@ describe('GraphQueries view queries', () => {
       ]);
     });
 
+    it('a directory holding every node still counts the edges inside it', () => {
+      const before = db.q.viewAggregateEdges({ scope: { dir: 'a' }, kinds: AGG, inScope: () => true, rep: (p) => p });
+      for (const f of ['root.ts', 'c/z.py', 't/t.test.ts']) db.q.deleteFile(f);
+      expect(db.q.nodeRefsInFiles(['root.ts', 'c/z.py', 't/t.test.ts'])).toEqual([]);
+      const lone = db.q.viewAggregateEdges({ scope: { dir: 'a' }, kinds: AGG, inScope: () => true, rep: (p) => p });
+      expect(lone).toEqual([{ source: 'a/x.ts', target: 'a/b/y.ts', weight: 1 }]);
+      expect(before).toContainEqual({ source: 'a/x.ts', target: 'a/b/y.ts', weight: 1 });
+    });
+
     it('scopes to one file', () => {
       const rows = db.q.viewAggregateEdges({
         scope: { file: 'a/x.ts' },
