@@ -896,7 +896,7 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     expect(r.ms).toBeLessThan(perfBudget(300));
   }, 60_000);
 
-  it('expand of a directory with 800 children ≤ 200 ms', () => {
+  it('expand of a directory with 800 children ≤ 200 ms, cold included', () => {
     const visibleIds = overviewIds();
     // ~70 ms alone, but the parallel main suite can starve it for seconds: sample longer.
     const r = bestOf(() => uc.expand(env.project, 'dir:big', { visibleIds }), 20);
@@ -904,7 +904,10 @@ describe('GraphViewUseCase on a 50k-node graph', () => {
     expect(r.value.nodes).toHaveLength(GRAPH_EXPAND_LIMIT);
     expect(r.value.edges.length).toBeGreaterThan(0);
     expect(r.ms).toBeLessThan(perfBudget(200));
-    timings['expand800Cold'] = coldBest(env, (fresh) => fresh.expand(env.project, 'dir:big', { visibleIds })).ms;
+    const cold = coldBest(env, (fresh) => fresh.expand(env.project, 'dir:big', { visibleIds }));
+    timings['expand800Cold'] = cold.ms;
+    expect(cold.value.nodes).toHaveLength(GRAPH_EXPAND_LIMIT);
+    expect(cold.ms).toBeLessThan(perfBudget(200));
   }, 60_000);
 
   it('expand of a file ≤ 200 ms cold', () => {
