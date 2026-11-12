@@ -11,6 +11,7 @@ import {
   type DiscoverOptions,
   type DiscoverResult,
 } from '../discovery/discover';
+import type { GraphNode } from '../../../../../shared/domain/code-graph';
 import { makeNodeId } from '../extraction/node-id';
 import { fileStem } from '../resolution/resolver';
 import { detectChanges, type ChangeSet } from './change-detection';
@@ -292,6 +293,7 @@ function findDependents(
   for (const n of oldNodes) if (n.kind !== 'file') names.add(n.name);
   for (const o of outcomes.values())
     if (o.kind === 'ok') for (const n of o.extraction.nodes) if (n.kind !== 'file') names.add(n.name);
+  for (const n of stableNames(q, changed, outcomes)) names.delete(n);
   for (const p of paths) {
     names.add(fileStem(p));
     const dir = path.posix.basename(path.posix.dirname(p));
@@ -335,6 +337,66 @@ function findDependents(
 
   for (const p of paths) deps.delete(p);
   return deps;
+}
+
+/** What resolution can read of a definition: everything but its position (and so its id) and docs. */
+function definitionKey(n: GraphNode): string {
+  return JSON.stringify([
+    n.kind,
+    n.qualifiedName,
+    n.language,
+    n.signature ?? null,
+    n.isExported,
+    n.isTest ?? false,
+    n.visibility ?? null,
+    n.isAsync ?? false,
+    n.isStatic ?? false,
+    n.isAbstract ?? false,
+    n.decorators ?? [],
+    n.metadata ?? null,
+  ]);
+}
+
+/**
+ * Names whose definitions are the same before and after, up to position, in every changed file
+ * that has them (edited bodies, moved lines). Which candidates a reference elsewhere sees for
+ * such a name is unchanged, so rules 2, 3 and the name part of 5 can skip it; edges INTO the
+ * moved definitions (new ids) are still caught by rule 1. Without this, editing one file that
+ * declares a common name (`run`, `get`, `render`) re-extracts every caller of every same-named
+ * symbol in the project.
+ */
+function stableNames(
+  q: GraphQueries,
+  changed: Map<string, ChangeKind>,
+  outcomes: Map<string, FileOutcome>,
+): Set<string> {
+  const stable = new Set<string>();
+  const unstable = new Set<string>();
+  const group = (nodes: GraphNode[]): Map<string, string[]> => {
+    const by = new Map<string, string[]>();
+    for (const n of nodes) {
+      if (n.kind === 'file') continue;
+      const list = by.get(n.name);
+      if (list) list.push(definitionKey(n));
+      else by.set(n.name, [definitionKey(n)]);
+    }
+    for (const list of by.values()) list.sort();
+    return by;
+  };
+  for (const [p, kind] of changed) {
+    const outcome = outcomes.get(p);
+    const before = kind === 'added' ? new Map<string, string[]>() : group(q.nodesInFile(p));
+    const after = outcome?.kind === 'ok' && kind !== 'deleted' ? group(outcome.extraction.nodes) : new Map<string, string[]>();
+    const same = kind === 'modified' && outcome?.kind === 'ok';
+    for (const name of new Set([...before.keys(), ...after.keys()])) {
+      const a = before.get(name);
+      const b = after.get(name);
+      if (same && a && b && a.length === b.length && a.every((k, i) => k === b[i])) stable.add(name);
+      else unstable.add(name);
+    }
+  }
+  for (const n of unstable) stable.delete(n);
+  return stable;
 }
 
 function applyPlan(db: GraphDb, q: GraphQueries, root: string, plan: SyncPlan): void {

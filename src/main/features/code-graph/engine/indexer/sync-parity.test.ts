@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -399,3 +399,56 @@ function mulberry32(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+describe('sync parity with names declared in many files', () => {
+  const COMMON: Record<string, string> = {
+    ...Object.fromEntries(
+      Array.from({ length: 30 }, (_, i) => [
+        `ts/w${i}.ts`,
+        `export class W${i} {\n  run(): number {\n    return ${i};\n  }\n}\n\nexport function make${i}(): W${i} {\n  return new W${i}();\n}\n`,
+      ]),
+    ),
+    ...Object.fromEntries(
+      Array.from({ length: 30 }, (_, i) => [
+        `ts/use${i}.ts`,
+        `import { make${i} } from './w${i}';\n\nexport function use${i}(): number {\n  return make${i}().run();\n}\n`,
+      ]),
+    ),
+    'ts/solo.ts': 'export function onlyHere(): number {\n  return 1;\n}\n',
+    'ts/callsolo.ts': "import { onlyHere } from './solo';\n\nexport const v = onlyHere();\n",
+    'py/a.py': 'class A:\n    def run(self):\n        return 1\n',
+    'py/b.py': 'from a import A\n\n\ndef go():\n    return A().run()\n',
+  };
+
+  it('editing a body that moves a common method re-extracts only its real dependents, with parity', async () => {
+    project.writeAll(COMMON);
+    await fullIndex(project.root, dataDir);
+
+    project.write('ts/w0.ts', `// moved down\n\n${COMMON['ts/w0.ts']}`);
+    const read = vi.spyOn(fs.promises, 'readFile');
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ modified: 1, truncated: false });
+    const reads = new Set(read.mock.calls.map((c) => path.relative(project.root, String(c[0])).split(path.sep).join('/')));
+    read.mockRestore();
+    expect(snapshotGraph(dataDir)).toEqual(await fullIndexSnapshot(project.root));
+    expect(reads.has('ts/w0.ts')).toBe(true);
+    expect(reads.has('ts/use0.ts')).toBe(true);
+    // The 29 other users of a same-named `run` are not touched.
+    expect([...reads].filter((r) => /^ts\/use\d+\.ts$/.test(r)).length).toBeLessThan(5);
+
+    project.write('ts/w1.ts', COMMON['ts/w1.ts']?.replace('run(): number', 'run(x = 1): number') ?? '');
+    await syncAndCompare('change w1.run signature');
+    project.write('ts/solo.ts', 'export function onlyHere(): number {\n  return 1;\n}\nexport function onlyHere2(): number {\n  return 2;\n}\n');
+    await syncAndCompare('add a sibling');
+    project.write('ts/w2.ts', `${COMMON['ts/w2.ts']}\nexport function onlyHere(): number {\n  return 3;\n}\n`);
+    await syncAndCompare('a unique name becomes ambiguous');
+    project.write('ts/w2.ts', `\n\n${COMMON['ts/w2.ts']}\nexport function onlyHere(): number {\n  return 3;\n}\n`);
+    await syncAndCompare('the ambiguous duplicate moves');
+    project.write('ts/w2.ts', COMMON['ts/w2.ts'] ?? '');
+    await syncAndCompare('it becomes unique again');
+    project.write('py/a.py', '\n\nclass A:\n    def run(self):\n        return 2\n');
+    await syncAndCompare('python method moves');
+    project.write('py/a.py', 'class A:\n    @staticmethod\n    def run():\n        return 2\n');
+    await syncAndCompare('python method gains a decorator');
+  }, 120_000);
+});
+
