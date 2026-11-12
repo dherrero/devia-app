@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capOutput, globToRegExp, MAX_OUTPUT_CHARS } from './format';
+import { capOutput, compileGlob, MAX_OUTPUT_CHARS } from './format';
 
 describe('capOutput', () => {
   it('leaves short output untouched', () => {
@@ -29,14 +29,36 @@ describe('capOutput', () => {
   });
 });
 
-describe('globToRegExp', () => {
+describe('compileGlob', () => {
+  const m = (glob: string, subject: string): boolean => compileGlob(glob)(subject);
+
   it('matches * within a segment, ** across segments and escapes the rest', () => {
-    expect(globToRegExp('*.ts').test('a.ts')).toBe(true);
-    expect(globToRegExp('*.ts').test('a.tsx')).toBe(false);
-    expect(globToRegExp('src/*.ts').test('src/x/a.ts')).toBe(false);
-    expect(globToRegExp('src/**/*.ts').test('src/x/y/a.ts')).toBe(true);
-    expect(globToRegExp('src/**/*.ts').test('src/a.ts')).toBe(true);
-    expect(globToRegExp('a+b(c).ts').test('a+b(c).ts')).toBe(true);
-    expect(globToRegExp('a.ts').test('axts')).toBe(false);
+    expect(m('*.ts', 'a.ts')).toBe(true);
+    expect(m('*.ts', 'a.tsx')).toBe(false);
+    expect(m('src/*.ts', 'src/x/a.ts')).toBe(false);
+    expect(m('src/**/*.ts', 'src/x/y/a.ts')).toBe(true);
+    expect(m('src/**/*.ts', 'src/a.ts')).toBe(true);
+    expect(m('src/**', 'src/a/b.ts')).toBe(true);
+    expect(m('**/*.test.ts', 'a.test.ts')).toBe(true);
+    expect(m('**/*.test.ts', 'x/y/a.test.ts')).toBe(true);
+    expect(m('src/**/*.ts', 'srcx/a.ts')).toBe(false);
+    expect(m('a+b(c).ts', 'a+b(c).ts')).toBe(true);
+    expect(m('a.ts', 'axts')).toBe(false);
+    expect(m('[ab]?.ts', '[ab]?.ts')).toBe(true);
+    expect(m('*', '')).toBe(true);
+    expect(m('', '')).toBe(true);
+    expect(m('', 'a')).toBe(false);
+    expect(m('😀*.ts', '😀x.ts')).toBe(true);
+    expect(m('?.ts', '😀.ts')).toBe(false);
+  });
+
+  it('stays linear on a crafted **x**x… pattern that would backtrack exponentially as a RegExp', () => {
+    const glob = `${'**x'.repeat(40)}y`;
+    const subject = 'x'.repeat(4000);
+    const start = performance.now();
+    expect(m(glob, subject)).toBe(false);
+    expect(m(`${'*x'.repeat(40)}y`, subject)).toBe(false);
+    // O(path × pattern) = 4000 × 81 steps: milliseconds. A backtracking RegExp never returns.
+    expect(performance.now() - start).toBeLessThan(5000);
   });
 });

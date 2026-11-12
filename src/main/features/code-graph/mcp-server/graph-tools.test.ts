@@ -7,7 +7,15 @@ import { indexProject } from '../engine/indexer/orchestrator';
 import { syncProject, type SyncOptions, type SyncResult } from '../engine/indexer/sync';
 import { snapshotGraph, TestProject } from '../engine/indexer/sync-test-support';
 import { CodeGraphStore } from '../infrastructure/code-graph-store';
-import { callGraphTool, createGraphToolContext, GRAPH_TOOLS, type GraphToolContext, type GraphToolDeps } from './graph-tools';
+import {
+  ARG_LIMITS,
+  callGraphTool,
+  createGraphToolContext,
+  GRAPH_TOOLS,
+  SYNC_CEILING_MS,
+  type GraphToolContext,
+  type GraphToolDeps,
+} from './graph-tools';
 import { MAX_OUTPUT_CHARS } from './format';
 import { SERVER_INSTRUCTIONS } from './server-instructions';
 
@@ -479,5 +487,126 @@ describe('callGraphTool freshness', () => {
     const r = await callGraphTool(ctxFor(fx, { sync: NO_SYNC }), 'graph_search', { query: 'alpha' });
     expect(r.isError).toBe(true);
     expect(text(r)).toMatch(/retry once/i);
+  });
+});
+
+describe('callGraphTool argument caps', () => {
+  let fx: Fixture;
+  let ctx: GraphToolContext;
+
+  beforeAll(async () => {
+    fx = await buildFixture();
+    ctx = ctxFor(fx, { sync: NO_SYNC });
+  }, 60_000);
+
+  afterAll(() => fx.dispose());
+
+  it.each([
+    ['graph_explore', { query: 'a'.repeat(ARG_LIMITS.queryChars + 1) }, /`query` is too long \(max 1000/],
+    ['graph_search', { query: 'a'.repeat(ARG_LIMITS.queryChars + 1) }, /`query` is too long/],
+    ['graph_node', { symbol: 'a'.repeat(ARG_LIMITS.symbolChars + 1) }, /`symbol` is too long \(max 500/],
+    ['graph_impact', { symbol: 'a'.repeat(ARG_LIMITS.symbolChars + 1) }, /`symbol` is too long/],
+    ['graph_files', { path: 'a/'.repeat(ARG_LIMITS.pathChars) }, /`path` is too long \(max 1024/],
+    ['graph_files', { pattern: '*'.repeat(ARG_LIMITS.patternChars + 1) }, /`pattern` is too long \(max 256/],
+    ['graph_affected', { files: ['x'.repeat(ARG_LIMITS.pathChars + 1)] }, /`files\[\]` is too long/],
+    [
+      'graph_affected',
+      { files: Array.from({ length: ARG_LIMITS.affectedFiles + 1 }, (_, i) => `src/f${i}.ts`) },
+      /Too many files \(201\); pass at most 200 per call/,
+    ],
+  ])('%s refuses an oversized argument with a success-shaped message: %#', async (name, args, message) => {
+    const r = await callGraphTool(ctx, name, args);
+    expect(r.isError).toBeUndefined();
+    expect(text(r)).toMatch(message);
+    expect(text(r)).toContain(`Usage: ${name}`);
+  });
+
+  it('accepts arguments right at the caps', async () => {
+    const r = await callGraphTool(ctx, 'graph_affected', {
+      files: Array.from({ length: ARG_LIMITS.affectedFiles }, () => 'src/math.ts'),
+    });
+    expect(r.isError).toBeUndefined();
+    expect(text(r)).toMatch(/## Affected by changes to 1 file/);
+    expect(text(await callGraphTool(ctx, 'graph_search', { query: `add${' '.repeat(ARG_LIMITS.queryChars - 3)}` }))).toMatch(/## Search/);
+  });
+
+  it('graph_files answers a crafted backtracking glob at once', async () => {
+    const pattern = `${'**x'.repeat(60)}y`;
+    const r = await callGraphTool(ctx, 'graph_files', { pattern });
+    expect(text(r)).toMatch(/No indexed files matching/);
+  });
+});
+
+describe('callGraphTool similar names', () => {
+  let fx: Fixture;
+  let ctx: GraphToolContext;
+
+  beforeAll(async () => {
+    fx = await buildFixture({
+      'src/maker.ts':
+        "import { helperThing } from './helper';\n\nexport function build(f: WidgetMaker): void {\n  helperThing(f);\n}\n\nexport function widgetMake(): number {\n  return 1;\n}\n",
+      'src/helper.ts': 'export function helperThing(x: unknown): unknown {\n  return x;\n}\n',
+    });
+    ctx = ctxFor(fx, { sync: NO_SYNC });
+  }, 60_000);
+
+  afterAll(() => fx.dispose());
+
+  it('lists prefix matches of the base name before signature-only hits', async () => {
+    const t = text(await callGraphTool(ctx, 'graph_node', { symbol: 'WidgetMaker' }));
+    expect(t).toMatch(/Similar names: widgetMake \(src\/maker\.ts:7\)/);
+  });
+
+  it('never suggests import nodes', async () => {
+    const t = text(await callGraphTool(ctx, 'graph_callers', { symbol: 'helperThin' }));
+    expect(t).toMatch(/Similar names: helperThing \(src\/helper\.ts:1\)/);
+    expect(t).not.toMatch(/\.\/helper/);
+  });
+});
+
+describe('callGraphTool sync ceiling', () => {
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    fx = await buildFixture({ 'src/a.ts': 'export function alpha(): number {\n  return 1;\n}\n' });
+  }, 60_000);
+
+  afterEach(() => fx.dispose());
+
+  it('defaults to a 5 s ceiling', () => {
+    expect(SYNC_CEILING_MS).toBe(5000);
+    expect(ctxFor(fx).syncCeilingMs).toBe(5000);
+  });
+
+  it('answers from the current graph with the catching-up note when the sync outlasts the ceiling, and lets it finish', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    let finished = false;
+    const sync = vi.fn(async (o: SyncOptions) => {
+      await gate;
+      const r = await syncProject(o);
+      finished = true;
+      return r;
+    });
+    let now = 10_000;
+    const ctx = ctxFor(fx, { sync, syncCeilingMs: 30, now: () => now });
+    fx.project.write('src/b.ts', 'export function beta(): number {\n  return 2;\n}\n');
+
+    const first = await callGraphTool(ctx, 'graph_search', { query: 'alpha' });
+    expect(first.isError).toBeUndefined();
+    expect(text(first)).toContain('`alpha` (function)');
+    expect(text(first).split('\n').at(-1)).toBe('⚠ graph is catching up with recent edits; very recent changes may be missing');
+    const second = await callGraphTool(ctx, 'graph_search', { query: 'beta' });
+    expect(text(second)).toMatch(/No symbols match `beta`/);
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(finished).toBe(false);
+
+    release();
+    await vi.waitFor(() => expect(finished).toBe(true));
+    now += 100;
+    const third = await callGraphTool(ctx, 'graph_search', { query: 'beta' });
+    expect(text(third)).toContain('`beta` (function)');
+    expect(text(third)).not.toContain('⚠');
+    expect(sync).toHaveBeenCalledTimes(1);
   });
 });

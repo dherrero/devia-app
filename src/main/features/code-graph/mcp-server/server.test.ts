@@ -3,9 +3,15 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { acquireWriterLock } from '../engine/db/writer-lock';
 import { perfBudget } from '../engine/graph/test-graph';
+import { CodeGraphStore } from '../infrastructure/code-graph-store';
+import { FIRST_INDEX_TEXT } from './graph-tools';
 
 const SHIM = path.join(__dirname, '__fixtures__', 'server-shim.cjs');
+/** Longest wait for one reply; a hung server fails the test with its stderr instead of timing it out. */
+const REPLY_TIMEOUT_MS = 15_000;
+const live = new Set<ServerProcess>();
 
 interface Rpc {
   id?: number | string | null;
@@ -25,6 +31,7 @@ class ServerProcess {
 
   constructor(args: string[]) {
     this.child = spawn(process.execPath, [SHIM, ...args], { stdio: 'pipe' });
+    live.add(this);
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', (chunk: string) => {
       this.buffer += chunk;
@@ -42,6 +49,7 @@ class ServerProcess {
     this.exited = new Promise((resolve) =>
       this.child.on('exit', (code) => {
         this.done = true;
+        live.delete(this);
         for (const w of this.waiters.splice(0)) w();
         resolve(code);
       }),
@@ -56,10 +64,19 @@ class ServerProcess {
     this.send(JSON.stringify({ jsonrpc: '2.0', id, method, ...(params && { params }) }));
   }
 
-  async next(): Promise<Rpc> {
+  async next(timeoutMs = REPLY_TIMEOUT_MS): Promise<Rpc> {
+    const deadline = performance.now() + timeoutMs;
     while (this.received.length === 0) {
       if (this.done) throw new Error(`server exited early; stderr: ${this.stderr}`);
-      await new Promise<void>((resolve) => this.waiters.push(resolve));
+      const left = deadline - performance.now();
+      if (left <= 0) throw new Error(`no reply within ${timeoutMs} ms; stderr: ${this.stderr}`);
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, left);
+        this.waiters.push(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
     }
     const msg = this.received.shift();
     if (!msg) throw new Error('no message');
@@ -79,7 +96,13 @@ beforeEach(() => {
   projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-mcp-proj-'));
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // A failed assertion must not leave a server running (and holding the temp dirs on Windows).
+  const exits = [...live].map((srv) => {
+    srv.child.kill();
+    return srv.exited;
+  });
+  await Promise.all(exits);
   fs.rmSync(deviaDir, { recursive: true, force: true });
   fs.rmSync(projectDir, { recursive: true, force: true });
 });
@@ -134,6 +157,25 @@ describe('devia-code-graph server process', () => {
     expect(srv.pending()).toBe(0);
     expect(srv.stderr).toContain('web-tree-sitter loaded: false');
     expect(startupMs).toBeLessThan(perfBudget(STARTUP_IDLE_MS));
+  }, 20_000);
+
+  it('answers with the first-index guidance while the first index runs', async () => {
+    const dataDir = new CodeGraphStore(() => deviaDir).dataDir(projectDir);
+    fs.mkdirSync(dataDir, { recursive: true });
+    const lock = acquireWriterLock(dataDir, 'indexer');
+    expect(lock).not.toBeNull();
+    try {
+      const srv = new ServerProcess(['--devia-dir', deviaDir, '--project', projectDir]);
+      srv.request(1, 'tools/call', { name: 'graph_search', arguments: { query: 'a' } });
+      const reply = await srv.next();
+      expect(reply.id).toBe(1);
+      expect(reply.result?.['isError']).toBeUndefined();
+      expect(reply.result?.['content']).toEqual([{ type: 'text', text: FIRST_INDEX_TEXT }]);
+      srv.child.stdin.end();
+      expect(await srv.exited).toBe(0);
+    } finally {
+      lock?.release();
+    }
   }, 20_000);
 
   it('exits with code 2 when --project is missing or relative', async () => {

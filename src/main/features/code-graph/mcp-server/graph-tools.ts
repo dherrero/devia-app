@@ -16,7 +16,7 @@ import type { SyncOptions, SyncResult } from '../engine/indexer/sync';
 import { splitIdentifier } from '../engine/search/query-parser';
 import { searchSymbols } from '../engine/search/search';
 import { CodeGraphStore } from '../infrastructure/code-graph-store';
-import { capOutput, globToRegExp, heading, location, MAX_OUTPUT_CHARS, ref } from './format';
+import { capOutput, compileGlob, heading, location, MAX_OUTPUT_CHARS, ref } from './format';
 
 export interface McpToolDef {
   name: string;
@@ -36,6 +36,8 @@ export interface GraphToolDeps {
   now?: () => number;
   sync?: (opts: SyncOptions) => Promise<SyncResult>;
   log?: (line: string) => void;
+  /** Longest a tool call waits for the pre-answer sync before answering from the current graph. */
+  syncCeilingMs?: number;
 }
 
 interface Freshness {
@@ -54,9 +56,16 @@ export interface GraphToolContext {
   readonly sync: (opts: SyncOptions) => Promise<SyncResult>;
   readonly log: (line: string) => void;
   readonly freshness: Freshness;
+  readonly syncCeilingMs: number;
 }
 
 const SYNC_DEADLINE_MS = 2000;
+/**
+ * `deadlineMs` is soft: the first changed file is always applied with its whole dependent
+ * closure, so one sync can run far longer. Past this ceiling the answer comes from the graph as
+ * it is (with the catching-up note) while the shared sync keeps going for the next call.
+ */
+export const SYNC_CEILING_MS = 5000;
 const SYNC_THROTTLE_MS = 1500;
 const MAX_CALL_DEPTH = 3;
 const MAX_IMPACT_DEPTH = 4;
@@ -66,11 +75,22 @@ const MAX_SEARCH_LIMIT = 50;
 const MAX_FILES_LISTED = 200;
 const MAX_EXPANDED = 8;
 const SUGGESTIONS = 5;
+const SUGGESTION_CANDIDATES = 20;
+/** References, not definitions: never offered as "similar names". */
+const NOT_SUGGESTED = new Set<NodeKind>(['file', 'import', 'export']);
+export const ARG_LIMITS = {
+  queryChars: 1000,
+  symbolChars: 500,
+  pathChars: 1024,
+  patternChars: 256,
+  affectedFiles: 200,
+  kinds: NODE_KINDS.length,
+} as const;
 const SOURCE_EXT = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs|py|pyw|java|go|dart)$/;
 
 export const NO_GRAPH_TEXT =
   'No code graph: the user has not indexed this project in Devia; use normal search tools; do not retry graph tools in this session.';
-const FIRST_INDEX_TEXT =
+export const FIRST_INDEX_TEXT =
   'The first index of this project is running in Devia; graph tools will answer once it finishes. Use normal search tools meanwhile.';
 const DISABLED_TEXT =
   'graph access is disabled for this project by the user. Use normal search tools; do not retry graph tools in this session.';
@@ -223,6 +243,7 @@ export function createGraphToolContext(deps: GraphToolDeps): GraphToolContext {
     sync: deps.sync ?? defaultSync,
     log: deps.log ?? ((line) => process.stderr.write(`${line}\n`)),
     freshness: { lastFinishedAt: undefined, lastNotes: [], lastResult: undefined, inflight: undefined },
+    syncCeilingMs: deps.syncCeilingMs ?? SYNC_CEILING_MS,
   };
 }
 
@@ -256,27 +277,48 @@ async function runSync(ctx: GraphToolContext): Promise<string[]> {
   return f.lastNotes;
 }
 
-/** Throttled, coalesced sync before answering; never throws. */
+/** Throttled, coalesced sync before answering, capped at `syncCeilingMs`; never throws. */
 function ensureFresh(ctx: GraphToolContext): Promise<string[]> {
   if (isFullIndexRunning(ctx.dataDir)) return Promise.resolve([NOTE_INDEXING]);
   const f = ctx.freshness;
-  if (f.inflight) return f.inflight;
-  if (f.lastFinishedAt !== undefined && ctx.now() - f.lastFinishedAt < SYNC_THROTTLE_MS) {
-    return Promise.resolve(f.lastNotes);
+  if (!f.inflight) {
+    if (f.lastFinishedAt !== undefined && ctx.now() - f.lastFinishedAt < SYNC_THROTTLE_MS) {
+      return Promise.resolve(f.lastNotes);
+    }
+    f.inflight = runSync(ctx);
   }
-  f.inflight = runSync(ctx);
-  return f.inflight;
+  return withCeiling(f.inflight, ctx.syncCeilingMs);
+}
+
+function withCeiling(sync: Promise<string[]>, ms: number): Promise<string[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ceiling = new Promise<string[]>((resolve) => {
+    timer = setTimeout(() => resolve([NOTE_CATCHING_UP]), ms);
+    timer.unref?.();
+  });
+  return Promise.race([sync, ceiling]).finally(() => clearTimeout(timer));
 }
 
 // ── argument parsing ──────────────────────────────────────────────────────
 
 type Args = Record<string, unknown>;
-type Parsed<T> = { ok: true; value: T } | { ok: false };
+type Parsed<T> = { ok: true; value: T } | { ok: false; reason?: string };
 const bad = { ok: false } as const;
 const good = <T>(value: T): Parsed<T> => ({ ok: true, value });
+const tooLong = (what: string, max: number): Parsed<never> => ({
+  ok: false,
+  reason: `\`${what}\` is too long (max ${max} characters); pass a shorter value.`,
+});
 
 function nonEmptyString(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined;
+}
+
+/** A required string argument, trimmed and within `max` characters. */
+function requiredString(args: Args, key: string, max: number): Parsed<string> {
+  const v = nonEmptyString(args[key]);
+  if (v === undefined) return bad;
+  return v.length > max ? tooLong(key, max) : good(v);
 }
 
 function optionalNumber(v: unknown): Parsed<number | undefined> {
@@ -327,19 +369,44 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
+function commonPrefix(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
+/**
+ * Definitions whose names start like the requested one come first (longest shared prefix of
+ * the base name), then the search ranking; imports and exports only repeat a name defined
+ * elsewhere and are left out.
+ */
 function suggestions(q: GraphQueries, symbol: string): GraphNode[] {
   const base = symbol.slice(symbol.lastIndexOf('#') + 1).replace(/^.*\//, '');
+  const name = base.slice(base.lastIndexOf('.') + 1) || base;
   const queries = [base];
-  if (base.length > 4) queries.push(base.slice(0, Math.max(3, base.length - 2)));
+  if (name !== base) queries.push(name);
+  if (name.length > 4) queries.push(name.slice(0, Math.max(3, name.length - 2)));
+  if (name.length > 3) queries.push(name.slice(0, 3));
   for (const seg of splitIdentifier(base)) if (seg.length >= 3) queries.push(seg);
   const byId = new Map<string, GraphNode>();
-  for (const query of queries) {
-    for (const hit of searchSymbols(q, query, { limit: SUGGESTIONS })) {
-      if (hit.node.kind !== 'file' && !byId.has(hit.node.id)) byId.set(hit.node.id, hit.node);
+  for (const query of new Set(queries)) {
+    for (const hit of searchSymbols(q, query, { limit: SUGGESTION_CANDIDATES })) {
+      if (!NOT_SUGGESTED.has(hit.node.kind) && !byId.has(hit.node.id)) byId.set(hit.node.id, hit.node);
     }
-    if (byId.size >= SUGGESTIONS) break;
+    if (byId.size >= SUGGESTION_CANDIDATES) break;
   }
-  return [...byId.values()].slice(0, SUGGESTIONS);
+  const wanted = name.toLowerCase();
+  const shared = (n: GraphNode): number => commonPrefix(n.name.toLowerCase(), wanted);
+  const MIN_PREFIX = Math.min(3, wanted.length);
+  return [...byId.values()]
+    .map((node, order) => ({ node, order, prefix: shared(node) }))
+    .sort((a, b) => {
+      const pa = a.prefix >= MIN_PREFIX ? a.prefix : 0;
+      const pb = b.prefix >= MIN_PREFIX ? b.prefix : 0;
+      return pb - pa || a.order - b.order;
+    })
+    .slice(0, SUGGESTIONS)
+    .map((x) => x.node);
 }
 
 function similarLine(q: GraphQueries, symbol: string): string {
@@ -402,10 +469,11 @@ function symbolDepthTool(
 ): Tool<SymbolDepth> {
   return {
     parse(args) {
-      const symbol = nonEmptyString(args['symbol']);
+      const symbol = requiredString(args, 'symbol', ARG_LIMITS.symbolChars);
       const depth = optionalNumber(args['depth']);
-      if (symbol === undefined || !depth.ok) return bad;
-      return good({ symbol, depth: clampDepth(depth.value, def, max) });
+      if (!symbol.ok) return symbol;
+      if (!depth.ok) return bad;
+      return good({ symbol: symbol.value, depth: clampDepth(depth.value, def, max) });
     },
     run: (q, v) => ({ text: run(q, v) }),
   };
@@ -456,17 +524,18 @@ const KIND_SET = new Set<string>(NODE_KINDS);
 
 const searchTool: Tool<SearchArgs> = {
   parse(args) {
-    const query = nonEmptyString(args['query']);
+    const query = requiredString(args, 'query', ARG_LIMITS.queryChars);
     const limit = optionalNumber(args['limit']);
     const kindsRaw = args['kinds'];
-    if (query === undefined || !limit.ok) return bad;
+    if (!query.ok) return query;
+    if (!limit.ok) return bad;
     let kinds: NodeKind[] | undefined;
     if (kindsRaw !== undefined && kindsRaw !== null) {
       if (!Array.isArray(kindsRaw) || !kindsRaw.every((k) => typeof k === 'string' && KIND_SET.has(k))) return bad;
-      if (kindsRaw.length > 0) kinds = kindsRaw as NodeKind[];
+      if (kindsRaw.length > 0) kinds = [...new Set(kindsRaw as NodeKind[])];
     }
     const n = Math.floor(limit.value ?? DEFAULT_SEARCH_LIMIT);
-    const value: SearchArgs = { query, limit: Math.min(MAX_SEARCH_LIMIT, Math.max(1, n)) };
+    const value: SearchArgs = { query: query.value, limit: Math.min(MAX_SEARCH_LIMIT, Math.max(1, n)) };
     if (kinds) value.kinds = kinds;
     return good(value);
   },
@@ -486,10 +555,7 @@ const searchTool: Tool<SearchArgs> = {
 };
 
 const nodeTool: Tool<string> = {
-  parse(args) {
-    const symbol = nonEmptyString(args['symbol']);
-    return symbol === undefined ? bad : good(symbol);
-  },
+  parse: (args) => requiredString(args, 'symbol', ARG_LIMITS.symbolChars),
   run(q, symbol, { ctx }) {
     const detail = getNodeDetail(q, ctx.project, symbol);
     if (detail.found) return { text: detail.markdown };
@@ -498,10 +564,7 @@ const nodeTool: Tool<string> = {
 };
 
 const exploreTool: Tool<string> = {
-  parse(args) {
-    const query = nonEmptyString(args['query']);
-    return query === undefined ? bad : good(query);
-  },
+  parse: (args) => requiredString(args, 'query', ARG_LIMITS.queryChars),
   run(q, query, { ctx }) {
     const result = exploreSymbols(q, ctx.project, query);
     const budget = getExploreOutputBudget(q.counts().files).maxChars;
@@ -519,17 +582,20 @@ const filesTool: Tool<FilesArgs> = {
     const p = optionalString(args['path']);
     const pattern = optionalString(args['pattern']);
     if (!p.ok || !pattern.ok) return bad;
-    const prefix = p.value === undefined || p.value.trim() === '' ? '' : projectRelative(ctx.project, p.value.trim());
+    const dir = p.value?.trim() ?? '';
     const pat = pattern.value?.trim();
+    if (dir.length > ARG_LIMITS.pathChars) return tooLong('path', ARG_LIMITS.pathChars);
+    if (pat !== undefined && pat.length > ARG_LIMITS.patternChars) return tooLong('pattern', ARG_LIMITS.patternChars);
+    const prefix = dir === '' ? '' : projectRelative(ctx.project, dir);
     return good(pat ? { prefix, pattern: pat } : { prefix });
   },
   run(q, { prefix, pattern }) {
-    const re = pattern === undefined ? undefined : globToRegExp(pattern);
+    const matches = pattern === undefined ? undefined : compileGlob(pattern);
     const byName = pattern !== undefined && !pattern.includes('/');
     const rows = q.fileRecords().filter((r) => {
       if (prefix !== '' && r.path !== prefix && !r.path.startsWith(`${prefix}/`)) return false;
-      if (!re) return true;
-      return re.test(byName ? r.path.slice(r.path.lastIndexOf('/') + 1) : r.path);
+      if (!matches) return true;
+      return matches(byName ? r.path.slice(r.path.lastIndexOf('/') + 1) : r.path);
     });
     const where = `${prefix !== '' ? ` under \`${prefix}\`` : ''}${pattern !== undefined ? ` matching \`${pattern}\`` : ''}`;
     if (rows.length === 0) {
@@ -559,8 +625,15 @@ const affectedTool: Tool<string[]> = {
   parse(args, ctx) {
     const files = args['files'];
     if (!Array.isArray(files) || files.length === 0) return bad;
+    if (files.length > ARG_LIMITS.affectedFiles) {
+      return {
+        ok: false,
+        reason: `Too many files (${files.length}); pass at most ${ARG_LIMITS.affectedFiles} per call and split the rest into further calls.`,
+      };
+    }
     if (!files.every((f): f is string => typeof f === 'string' && f.trim() !== '')) return bad;
-    return good(files.map((f) => projectRelative(ctx.project, f.trim()) || '.'));
+    if (files.some((f) => f.trim().length > ARG_LIMITS.pathChars)) return tooLong('files[]', ARG_LIMITS.pathChars);
+    return good([...new Set(files.map((f) => projectRelative(ctx.project, f.trim()) || '.'))]);
   },
   run(q, files) {
     const r = getAffected(q, files);
@@ -673,7 +746,10 @@ export async function callGraphTool(ctx: GraphToolContext, name: string, rawArgs
     const guidance = accessGuidance(ctx);
     if (guidance) return ok(guidance);
     const parsed = tool.parse(args, ctx);
-    if (!parsed.ok) return ok(USAGE[name] ?? `Usage: ${name}`);
+    if (!parsed.ok) {
+      const usage = USAGE[name] ?? `Usage: ${name}`;
+      return ok(parsed.reason ? `${parsed.reason}\n${usage}` : usage);
+    }
     const notes = await ensureFresh(ctx);
     if (!fs.existsSync(ctx.dbPath)) return ok(NO_GRAPH_TEXT);
     const db = openGraphDb(ctx.dbPath, { readonly: true });

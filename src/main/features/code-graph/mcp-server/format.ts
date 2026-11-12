@@ -53,19 +53,72 @@ export function heading(n: GraphNode): string {
   return `\`${n.qualifiedName}\` (${n.kind}) — ${location(n)}`;
 }
 
-/** `*` stays inside one path segment, `**` spans segments; every other character is literal. */
-export function globToRegExp(glob: string): RegExp {
-  let re = '';
+type GlobToken =
+  | { kind: 'char'; c: string }
+  | { kind: 'star' }
+  | { kind: 'any' }
+  // The `.*` of a `**/` group; the group (it and the next `/`) may also match nothing.
+  | { kind: 'groupAny' };
+
+function tokenizeGlob(pattern: string): GlobToken[] {
+  // By code point, like the subject loop, so an emoji is one literal on both sides.
+  const glob = Array.from(pattern);
+  const out: GlobToken[] = [];
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i] ?? '';
     if (c === '*' && glob[i + 1] === '*') {
       i++;
       if (glob[i + 1] === '/') {
         i++;
-        re += '(?:.*/)?';
-      } else re += '.*';
-    } else if (c === '*') re += '[^/]*';
-    else re += c.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+        out.push({ kind: 'groupAny' }, { kind: 'char', c: '/' });
+      } else out.push({ kind: 'any' });
+    } else if (c === '*') out.push({ kind: 'star' });
+    else out.push({ kind: 'char', c });
   }
-  return new RegExp(`^${re}$`);
+  return out;
+}
+
+// `*` stays inside one path segment, `**` spans segments, `**/` may also match nothing; every other
+// character is literal. Simulated as a set of pattern positions (O(path × pattern)), never a
+// backtracking RegExp: a crafted `**x**x**x…` against a long path would be exponential there.
+export function compileGlob(glob: string): (subject: string) => boolean {
+  const tokens = tokenizeGlob(glob);
+  const m = tokens.length;
+  const close = (set: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> => {
+    for (let i = 0; i < m; i++) {
+      if (!set[i]) continue;
+      const t = tokens[i];
+      if (t?.kind === 'star' || t?.kind === 'any') set[i + 1] = 1;
+      else if (t?.kind === 'groupAny') {
+        set[i + 1] = 1;
+        set[i + 2] = 1;
+      }
+    }
+    return set;
+  };
+  return (subject) => {
+    let cur = new Uint8Array(m + 1);
+    cur[0] = 1;
+    close(cur);
+    for (const c of subject) {
+      const next = new Uint8Array(m + 1);
+      let alive = false;
+      for (let i = 0; i < m; i++) {
+        if (!cur[i]) continue;
+        const t = tokens[i];
+        if (t === undefined) continue;
+        if (t.kind === 'char') {
+          if (t.c !== c) continue;
+          next[i + 1] = 1;
+        } else if (t.kind === 'star') {
+          if (c === '/') continue;
+          next[i] = 1;
+        } else next[i] = 1;
+        alive = true;
+      }
+      if (!alive) return false;
+      cur = close(next);
+    }
+    return cur[m] === 1;
+  };
 }
