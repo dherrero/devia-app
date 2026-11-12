@@ -124,9 +124,12 @@ describe('goExtractor', () => {
     nodeOf(ex, 'field', 'S.inner');
     expect(ex.nodes.some((x) => x.qualifiedName === 'S.inner.x')).toBe(false);
 
-    for (const name of ['Base', 'Other', 'Remote', 'Stack']) {
+    // `type`: the receiver type fact (T-515); pointers are transparent, `int` is no project type.
+    const embeddedTypes: Record<string, string> = { Base: 'Base', Other: 'Other', Remote: 'pkg.Remote', Stack: 'Stack<?>' };
+    for (const [name, type] of Object.entries(embeddedTypes)) {
       expect(nodeOf(ex, 'field', `S.${name}`).metadata).toEqual({
         embedded: true,
+        type,
       });
     }
     const ext = refs(ex, 'extends').filter((r) => r.fromNodeId === s.id);

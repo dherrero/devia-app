@@ -192,6 +192,7 @@ export class TypeInference {
     const chain = parseChain(expr);
     if (!chain) return undefined;
     let current: TypeRef | undefined;
+    let skip = 0;
     const { head } = chain;
     if (head.type !== undefined) {
       current = this.typeOf(head.type, ctx, env);
@@ -201,14 +202,23 @@ export class TypeInference {
       current = cls && !head.call ? { node: cls, env: cls.id === ctx.id ? env : this.enclosingEnv(ctx, cls, env) } : undefined;
     } else {
       this.noteName(head.name);
-      const hits = this.host.lookup(head.name, ctx, head.call);
+      let hits = this.host.lookup(head.name, ctx, head.call);
+      let call = head.call;
+      const [first] = chain.segs;
+      if (hits.length === 0 && !head.call && first) {
+        // `pkg.New()`, `ns.member`: a namespace import is no value itself; its member is.
+        this.noteName(first.name);
+        hits = this.host.lookup(`${head.name}.${first.name}`, ctx, first.call);
+        call = first.call;
+        skip = 1;
+      }
       const [only] = hits;
       if (hits.length === 1 && only) {
         this.noteFile(only.filePath);
-        current = this.asReceiver(only, EMPTY_ENV, head.call);
+        current = this.asReceiver(only, EMPTY_ENV, call);
       }
     }
-    for (const seg of chain.segs) {
+    for (const seg of chain.segs.slice(skip)) {
       if (!current) return undefined;
       current = this.step(current, seg.name, seg.call);
     }

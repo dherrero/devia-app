@@ -14,6 +14,8 @@ import {
   type LanguageExtractor,
   type SymbolInit,
 } from '../extractor';
+import { FACT_RETURNS, FACT_TYPE, FACT_TYPE_PARAMS } from '../type-facts';
+import { genericFacts, GoLocals, receiverTypeParams, returnFact, typeFact } from './go-types';
 
 // Adapted from codegraph (MIT), src/extraction/languages/go.ts.
 //
@@ -28,6 +30,8 @@ interface Ctx {
   b: ExtractionBuilder;
   /** Package-level type name → its symbol, for receiver lookup. */
   types: Map<string, GraphNode>;
+  /** Locals and parameters in scope, for receiver type facts (go-types.ts). */
+  locals: GoLocals;
 }
 
 const TYPE_REF_NODES: ReadonlySet<string> = new Set([
@@ -41,7 +45,7 @@ export const goExtractor: LanguageExtractor = {
   extensions: ['.go'],
   extract(relPath: string, source: string, tree: Tree): FileExtraction {
     const b = new ExtractionBuilder(relPath, 'go', tree.rootNode);
-    const ctx: Ctx = { source, b, types: new Map() };
+    const ctx: Ctx = { source, b, types: new Map(), locals: new GoLocals(source) };
     try {
       for (const top of topLevel(tree.rootNode)) {
         if (top.type === 'package_clause') declarePackage(top, ctx);
@@ -49,6 +53,7 @@ export const goExtractor: LanguageExtractor = {
       }
       walk(tree.rootNode, (node) => {
         b.noteSyntaxError(node);
+        ctx.locals.declareBindings(node);
         switch (node.type) {
           case 'function_declaration':
             return declareFunction(node, ctx);
@@ -130,7 +135,9 @@ function declareTypes(decl: Node, ctx: Ctx): void {
       signature,
       ...exportInfo(name),
     };
-    if (kind === 'class') init.metadata = { goKind: 'struct' };
+    const facts: RefMetadata = genericFacts(spec.childForFieldName('type_parameters'), source);
+    if (kind === 'class') facts['goKind'] = 'struct';
+    if (Object.keys(facts).length > 0) init.metadata = facts;
     const doc =
       docOf(decl.namedChildren.length === 1 ? decl : spec, source) ??
       docOf(spec, source);
@@ -155,6 +162,7 @@ function declareFields(structType: Node, owner: GraphNode, ctx: Ctx): void {
       .childrenForFieldName('name')
       .filter((n): n is Node => n !== null && n.isNamed);
     const type = field.childForFieldName('type');
+    const fact = typeFact(type, source);
     const signature = headerText(source, field);
     const doc = docOf(field, source);
     if (names.length === 0) {
@@ -165,7 +173,7 @@ function declareFields(structType: Node, owner: GraphNode, ctx: Ctx): void {
         name: ref.slice(ref.lastIndexOf('.') + 1),
         syntax: field,
         signature,
-        metadata: { embedded: true },
+        metadata: fact ? { embedded: true, [FACT_TYPE]: fact } : { embedded: true },
         ...exportInfo(ref.slice(ref.lastIndexOf('.') + 1)),
       };
       if (doc) init.docstring = doc;
@@ -182,6 +190,7 @@ function declareFields(structType: Node, owner: GraphNode, ctx: Ctx): void {
         signature,
         ...exportInfo(name),
       };
+      if (fact) init.metadata = { [FACT_TYPE]: fact };
       if (doc) init.docstring = doc;
       b.addSymbol(init, owner);
     }
@@ -206,6 +215,8 @@ function declareInterface(
         signature: headerText(source, elem),
         ...exportInfo(name),
       };
+      const returns = returnFact(elem, source);
+      if (returns) init.metadata = { [FACT_RETURNS]: returns };
       const doc = docOf(elem, source);
       if (doc) init.docstring = doc;
       b.addSymbol(init, owner);
@@ -233,6 +244,10 @@ function declareFunction(node: Node, ctx: Ctx): undefined {
     signature: headerText(source, node, node.childForFieldName('body')),
     ...exportInfo(name),
   };
+  const facts = genericFacts(node.childForFieldName('type_parameters'), source);
+  const returns = returnFact(node, source);
+  if (returns) facts[FACT_RETURNS] = returns;
+  if (Object.keys(facts).length > 0) init.metadata = facts;
   const doc = docOf(node, source);
   if (doc) init.docstring = doc;
   b.enterScope(node, b.addSymbol(init, b.file));
@@ -252,7 +267,14 @@ function declareMethod(node: Node, ctx: Ctx): undefined {
     signature: headerText(source, node, node.childForFieldName('body')),
     ...exportInfo(name),
   };
-  if (receiver?.pointer) init.metadata = { pointerReceiver: true };
+  const facts: RefMetadata = {};
+  if (receiver?.pointer) facts['pointerReceiver'] = true;
+  const returns = returnFact(node, source);
+  if (returns) facts[FACT_RETURNS] = returns;
+  // Receiver type parameters (`Stack[E]`) are unbound in the method, never project types.
+  const typeParams = receiverTypeParams(node, source);
+  if (typeParams) facts[FACT_TYPE_PARAMS] = typeParams;
+  if (Object.keys(facts).length > 0) init.metadata = facts;
   const doc = docOf(node, source);
   if (doc) init.docstring = doc;
 
@@ -340,6 +362,12 @@ function declareValues(
         ...exportInfo(name),
       };
       if (doc) init.docstring = doc;
+      const values = spec.childForFieldName('value')?.namedChildren ?? [];
+      const names = spec.childrenForFieldName('name').filter((n) => n?.isNamed);
+      const fact =
+        typeFact(spec.childForFieldName('type'), source) ??
+        (values.length === names.length ? ctx.locals.exprFact(values[names.findIndex((n) => n?.id === nameNode.id)]) : undefined);
+      if (fact && kind === 'variable') init.metadata = { [FACT_TYPE]: fact };
       b.addSymbol(init, b.file);
     }
   }
@@ -349,7 +377,10 @@ function declareValues(
 function visitCall(node: Node, ctx: Ctx): undefined {
   const fn = node.childForFieldName('function');
   const name = fn ? calleeName(fn, ctx.source) : undefined;
-  if (name) ctx.b.addRef(ctx.b.scopeAt(node).node.id, name, 'calls', node);
+  if (!fn || !name) return undefined;
+  const operand = fn.type === 'selector_expression' ? fn.childForFieldName('operand') : null;
+  const named = operand ? receiverName(operand, ctx.source) !== undefined : true;
+  ctx.b.addRef(ctx.b.scopeAt(node).node.id, name, 'calls', node, ctx.locals.callMetadata(fn, named));
   return undefined;
 }
 

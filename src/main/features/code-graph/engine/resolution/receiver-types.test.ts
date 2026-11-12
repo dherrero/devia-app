@@ -271,3 +271,75 @@ describe('receiver type inference — Java', () => {
     expect(jcalls('App.java', 'App.run')).toEqual([]);
   });
 });
+
+describe('receiver type inference — Go', () => {
+  const MOD = 'module example.com/m\n\ngo 1.22\n';
+  const CORE =
+    'package core\n\ntype Logger struct{ scope string }\n\nfunc NewLogger(s string) *Logger {\n\treturn &Logger{scope: s}\n}\n\nfunc (l *Logger) Info(m string) {}\n\nfunc (l *Logger) Child(s string) *Logger {\n\treturn NewLogger(s)\n}\n';
+  const MODEL =
+    'package model\n\ntype Identified interface {\n\tID() string\n}\n\ntype base struct{ id string }\n\nfunc (b base) ID() string {\n\treturn b.id\n}\n\ntype User struct {\n\tbase\n\tName string\n}\n\ntype Order struct {\n\tbase\n}\n\nfunc (o *Order) MarkPaid() {}\n';
+  const STORE =
+    'package store\n\nimport "example.com/m/model"\n\ntype Store interface {\n\tGet(id string) (model.Identified, error)\n\tSave(item model.Identified)\n}\n\ntype Memory struct{}\n\nfunc (m *Memory) Get(id string) (model.Identified, error) {\n\treturn nil, nil\n}\n\nfunc (m *Memory) Save(item model.Identified) {\n\t_ = item.ID()\n}\n';
+
+  function gfn(file: string, qname: string): string[] {
+    return calls(file, qname);
+  }
+
+  it('follows a local typed by a function\'s declared return type, chained and captured', async () => {
+    await h.addFiles({
+      'go.mod': MOD,
+      'core/logger.go': CORE,
+      'main.go':
+        'package main\n\nimport "example.com/m/core"\n\nfunc run(xs []string) {\n\tlog := core.NewLogger("s")\n\tlog.Child("a").Info("x")\n\tfor _, x := range xs {\n\t\tfunc() { log.Info(x) }()\n\t}\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(gfn('main.go', 'run')).toEqual(
+      [h.sym('core/logger.go', 'NewLogger').id, h.sym('core/logger.go', 'Logger.Child').id, h.sym('core/logger.go', 'Logger.Info').id].sort(),
+    );
+  });
+
+  it('follows struct field types to the interface method, an interface parameter, and the first of several results', async () => {
+    await h.addFiles({
+      'go.mod': MOD,
+      'model/model.go': MODEL,
+      'store/store.go': STORE,
+      'service/users.go':
+        'package service\n\nimport (\n\t"example.com/m/model"\n\t"example.com/m/store"\n)\n\ntype Users struct {\n\tstore store.Store\n}\n\nfunc (s *Users) Register(u *model.User) string {\n\ts.store.Save(u)\n\titem, err := s.store.Get("1")\n\t_ = err\n\treturn item.ID() + u.ID()\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(gfn('service/users.go', 'Users.Register')).toEqual(
+      [
+        h.sym('store/store.go', 'Store.Save', 'method').id,
+        h.sym('store/store.go', 'Store.Get', 'method').id,
+        h.sym('model/model.go', 'Identified.ID', 'method').id,
+        h.sym('model/model.go', 'base.ID', 'method').id,
+      ].sort(),
+    );
+    expect(gfn('store/store.go', 'Memory.Save')).toEqual([h.sym('model/model.go', 'Identified.ID', 'method').id]);
+  });
+
+  it('follows type assertions and type switch aliases', async () => {
+    await h.addFiles({
+      'go.mod': MOD,
+      'model/model.go': MODEL,
+      'service/orders.go':
+        'package service\n\nimport "example.com/m/model"\n\nfunc Pay(item model.Identified) {\n\torder := item.(*model.Order)\n\torder.MarkPaid()\n\tswitch v := item.(type) {\n\tcase *model.User:\n\t\t_ = v.Name\n\t\tv.ID()\n\tcase *model.Order:\n\t\tv.MarkPaid()\n\t}\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(gfn('service/orders.go', 'Pay')).toEqual(
+      [h.sym('model/model.go', 'Order.MarkPaid', 'method').id, h.sym('model/model.go', 'base.ID', 'method').id].sort(),
+    );
+  });
+
+  it('a parameter shadows an imported package of the same name; untyped values stay silent', async () => {
+    await h.addFiles({
+      'go.mod': MOD,
+      'model/model.go': MODEL,
+      'store/store.go': STORE + '\nfunc NewMemory() *Memory {\n\treturn &Memory{}\n}\n',
+      'main.go':
+        'package main\n\nimport "example.com/m/store"\n\nfunc run(store store.Store, m map[string]*store.Memory, fs []func()) {\n\tstore.Save(nil)\n\tv, ok := m["a"]\n\t_ = ok\n\tv.Save(nil)\n\tfor _, f := range fs {\n\t\tf()\n\t}\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(gfn('main.go', 'run')).toEqual([h.sym('store/store.go', 'Store.Save', 'method').id]);
+  });
+});

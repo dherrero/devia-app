@@ -195,6 +195,39 @@ describe('sync parity with a full reindex', () => {
     await syncAndCompare('the target method is renamed');
   });
 
+  it('matches a fresh index when Go receiver types change (T-515)', async () => {
+    project.writeAll({
+      'go.mod': 'module example.com/m\n',
+      'model/model.go':
+        'package model\n\ntype base struct{}\n\nfunc (b base) ID() string { return "" }\n\ntype User struct {\n\tbase\n}\n\nfunc (u *User) Hello() {}\n',
+      'core/logger.go':
+        'package core\n\ntype Logger struct{}\n\nfunc NewLogger() *Logger { return &Logger{} }\n\nfunc (l *Logger) Info() {}\n',
+      'service/users.go':
+        'package service\n\nimport (\n\t"example.com/m/core"\n\t"example.com/m/model"\n)\n\ntype Users struct {\n\tlog *core.Logger\n}\n\nfunc (s *Users) Find(id string) (*model.User, error) {\n\treturn nil, nil\n}\n',
+      'main.go':
+        'package main\n\nimport (\n\t"example.com/m/core"\n\t"example.com/m/service"\n)\n\nfunc run(s *service.Users) {\n\tu, _ := s.Find("1")\n\tu.Hello()\n\tu.ID()\n\tlog := core.NewLogger()\n\tlog.Info()\n}\n',
+    });
+    await fullIndex(project.root, dataDir);
+    const initial = snapshotGraph(dataDir);
+    // Find, Hello, ID (promoted), NewLogger, Info.
+    expect(initial.edges.filter((e) => e.includes('"kind":"calls"'))).toHaveLength(5);
+
+    project.write('model/model.go', project.read('model/model.go').replace('\tbase\n', '\tName string\n'));
+    await syncAndCompare('the embedding that promotes ID is removed');
+
+    project.write('model/model.go', project.read('model/model.go').replace('\tName string\n', '\tbase\n'));
+    await syncAndCompare('the embedding comes back');
+
+    project.write('service/users.go', project.read('service/users.go').replace('(*model.User, error)', '(any, error)'));
+    await syncAndCompare('a declared result type is dropped');
+
+    project.write('service/users.go', project.read('service/users.go').replace('(any, error)', '(*model.User, error)'));
+    await syncAndCompare('the result type comes back');
+
+    project.write('core/logger.go', project.read('core/logger.go').replace('func NewLogger() *Logger', 'func NewLogger() any'));
+    await syncAndCompare('a constructor function loses its return type');
+  });
+
   it('matches a fresh index after each of 30 seeded random edits over TS, Python and a Go package', async () => {
     const rand = mulberry32(0x5eed);
     const pick = <T>(items: readonly T[]): T => {
