@@ -7,6 +7,7 @@ import {
   type GraphEdge,
 } from '../../../../../shared/domain/code-graph';
 import type { GraphQueries, NodeSummary, UnresolvedRef } from '../db/queries';
+import { REF_HEAD_TYPE, REF_OWNER_TYPE, UNKNOWN_TYPE } from '../extraction/type-facts';
 import { inferGoImplements } from './go-implements';
 import { resolverFor, type ResolveContext } from './language-resolvers';
 import {
@@ -15,12 +16,26 @@ import {
   isConstructor,
   SymbolIndex,
 } from './name-matcher';
+import {
+  EMPTY_ENV,
+  isValueNode,
+  TypeInference,
+  type Env,
+} from './type-inference';
 
 // Adapted from codegraph (MIT), src/resolution/index.ts, without frameworks or synthesizers.
 //
 // Phases run in order so later ones can lean on earlier edges: imports (file→file edges and
 // per-file bindings) → extends/implements (supertypes for inherited members) → calls and the
 // rest → overrides. Silence beats a wrong edge: anything ambiguous is marked `failed`.
+//
+// Receivers (S-44 T-515): `recv.m()` follows the receiver's declared or initializer type (facts
+// recorded by the extractors, evaluated by TypeInference). A receiver whose type is unknown
+// (an untyped parameter, `x = something()` with no declared return type) gets NO edge: codegraph
+// falls back to "the only method with that name in the project" at confidence 0.7, but a
+// unique-name guess is exactly the wrong edge this resolver refuses to emit, and impact analysis
+// would then report callers that do not exist. Such refs stay `failed` and are retried when a
+// file defining that name changes.
 
 export interface ResolveStats {
   resolved: number;
@@ -113,6 +128,22 @@ interface BatchWrites {
   edges: GraphEdge[];
   deletes: number[];
   fails: { id: number; tail: string }[];
+  /** Resolved imports that bind a name: kept as `bound` (see RefStatus). */
+  bound: number[];
+  deps: Map<string, Reads>;
+}
+
+/** What one ref's type inference read outside its own file. */
+interface Reads {
+  files: Set<string>;
+  names: Set<string>;
+}
+
+interface ImportOutcome {
+  targets: string[];
+  binds: [string, Binding][];
+  /** Name tail to store when the ref failed. */
+  failTail?: string;
 }
 
 /**
@@ -137,6 +168,11 @@ class ResolutionRun {
     string,
     { name: string; type: NodeSummary } | null
   >();
+  private readonly types: TypeInference;
+  /** Partial runs rebuild the import bindings of untouched files from their `bound` refs. */
+  private partial = false;
+  private readonly storedBindingsLoaded = new Set<string>();
+  private reads: Reads | undefined;
   private readonly stats: ResolveStats = {
     resolved: 0,
     failed: 0,
@@ -166,9 +202,19 @@ class ResolutionRun {
       db.edgesOfKinds(['contains', 'extends', 'implements', 'imports']),
       files,
     );
+    this.types = new TypeInference({
+      index: this.index,
+      lookup: (name, from) => {
+        const r = this.resolveName(name, from);
+        return r && !r.heuristic ? [r.target] : [];
+      },
+      noteFile: (file) => this.reads?.files.add(file),
+      noteName: (name) => this.reads?.names.add(name),
+    });
   }
 
   run(onlyFiles: string[] | undefined): ResolveStats {
+    this.partial = onlyFiles !== undefined;
     if (onlyFiles === undefined) {
       for (const kinds of PHASES)
         this.processAll(this.db.unresolvedByKinds('pending', kinds));
@@ -218,7 +264,13 @@ class ResolutionRun {
 
   private processAll(refs: UnresolvedRef[]): void {
     for (let start = 0; start < refs.length; start += BATCH_SIZE) {
-      const writes: BatchWrites = { edges: [], deletes: [], fails: [] };
+      const writes: BatchWrites = {
+        edges: [],
+        deletes: [],
+        fails: [],
+        bound: [],
+        deps: new Map(),
+      };
       for (const ref of refs.slice(start, start + BATCH_SIZE))
         this.processRef(ref, writes);
       this.db.transaction(() => {
@@ -226,6 +278,11 @@ class ResolutionRun {
         for (const id of writes.deletes) this.db.deleteUnresolved(id);
         for (const f of writes.fails)
           this.db.markUnresolved(f.id, 'failed', f.tail);
+        for (const id of writes.bound) this.db.markUnresolved(id, 'bound');
+        for (const [file, r] of writes.deps) {
+          this.db.insertResolutionDeps(file, 'file', r.files);
+          this.db.insertResolutionDeps(file, 'name', r.names);
+        }
       });
     }
   }
@@ -245,7 +302,14 @@ class ResolutionRun {
       writes.deletes.push(ref.id);
       return;
     }
-    const edge = this.resolveSymbolRef(ref, from);
+    this.reads = { files: new Set(), names: new Set() };
+    let edge: GraphEdge | undefined;
+    try {
+      edge = this.resolveSymbolRef(ref, from);
+    } finally {
+      this.recordReads(ref.filePath, this.reads, writes);
+      this.reads = undefined;
+    }
     if (!edge) {
       writes.fails.push({ id: ref.id, tail: ref.nameTail });
       this.stats.failed++;
@@ -263,18 +327,43 @@ class ResolutionRun {
     id: number,
     writes: BatchWrites,
   ): void {
-    const fail = (tail: string): void => {
-      writes.fails.push({ id, tail });
+    const outcome = this.importOutcome(ref);
+    const sourceFile = this.index.fileNodes.get(ref.filePath);
+    for (const t of outcome.targets) {
+      const targetFile = this.index.fileNodes.get(t);
+      if (t === ref.filePath || !targetFile || !sourceFile) continue;
+      writes.edges.push({
+        source: sourceFile.id,
+        target: targetFile.id,
+        kind: ref.referenceKind,
+        provenance: 'static',
+      });
+      if (ref.referenceKind === 'imports')
+        this.index.addImport(ref.filePath, t);
+    }
+    for (const [name, binding] of outcome.binds)
+      this.bind(ref.filePath, name, binding);
+    if (outcome.failTail !== undefined) {
+      writes.fails.push({ id, tail: outcome.failTail });
       this.stats.failed++;
-    };
+      return;
+    }
+    if (outcome.binds.length > 0) writes.bound.push(id);
+    else writes.deletes.push(id);
+    this.stats.resolved++;
+  }
+
+  /** Where an import lands and what it binds; no side effects, so stored refs can be replayed. */
+  private importOutcome(ref: UnresolvedRef): ImportOutcome {
     const meta = ref.metadata ?? {};
     const bindingName =
       typeof meta['binding'] === 'string' ? meta['binding'] : undefined;
+    const blocked: [string, Binding][] = bindingName
+      ? [[bindingName, { kind: 'blocked' }]]
+      : [];
     const resolver = resolverFor(ref.language);
-    if (!resolver) {
-      fail(importStem(ref.referenceName));
-      return;
-    }
+    if (!resolver)
+      return { targets: [], binds: [], failTail: importStem(ref.referenceName) };
     const star = meta['star'] === true;
     const imported =
       typeof meta['imported'] === 'string' ? meta['imported'] : undefined;
@@ -317,30 +406,9 @@ class ResolutionRun {
     }
     const targets = candidates.filter((t) => this.index.fileNodes.has(t));
     const target = targets[0];
-    const sourceFile = this.index.fileNodes.get(ref.filePath);
-    if (target === undefined || !sourceFile) {
-      if (bindingName)
-        this.bind(ref.filePath, bindingName, { kind: 'blocked' });
-      fail(importStem(ref.referenceName));
-      return;
-    }
-    for (const t of targets) {
-      const targetFile = this.index.fileNodes.get(t);
-      if (t === ref.filePath || !targetFile) continue;
-      writes.edges.push({
-        source: sourceFile.id,
-        target: targetFile.id,
-        kind: ref.referenceKind,
-        provenance: 'static',
-      });
-      if (ref.referenceKind === 'imports')
-        this.index.addImport(ref.filePath, t);
-    }
-    if (!bindingName) {
-      writes.deletes.push(id);
-      this.stats.resolved++;
-      return;
-    }
+    if (target === undefined || !this.index.fileNodes.has(ref.filePath))
+      return { targets: [], binds: blocked, failTail: importStem(ref.referenceName) };
+    if (!bindingName) return { targets, binds: [] };
     let binding: Binding | undefined;
     if (
       star ||
@@ -354,11 +422,8 @@ class ResolutionRun {
     } else {
       binding = this.findExport(target, imported ?? bindingName, 0, new Set());
     }
-    if (!binding) {
-      this.bind(ref.filePath, bindingName, { kind: 'blocked' });
-      fail(imported ?? bindingName);
-      return;
-    }
+    if (!binding)
+      return { targets, binds: blocked, failTail: imported ?? bindingName };
     const dottedImport =
       ref.language === 'python' &&
       imported === undefined &&
@@ -369,19 +434,55 @@ class ResolutionRun {
       // dotted form is kept so `a.b.f()` still reaches `b.py`.
       const head = ref.referenceName.split('.')[0] ?? bindingName;
       const pkg = resolver.resolveImport(ref.filePath, head, this.ctx);
-      this.bind(
-        ref.filePath,
-        bindingName,
-        pkg !== undefined && this.index.fileNodes.has(pkg)
-          ? { kind: 'namespace', files: [pkg] }
-          : { kind: 'blocked' },
-      );
-      this.bind(ref.filePath, ref.referenceName, binding);
-    } else {
-      this.bind(ref.filePath, bindingName, binding);
+      return {
+        targets,
+        binds: [
+          [
+            bindingName,
+            pkg !== undefined && this.index.fileNodes.has(pkg)
+              ? { kind: 'namespace', files: [pkg] }
+              : { kind: 'blocked' },
+          ],
+          [ref.referenceName, binding],
+        ],
+      };
     }
-    writes.deletes.push(id);
-    this.stats.resolved++;
+    return { targets, binds: [[bindingName, binding]] };
+  }
+
+  /**
+   * A file's import bindings. A full run processes every import first; a partial run only the
+   * touched files', so another file's are rebuilt from its stored `bound`/`failed` import refs
+   * (in id order, like a full run), with this run's own results on top.
+   */
+  private bindingsOf(file: string): Map<string, Binding> | undefined {
+    if (!this.partial || this.storedBindingsLoaded.has(file))
+      return this.bindings.get(file);
+    this.storedBindingsLoaded.add(file);
+    const stored = [
+      ...this.db.unresolvedInFiles([file], 'bound'),
+      ...this.db.unresolvedInFiles([file], 'failed'),
+    ]
+      .filter((r) => IMPORT_KINDS.includes(r.referenceKind))
+      .sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+    if (stored.length === 0) return this.bindings.get(file);
+    const map = new Map<string, Binding>();
+    for (const r of stored)
+      for (const [name, binding] of this.importOutcome(r).binds)
+        map.set(name, binding);
+    for (const [name, binding] of this.bindings.get(file) ?? [])
+      map.set(name, binding);
+    this.bindings.set(file, map);
+    return map;
+  }
+
+  private recordReads(file: string, reads: Reads, writes: BatchWrites): void {
+    reads.files.delete(file);
+    if (reads.files.size === 0 && reads.names.size === 0) return;
+    let acc = writes.deps.get(file);
+    if (!acc) writes.deps.set(file, (acc = { files: new Set(), names: new Set() }));
+    for (const f of reads.files) acc.files.add(f);
+    for (const n of reads.names) acc.names.add(n);
   }
 
   private bind(file: string, name: string, binding: Binding): void {
@@ -486,7 +587,7 @@ class ResolutionRun {
   ): GraphEdge | undefined {
     if (ref.referenceKind === 'overrides')
       return this.resolveOverride(ref, from);
-    const resolution = this.resolveName(ref.referenceName, from);
+    const resolution = this.resolveName(ref.referenceName, from, ref.metadata);
     if (!resolution) return undefined;
     const shaped = shapeEdge(ref.referenceKind, resolution.target, this.index);
     if (!shaped) return undefined;
@@ -519,14 +620,38 @@ class ResolutionRun {
     };
   }
 
-  private resolveName(name: string, from: NodeSummary): Resolution | undefined {
+  private resolveName(
+    name: string,
+    from: NodeSummary,
+    meta?: UnresolvedRef['metadata'],
+  ): Resolution | undefined {
     const segs = name.split('.');
     const [head, ...rest] = segs;
     if (!head || segs.some((s) => s === '')) return undefined;
     let heuristic = false;
     let current: NodeSummary[];
+    let env: Env = EMPTY_ENV;
+    let inferred = false;
 
-    if (RECEIVER_WORDS[from.language]?.has(head)) {
+    const ownerType = meta?.[REF_OWNER_TYPE];
+    const headType = meta?.[REF_HEAD_TYPE];
+    if (typeof ownerType === 'string') {
+      // A call on a computed receiver: the whole name is a member of the receiver's type.
+      const owner = this.types.typeOf(ownerType, from);
+      if (!owner) return undefined;
+      current = [owner.node];
+      env = owner.env;
+      rest.unshift(head);
+      inferred = true;
+    } else if (typeof headType === 'string') {
+      // The head is a local or parameter: its type decides, never an outer symbol of that name.
+      if (headType === UNKNOWN_TYPE || rest.length === 0) return undefined;
+      const recv = this.types.typeOf(headType, from);
+      if (!recv) return undefined;
+      current = [recv.node];
+      env = recv.env;
+      inferred = true;
+    } else if (RECEIVER_WORDS[from.language]?.has(head)) {
       const cls = this.index.enclosingClass(from);
       if (!cls || rest.length === 0) return undefined;
       current = [cls];
@@ -539,7 +664,7 @@ class ResolutionRun {
     } else {
       const receiver =
         from.language === 'go' ? this.goReceiver(from) : undefined;
-      const fileBindings = this.bindings.get(from.filePath);
+      const fileBindings = this.bindingsOf(from.filePath);
       let binding = fileBindings?.get(head);
       if (from.language === 'python' && fileBindings) {
         for (let n = segs.length - 1; n >= 2; n--) {
@@ -571,10 +696,40 @@ class ResolutionRun {
       }
     }
 
-    for (const seg of rest) {
+    for (let i = 0; i < rest.length; i++) {
+      const seg = rest[i] ?? '';
       const [only] = current;
       if (current.length !== 1 || !only) return undefined;
-      current = this.index.memberOf(only, seg);
+      let owner = only;
+      let ownerEnv = env;
+      let hits = this.index.memberOf(owner, seg);
+      if (hits.length === 0 && isValueNode(owner)) {
+        // `x.m()` on a field/variable: the members of its declared type.
+        const t = this.types.valueType(owner, env);
+        if (t) {
+          owner = t.node;
+          ownerEnv = t.env;
+          hits = this.index.memberOf(owner, seg);
+          inferred = true;
+        }
+      }
+      if (inferred) this.reads?.names.add(seg);
+      if (hits.length === 0 && i < rest.length - 1 && isClassLike(owner)) {
+        // A field with no node of its own (TS parameter property, Python `self.x = …`).
+        const t = this.types.fieldType({ node: owner, env: ownerEnv }, seg);
+        if (t) {
+          current = [t.node];
+          env = t.env;
+          inferred = true;
+          continue;
+        }
+      }
+      const [hit] = hits;
+      env =
+        hits.length === 1 && hit
+          ? this.types.memberEnv({ node: owner, env: ownerEnv }, hit)
+          : EMPTY_ENV;
+      current = hits;
     }
     const [target] = current;
     return current.length === 1 && target ? { target, heuristic } : undefined;

@@ -9,11 +9,14 @@ const versions = (db: GraphDb): number[] =>
   (db.prepare('SELECT version FROM schema_versions ORDER BY version').all() as { version: number }[]).map((r) => r.version);
 const hasIdFileIndex = (db: GraphDb): boolean =>
   db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_nodes_id_file'").get() !== undefined;
+const hasResolutionDeps = (db: GraphDb): boolean =>
+  db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'resolution_deps'").get() !== undefined;
 
 /** A graph as schema v1 left it: no `idx_nodes_id_file`, only version 1 recorded. */
 function makeV1(file: string): void {
   const db = openGraphDb(file);
   db.exec('DROP INDEX idx_nodes_id_file');
+  db.exec('DROP TABLE resolution_deps');
   db.exec('DELETE FROM schema_versions WHERE version > 1');
   db.exec("INSERT INTO project_metadata VALUES ('k','v',1)");
   db.close();
@@ -59,9 +62,10 @@ describe('openGraphDb', () => {
 
   it('creates a new graph at the current schema version, with the id/file index', () => {
     const db = openGraphDb(path.join(dir, 'graph.db'));
-    expect(SCHEMA_VERSION).toBe(2);
-    expect(versions(db)).toEqual([1, 2]);
+    expect(SCHEMA_VERSION).toBe(3);
+    expect(versions(db)).toEqual([1, 2, 3]);
     expect(hasIdFileIndex(db)).toBe(true);
+    expect(hasResolutionDeps(db)).toBe(true);
     db.close();
   });
 
@@ -69,12 +73,13 @@ describe('openGraphDb', () => {
     const file = path.join(dir, 'graph.db');
     makeV1(file);
     const db = openGraphDb(file);
-    expect(versions(db)).toEqual([1, 2]);
+    expect(versions(db)).toEqual([1, 2, 3]);
     expect(hasIdFileIndex(db)).toBe(true);
+    expect(hasResolutionDeps(db)).toBe(true);
     expect(db.prepare("SELECT value FROM project_metadata WHERE key = 'k'").get()).toEqual({ value: 'v' });
     db.close();
     const again = openGraphDb(file);
-    expect(versions(again)).toEqual([1, 2]);
+    expect(versions(again)).toEqual([1, 2, 3]);
     again.close();
   });
 

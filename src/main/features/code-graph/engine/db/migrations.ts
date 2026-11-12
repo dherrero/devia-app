@@ -21,6 +21,20 @@ const MIGRATIONS: Migration[] = [
     description: 'Graph view id/file index',
     up: (db) => db.exec('CREATE INDEX IF NOT EXISTS idx_nodes_id_file ON nodes(id, file_path)'),
   },
+  {
+    version: 3,
+    description: 'Receiver type inference dependencies',
+    up: (db) =>
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS resolution_deps (
+           file_path TEXT NOT NULL,
+           kind TEXT NOT NULL,
+           dep TEXT NOT NULL,
+           PRIMARY KEY (file_path, kind, dep)
+         ) WITHOUT ROWID;
+         CREATE INDEX IF NOT EXISTS idx_resolution_deps_dep ON resolution_deps(kind, dep);`,
+      ),
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

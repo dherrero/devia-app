@@ -31,10 +31,21 @@ export interface UnresolvedRef {
   col: number;
   filePath: string;
   language: CodeGraphLanguage;
-  status: 'pending' | 'failed';
+  status: RefStatus;
   nameTail: string;
   metadata?: RefMetadata;
 }
+
+/**
+ * `pending` waits for resolution, `failed` waits for a file that could satisfy it. `bound` is a
+ * resolved import that binds a name: kept so a later partial resolution can rebuild that file's
+ * import bindings without re-extracting it (receiver types are looked up in the file that
+ * declares them, which a sync need not touch).
+ */
+export type RefStatus = 'pending' | 'failed' | 'bound';
+
+/** What a resolution read in another file: that file, or a name it looked up (S-44 T-515). */
+export type ResolutionDepKind = 'file' | 'name';
 
 export type NodeSummary = Pick<
   GraphNode,
@@ -289,7 +300,7 @@ function toUnresolved(r: UnresolvedRow): UnresolvedRef {
     col: r.col,
     filePath: r.file_path,
     language: r.language as CodeGraphLanguage,
-    status: r.status as 'pending' | 'failed',
+    status: r.status as RefStatus,
     nameTail: r.name_tail,
   };
   if (r.metadata !== null) u.metadata = JSON.parse(r.metadata) as RefMetadata;
@@ -353,6 +364,7 @@ export class GraphQueries {
     this.transaction(() => {
       this.stmt('DELETE FROM nodes WHERE file_path = ?').run(path);
       this.stmt('DELETE FROM files WHERE path = ?').run(path);
+      this.stmt('DELETE FROM resolution_deps WHERE file_path = ?').run(path);
     });
   }
 
@@ -432,7 +444,7 @@ export class GraphQueries {
   }
 
   unresolvedByStatus(
-    status: 'pending' | 'failed',
+    status: RefStatus,
     limit?: number,
   ): UnresolvedRef[] {
     const rows =
@@ -448,7 +460,7 @@ export class GraphQueries {
 
   markUnresolved(
     id: number,
-    status: 'pending' | 'failed',
+    status: RefStatus,
     nameTail?: string,
   ): void {
     if (nameTail === undefined) {
@@ -464,7 +476,7 @@ export class GraphQueries {
   }
 
   unresolvedByKinds(
-    status: 'pending' | 'failed',
+    status: RefStatus,
     kinds: EdgeKind[],
   ): UnresolvedRef[] {
     if (kinds.length === 0) return [];
@@ -476,7 +488,7 @@ export class GraphQueries {
 
   unresolvedInFiles(
     paths: string[],
-    status: 'pending' | 'failed',
+    status: RefStatus,
   ): UnresolvedRef[] {
     return this.unresolvedIn('file_path', paths, status);
   }
@@ -488,7 +500,7 @@ export class GraphQueries {
   private unresolvedIn(
     column: 'file_path' | 'name_tail',
     values: string[],
-    status: 'pending' | 'failed',
+    status: RefStatus,
   ): UnresolvedRef[] {
     const unique = [...new Set(values)];
     const rows: UnresolvedRow[] = [];
@@ -501,6 +513,40 @@ export class GraphQueries {
       );
     }
     return rows.sort((a, b) => a.id - b.id).map(toUnresolved);
+  }
+
+  /** Records that `filePath`'s resolution read `deps` (idempotent). */
+  insertResolutionDeps(filePath: string, kind: ResolutionDepKind, deps: Iterable<string>): void {
+    const s = this.stmt('INSERT OR IGNORE INTO resolution_deps (file_path, kind, dep) VALUES (?, ?, ?)');
+    this.transaction(() => {
+      for (const d of deps) if (d !== filePath || kind !== 'file') s.run(filePath, kind, d);
+    });
+  }
+
+  /** Files whose recorded resolution read one of `deps`. */
+  filesDependingOn(kind: ResolutionDepKind, deps: string[]): Set<string> {
+    const unique = [...new Set(deps)];
+    const out = new Set<string>();
+    for (let i = 0; i < unique.length; i += IN_CHUNK) {
+      const chunk = unique.slice(i, i + IN_CHUNK);
+      const rows = this.stmt(
+        `SELECT DISTINCT file_path FROM resolution_deps WHERE kind = ? AND dep IN (${chunk.map(() => '?').join(',')})`,
+      ).all(kind, ...chunk) as unknown as { file_path: string }[];
+      for (const r of rows) out.add(r.file_path);
+    }
+    return out;
+  }
+
+  deleteResolutionDepsOf(paths: string[]): void {
+    const unique = [...new Set(paths)];
+    this.transaction(() => {
+      for (let i = 0; i < unique.length; i += IN_CHUNK) {
+        const chunk = unique.slice(i, i + IN_CHUNK);
+        this.stmt(
+          `DELETE FROM resolution_deps WHERE file_path IN (${chunk.map(() => '?').join(',')})`,
+        ).run(...chunk);
+      }
+    });
   }
 
   deleteUnresolved(id: number): void {

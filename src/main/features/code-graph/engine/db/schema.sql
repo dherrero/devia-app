@@ -66,6 +66,18 @@ CREATE TABLE IF NOT EXISTS unresolved_refs (
     FOREIGN KEY (from_node_id) REFERENCES nodes(id) ON DELETE CASCADE
 );
 
+-- What each file's resolution read elsewhere through receiver type inference (S-44 T-515): a file
+-- whose facts or import bindings were consulted (kind 'file'), or a name that was looked up
+-- (kind 'name'). A sync re-resolves the files that read something it changes.
+CREATE TABLE IF NOT EXISTS resolution_deps (
+    file_path TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    dep TEXT NOT NULL,
+    PRIMARY KEY (file_path, kind, dep)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_resolution_deps_dep ON resolution_deps(kind, dep);
+
 CREATE TABLE IF NOT EXISTS project_metadata (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
