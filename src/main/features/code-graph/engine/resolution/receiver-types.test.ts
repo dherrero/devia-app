@@ -414,3 +414,85 @@ describe('receiver type inference — Dart', () => {
     expect(calls('lib/main.dart', 'App.run')).toEqual([h.sym('lib/core/logger.dart', 'Logger.info').id]);
   });
 });
+
+describe('receiver type inference — Python', () => {
+  const PLOGGER =
+    'class Logger:\n    def __init__(self, scope):\n        self.scope = scope\n\n    def info(self, m):\n        pass\n\n    def child(self, s) -> "Logger":\n        return Logger(s)\n';
+  const PREPO =
+    'class InMemoryRepository:\n    def __init__(self):\n        self._items = {}\n\n    def save(self, item):\n        pass\n\n    def get(self, ident):\n        return self._items[ident]\n';
+
+  /** Member calls only: a Python constructor call (`Logger("a")`) is a `calls` edge to the class. */
+  function pcalls(file: string, qname: string): string[] {
+    return calls(file, qname).filter((id) => h.q.nodeById(id)?.kind !== 'class');
+  }
+
+  it('follows `self.x = Foo()` from __init__ in other methods, also through a module import', async () => {
+    await h.addFiles({
+      'shop/__init__.py': '',
+      'shop/services/__init__.py': '',
+      'shop/core/__init__.py': '',
+      'shop/core/events.py': 'class EventBus:\n    def publish(self, e):\n        pass\n',
+      'shop/services/repository.py': PREPO,
+      'shop/services/order_service.py':
+        'from shop.core.events import EventBus\nfrom . import repository\n\n\nclass OrderService:\n    def __init__(self):\n        self.events = EventBus()\n        self.repo = repository.InMemoryRepository()\n\n    def open(self, order):\n        self.repo.save(order)\n        self.events.publish(order)\n',
+      'shop/app.py':
+        'from shop.services.order_service import OrderService\n\n\ndef main():\n    svc = OrderService()\n    svc.events.publish(1)\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(pcalls('shop/services/order_service.py', 'OrderService.open')).toEqual(
+      [h.sym('shop/services/repository.py', 'InMemoryRepository.save').id, h.sym('shop/core/events.py', 'EventBus.publish').id].sort(),
+    );
+    expect(pcalls('shop/app.py', 'main')).toEqual([h.sym('shop/core/events.py', 'EventBus.publish').id]);
+  });
+
+  it('follows locals built from a class, chained returns, closures and annotated parameters', async () => {
+    await h.addFiles({
+      'shop/__init__.py': '',
+      'shop/logging.py': PLOGGER,
+      'shop/app.py':
+        'from typing import Optional\nfrom shop.logging import Logger\n\n\ndef build(given: Optional[Logger], other: "Logger", xs):\n    log = Logger("a")\n    log.child("b").info("c")\n    for x in xs:\n        (lambda e: log.info(e))(x)\n    given.info("g")\n    other.info("o")\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(pcalls('shop/app.py', 'build')).toEqual(
+      [h.sym('shop/logging.py', 'Logger.child').id, h.sym('shop/logging.py', 'Logger.info').id].sort(),
+    );
+  });
+
+  it('types an unannotated function by its returns only when every return agrees', async () => {
+    await h.addFiles({
+      'shop/__init__.py': '',
+      'shop/router.py':
+        'class Router:\n    def dispatch(self, c):\n        pass\n\n\nclass Other:\n    def dispatch(self, c):\n        pass\n',
+      'shop/app.py':
+        'from shop.router import Router, Other\n\n\ndef build():\n    r = Router()\n    return r\n\n\ndef either(flag):\n    if flag:\n        return Router()\n    return Other()\n\n\ndef main():\n    router = build()\n    router.dispatch("x")\n    either(True).dispatch("y")\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(pcalls('shop/app.py', 'main')).toEqual(
+      [h.sym('shop/app.py', 'build').id, h.sym('shop/app.py', 'either').id, h.sym('shop/router.py', 'Router.dispatch').id].sort(),
+    );
+  });
+
+  it('stays silent on untyped parameters, conflicting assignments and untyped containers', async () => {
+    await h.addFiles({
+      'shop/__init__.py': '',
+      'shop/services.py':
+        'class OrderService:\n    def pay(self, i):\n        pass\n\n\nclass Audit:\n    def pay(self, i):\n        pass\n',
+      'shop/repository.py': PREPO,
+      'shop/handlers.py':
+        'from shop.services import OrderService, Audit\nfrom shop.repository import InMemoryRepository\n\n\ndef handle_pay(orders, ident):\n    orders.pay(ident)\n    x = OrderService()\n    x = Audit()\n    x.pay(ident)\n    repo = InMemoryRepository()\n    order = repo.get(ident)\n    order.pay(ident)\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(pcalls('shop/handlers.py', 'handle_pay')).toEqual([h.sym('shop/repository.py', 'InMemoryRepository.get').id]);
+  });
+
+  it('types an `except T as e` variable', async () => {
+    await h.addFiles({
+      'shop/__init__.py': '',
+      'shop/errors.py': 'class DomainError(Exception):\n    def code(self):\n        return ""\n',
+      'shop/app.py':
+        'from shop import errors\n\n\ndef guard(work):\n    try:\n        work()\n    except errors.DomainError as err:\n        return err.code()\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(pcalls('shop/app.py', 'guard')).toEqual([h.sym('shop/errors.py', 'DomainError.code').id]);
+  });
+});

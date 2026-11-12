@@ -13,6 +13,8 @@ import {
   type LanguageExtractor,
   type SymbolInit,
 } from '../extractor';
+import { FACT_RETURNS, FACT_TYPE, FACT_TYPE_PARAMS, FIELD_FACT_PREFIX } from '../type-facts';
+import { chainBase, genericParams, PythonLocals, typeFact, type FunctionFacts } from './python-types';
 
 // Adapted from codegraph (MIT), src/extraction/languages/python.ts.
 //
@@ -50,6 +52,12 @@ interface Ctx {
   exportsAll: ReadonlySet<string> | undefined;
   /** Syntax node id → the symbol it declares. */
   owners: Map<number, GraphNode>;
+  /** Locals and parameters in scope, for receiver type facts (python-types.ts). */
+  locals: PythonLocals;
+  /** Facts of each function seen, by syntax node id. */
+  functions: Map<number, FunctionFacts>;
+  /** Class syntax node id → field name → its type fact (undefined: assignments disagree). */
+  fields: Map<number, Map<string, string | undefined>>;
 }
 
 export const pythonExtractor: LanguageExtractor = {
@@ -67,6 +75,9 @@ export const pythonExtractor: LanguageExtractor = {
       module,
       exportsAll: readAll(tree.rootNode, source),
       owners: new Map(),
+      locals: new PythonLocals(source),
+      functions: new Map(),
+      fields: new Map(),
     };
     ctx.owners.set(tree.rootNode.id, module);
     const doc = docstringOf(tree.rootNode, source);
@@ -74,6 +85,8 @@ export const pythonExtractor: LanguageExtractor = {
     try {
       walk(tree.rootNode, (node) => {
         b.noteSyntaxError(node);
+        ctx.locals.declareBindings(node);
+        if (node.type === 'function_definition') enterFunction(node, ctx);
         switch (node.type) {
           case 'function_definition':
             return declare(node, ctx, 'function');
@@ -98,9 +111,71 @@ export const pythonExtractor: LanguageExtractor = {
         `extraction failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    writeFieldFacts(ctx);
     return b.result;
   },
 };
+
+/** Declares a function's locals and records its facts; `self` fields go to the class. */
+function enterFunction(node: Node, ctx: Ctx): void {
+  const cls = enclosingClass(node);
+  const isStatic = decoratorsOf(node).some((d) => decoratorName(d, ctx.source) === 'staticmethod');
+  const first = node.childForFieldName('parameters')?.namedChildren[0];
+  const selfName = cls && !isStatic && first?.type === 'identifier' ? nodeText(ctx.source, first) : undefined;
+  const isAsync = node.children.some((c) => c?.type === 'async');
+  const facts = ctx.locals.enterFunction(node, selfName, isAsync);
+  ctx.functions.set(node.id, facts);
+  if (!cls || facts.selfFields.size === 0) return;
+  const fields = classFields(cls, ctx);
+  for (const [name, fact] of facts.selfFields) mergeField(fields, name, fact);
+}
+
+/** The class whose body directly holds `fn` (a method), if any. */
+function enclosingClass(fn: Node): Node | undefined {
+  const statement = fn.parent?.type === 'decorated_definition' ? fn.parent : fn;
+  const block = statement.parent;
+  return block?.type === 'block' && block.parent?.type === 'class_definition' ? block.parent : undefined;
+}
+
+function classFields(cls: Node, ctx: Ctx): Map<string, string | undefined> {
+  let fields = ctx.fields.get(cls.id);
+  if (!fields) ctx.fields.set(cls.id, (fields = new Map()));
+  return fields;
+}
+
+function mergeField(fields: Map<string, string | undefined>, name: string, fact: string | undefined): void {
+  if (!fields.has(name)) fields.set(name, fact);
+  else if (fields.get(name) !== fact) fields.set(name, undefined);
+}
+
+/** Class attributes (`x: T`, `x = Foo()` in the body) and `self.x = …` of every method, as `ft:x`. */
+function writeFieldFacts(ctx: Ctx): void {
+  for (const [id, fields] of ctx.fields) {
+    const symbol = ctx.owners.get(id);
+    if (!symbol) continue;
+    const facts: RefMetadata = { ...symbol.metadata };
+    for (const [name, fact] of fields) if (fact) facts[`${FIELD_FACT_PREFIX}${name}`] = fact;
+    if (Object.keys(facts).length > 0) symbol.metadata = facts;
+  }
+}
+
+/** Class-body attributes: an annotation wins; otherwise the initializer, like `self.x = …`. */
+function declareClassAttributes(cls: Node, ctx: Ctx): void {
+  const fields = classFields(cls, ctx);
+  const declared = new Map<string, string>();
+  for (const stmt of cls.childForFieldName('body')?.namedChildren ?? []) {
+    const assign = stmt?.type === 'expression_statement' ? stmt.namedChildren[0] : null;
+    const left = assign?.type === 'assignment' ? assign.childForFieldName('left') : null;
+    if (!assign || left?.type !== 'identifier') continue;
+    const name = nodeText(ctx.source, left);
+    const annotation = typeFact(assign.childForFieldName('type'), ctx.source);
+    const right = assign.childForFieldName('right');
+    if (annotation) declared.set(name, annotation);
+    else if (right && right.type !== 'none') mergeField(fields, name, ctx.locals.exprFact(right));
+  }
+  for (const [name, fact] of declared) fields.set(name, fact);
+  if (fields.size === 0) ctx.fields.delete(cls.id);
+}
 
 function modulePath(relPath: string): string {
   const parts = relPath.replace(/\.pyi?$/, '').split('/');
@@ -145,6 +220,13 @@ function declare(
   )
     init.isAbstract = true;
   if (decoratorNames.length > 0) init.decorators = decoratorNames;
+  if (kind === 'function') {
+    const returns = typeFact(node.childForFieldName('return_type'), source) ?? ctx.functions.get(node.id)?.returns;
+    if (returns) init.metadata = { [FACT_RETURNS]: returns };
+  } else {
+    const params = genericParams(node, source);
+    if (params) init.metadata = { [FACT_TYPE_PARAMS]: params };
+  }
   const doc = body ? docstringOf(body, source) : undefined;
   if (doc) init.docstring = doc;
 
@@ -156,7 +238,10 @@ function declare(
     if (target && text) b.addRef(symbol.id, text, 'decorates', d);
   }
   b.enterScope(node, symbol);
-  if (kind === 'class') addBases(node, symbol, ctx);
+  if (kind === 'class') {
+    addBases(node, symbol, ctx);
+    declareClassAttributes(node, ctx);
+  }
   return undefined;
 }
 
@@ -187,6 +272,8 @@ function visitAssignment(node: Node, ctx: Ctx): undefined {
     visibility: visibilityOf(name),
     isExported: isExportedName(name, ctx),
   };
+  const fact = isLambda ? undefined : (typeFact(node.childForFieldName('type'), source) ?? ctx.locals.exprFact(right));
+  if (fact) init.metadata = { [FACT_TYPE]: fact };
   const symbol = b.addSymbol(init, ctx.module);
   if (isLambda) b.enterScope(node, symbol);
   return undefined;
@@ -283,8 +370,12 @@ function addImport(
 
 function visitCall(node: Node, ctx: Ctx): undefined {
   const callee = node.childForFieldName('function');
-  const name = callee ? calleeName(callee, ctx.source) : undefined;
-  if (name) ctx.b.addRef(ctx.b.scopeAt(node).node.id, name, 'calls', node);
+  if (!callee) return undefined;
+  // A computed receiver (`f().g.h()`) keeps only the method name; its type goes in ownerType.
+  const computed = callee.type === 'attribute' && chainBase(callee).type !== 'identifier';
+  const attr = computed ? callee.childForFieldName('attribute') : null;
+  const name = attr ? nodeText(ctx.source, attr) : calleeName(callee, ctx.source);
+  if (name) ctx.b.addRef(ctx.b.scopeAt(node).node.id, name, 'calls', node, ctx.locals.callMetadata(callee));
   return undefined;
 }
 

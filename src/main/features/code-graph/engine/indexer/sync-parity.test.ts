@@ -259,6 +259,37 @@ describe('sync parity with a full reindex', () => {
     await syncAndCompare('the target method is renamed');
   });
 
+  it('matches a fresh index when Python receiver types change (T-515)', async () => {
+    project.writeAll({
+      'shop/__init__.py': '',
+      'shop/logging.py': 'class Logger:\n    def info(self, m):\n        pass\n\n\nclass Audit:\n    def info(self, m):\n        pass\n',
+      'shop/bus.py':
+        'from shop.logging import Logger, Audit\n\n\nclass Bus:\n    def __init__(self):\n        self.log = Logger()\n\n\ndef make_bus():\n    return Bus()\n',
+      'shop/hub.py': 'from shop.bus import Bus, make_bus\n',
+      'shop/app.py':
+        'from shop.hub import make_bus\n\n\ndef main():\n    bus = make_bus()\n    bus.log.info("x")\n',
+    });
+    await fullIndex(project.root, dataDir);
+    const initial = snapshotGraph(dataDir);
+    // make_bus, info (through the inferred return and the self field), Logger() and Bus().
+    expect(initial.edges.filter((e) => e.includes('"kind":"calls"'))).toHaveLength(4);
+
+    project.write('shop/bus.py', project.read('shop/bus.py').replace('self.log = Logger()', 'self.log = Audit()'));
+    await syncAndCompare('a self field changes type in a file the caller does not import');
+
+    project.write('shop/bus.py', project.read('shop/bus.py').replace('return Bus()', 'return None'));
+    await syncAndCompare('the inferred return type goes away');
+
+    project.write('shop/bus.py', project.read('shop/bus.py').replace('return None', 'return Bus()'));
+    await syncAndCompare('the inferred return type comes back');
+
+    project.write('shop/bus.py', project.read('shop/bus.py').replace('        self.log = Audit()\n', '        self.log = Audit()\n\n    def reset(self):\n        self.log = Logger()\n'));
+    await syncAndCompare('a second method assigns the field another type');
+
+    project.write('shop/logging.py', project.read('shop/logging.py').replace('def info', 'def warn'));
+    await syncAndCompare('the target methods are renamed');
+  });
+
   it('matches a fresh index after each of 30 seeded random edits over TS, Python and a Go package', async () => {
     const rand = mulberry32(0x5eed);
     const pick = <T>(items: readonly T[]): T => {

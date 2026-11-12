@@ -158,6 +158,52 @@ export function isSynthesized(metadataJson) {
   }
 }
 
+/**
+ * Untyped-receiver GUESSES (S-44 T-515). With no type evidence for `recv` in
+ * `recv.m()`, codegraph still resolves the call by name: to the project's only
+ * method `m` (confidence 0.7, `matchPythonElementCall` / method-name fallback),
+ * or to a class named like the receiver VARIABLE (`order` -> `Order`, 0.8,
+ * `byName`). Devia deliberately emits no edge for an untyped receiver ("silence
+ * beats a wrong edge", engine/resolution/resolver.ts header): a unique-name
+ * guess is exactly the edge impact analysis must not invent. These exact edges
+ * are therefore left out of the reference set and counted as `name-guess`.
+ *
+ * Each entry is ONE edge (never a pattern) with the reason no static type
+ * exists, and it is only excluded while codegraph's own metadata still says
+ * `instance-method` at confidence <= 0.8: an edge codegraph ever resolves by
+ * type stays scored. Edges Devia does reach by type (`router = build_app()`
+ * through `build_app`'s inferred return) are NOT listed even when codegraph
+ * got them by name.
+ */
+export const NAME_GUESS_EDGES = new Map([
+  [
+    'shop/api/handlers.py#handle_pay#function -> shop/services/order_service.py#OrderService.pay#method',
+    '`orders` is an untyped parameter of handle_pay(orders, ident)',
+  ],
+  [
+    'shop/api/handlers.py#handle_register#function -> shop/services/user_service.py#UserService.register#method',
+    '`users` is an untyped parameter of handle_register(users, name, email)',
+  ],
+  [
+    'shop/services/order_service.py#OrderService.pay#method -> shop/models/order.py#Order.mark_paid#method',
+    '`order = self.repo.get(ident)`: get() returns `self._items[ident]`, an element of an untyped dict',
+  ],
+  [
+    'shop/services/order_service.py#OrderService.pay#method -> shop/models/order.py#Order.total#method',
+    'same `order` local as above (receiver named after the class)',
+  ],
+]);
+
+export function isNameGuess(edgeKey, metadataJson) {
+  if (!NAME_GUESS_EDGES.has(edgeKey) || !metadataJson) return false;
+  try {
+    const meta = JSON.parse(metadataJson);
+    return meta?.resolvedBy === 'instance-method' && typeof meta.confidence === 'number' && meta.confidence <= 0.8;
+  } catch {
+    return false;
+  }
+}
+
 /** Edge kinds that are scored. */
 export const SCORED_EDGE_KINDS = ['calls', 'imports'];
 
@@ -217,6 +263,7 @@ export function readGraph(dbPath) {
       .all()
       .some((c) => c.name === 'metadata');
     let synthesized = 0;
+    let nameGuesses = 0;
     const rows = db
       .prepare(
         `SELECT e.kind AS kind, e.source AS source, e.target AS target,
@@ -242,14 +289,20 @@ export function readGraph(dbPath) {
       }
       const source = keyById.get(r.source);
       const target = keyById.get(r.target);
-      if (source && target) edges[r.kind].add(`${source} -> ${target}`);
+      if (!source || !target) continue;
+      const key = `${source} -> ${target}`;
+      if (isNameGuess(key, r.meta)) {
+        nameGuesses++;
+        continue;
+      }
+      edges[r.kind].add(key);
     }
     for (const e of normaliseImports(imports)) {
       const source = fileKey.get(toPosix(e.sourceFile));
       const target = fileKey.get(toPosix(e.targetFile));
       if (source && target && source !== target) edges.imports.add(`${source} -> ${target}`);
     }
-    return { symbols, ...edges, synthesized };
+    return { symbols, ...edges, synthesized, nameGuesses };
   } finally {
     db.close();
   }
@@ -266,6 +319,7 @@ function score(ours, theirs) {
 export function compareGraphs(ours, theirs) {
   return {
     synthesized: theirs.synthesized,
+    nameGuesses: theirs.nameGuesses,
     calls: score(ours.calls, theirs.calls),
     imports: score(ours.imports, theirs.imports),
     symbols: score(ours.symbols, theirs.symbols),
@@ -277,7 +331,9 @@ export function passes(result) {
 }
 
 export function formatResult(lang, result, verbose = false) {
-  const lines = [`[${lang}]  (codegraph synthesized edges excluded: ${result.synthesized})`];
+  const lines = [
+    `[${lang}]  (codegraph synthesized edges excluded: ${result.synthesized}, untyped-receiver name guesses excluded: ${result.nameGuesses ?? 0})`,
+  ];
   for (const k of ['calls', 'imports', 'symbols']) {
     const r = result[k];
     // An empty reference set (codegraph emits no Go `imports` edges at all) passes
