@@ -14,6 +14,8 @@ import {
   type LanguageExtractor,
   type SymbolInit,
 } from '../extractor';
+import { FACT_RETURNS, FACT_TYPE } from '../type-facts';
+import { DartLocals, genericFacts, typeFact } from './dart-types';
 
 // Adapted from codegraph (MIT), src/extraction/languages/dart.ts.
 //
@@ -86,6 +88,8 @@ interface Ctx {
   b: ExtractionBuilder;
   /** Syntax node id → the symbol it declares (types, signature holders and their bodies). */
   owners: Map<number, GraphNode>;
+  /** Locals and parameters in scope, for receiver type facts (dart-types.ts). */
+  locals: DartLocals;
 }
 
 export const dartExtractor: LanguageExtractor = {
@@ -93,10 +97,11 @@ export const dartExtractor: LanguageExtractor = {
   extensions: ['.dart'],
   extract(relPath: string, source: string, tree: Tree): FileExtraction {
     const b = new ExtractionBuilder(relPath, 'dart', tree.rootNode);
-    const ctx: Ctx = { source, b, owners: new Map() };
+    const ctx: Ctx = { source, b, owners: new Map(), locals: new DartLocals(source) };
     try {
       walk(tree.rootNode, (node) => {
         b.noteSyntaxError(node);
+        ctx.locals.declareBindings(node);
         const type = node.type;
         if (TYPE_NODES.has(type)) return declareType(node, ctx);
         if (type === 'method_signature' || type === 'declaration')
@@ -176,7 +181,7 @@ function declareType(node: Node, ctx: Ctx): undefined {
 
   const kind: NodeKind =
     node.type === 'enum_declaration' ? 'enum' : widget ? 'component' : 'class';
-  const metadata: RefMetadata = {};
+  const metadata: RefMetadata = genericFacts(node, source);
   if (kind !== 'enum') metadata['dartKind'] = dartKind;
   if (widget) metadata['widget'] = true;
 
@@ -264,6 +269,11 @@ function declareCallable(sig: Node, holder: Node, ctx: Ctx): void {
     init.isExported = false;
   }
   init.signature = headerText(source, holder);
+  if (!isCtor) {
+    Object.assign(metadata, genericFacts(sig, source));
+    const declared = sig.type === 'setter_signature' ? undefined : typeFact(sig.children, source);
+    if (declared) metadata[kind === 'property' ? FACT_TYPE : FACT_RETURNS] = declared;
+  }
   if (Object.keys(metadata).length > 0) init.metadata = metadata;
   if (holder.children.some((c) => c?.type === 'static')) init.isStatic = true;
   if (!body && !isCtor && holder.type === 'declaration') init.isAbstract = true;
@@ -314,11 +324,14 @@ function declareVariables(list: Node, ctx: Ctx): undefined {
     (isField ? owner : first).startIndex,
   );
 
+  const declared = typeFact(header, source);
   for (const entry of list.children) {
     const id = entry?.children.find((c) => c?.type === 'identifier');
     if (!entry || !id) continue;
     const init = baseInit(kind, nodeText(source, id), entry, anchor, ctx);
     init.signature = signature;
+    const type = declared ?? ctx.locals.chainFact(entry.namedChildren.filter((c) => c?.id !== id.id));
+    if (type) init.metadata = { [FACT_TYPE]: type };
     if (header.some((h) => h.type === 'static')) init.isStatic = true;
     const symbol = b.addSymbol(init, parent);
     addAnnotations(anchor, symbol, ctx);
@@ -464,7 +477,7 @@ function visitPart(node: Node, ctx: Ctx): undefined {
 function visitSelector(node: Node, ctx: Ctx): undefined {
   if (!node.children.some((c) => c?.type === 'argument_part')) return undefined;
   const callee = calleeName(node, ctx.source);
-  if (callee) addCallOrNew(callee, node, ctx);
+  if (callee) addCallOrNew(callee, node, ctx, ctx.locals.callMetadata(node));
   return undefined;
 }
 
@@ -477,6 +490,7 @@ function visitCascade(node: Node, ctx: Ctx): undefined {
     nodeText(ctx.source, selector),
     'calls',
     selector,
+    ctx.locals.cascadeMetadata(node),
   );
   return undefined;
 }
@@ -496,7 +510,7 @@ function visitNew(node: Node, ctx: Ctx): undefined {
 const UPPER = /^[_$]*[A-Z]/;
 
 /** `Foo()`, `Foo.named()`, `prefix.Foo()` look like constructor calls; everything else is a call. */
-function addCallOrNew(callee: string, at: Node, ctx: Ctx): void {
+function addCallOrNew(callee: string, at: Node, ctx: Ctx, meta: RefMetadata | undefined): void {
   const segs = callee.split('.');
   const last = segs[segs.length - 1] ?? '';
   const prev = segs[segs.length - 2];
@@ -506,6 +520,7 @@ function addCallOrNew(callee: string, at: Node, ctx: Ctx): void {
     callee,
     ctor ? 'instantiates' : 'calls',
     at,
+    meta,
   );
 }
 

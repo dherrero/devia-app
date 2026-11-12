@@ -228,6 +228,37 @@ describe('sync parity with a full reindex', () => {
     await syncAndCompare('a constructor function loses its return type');
   });
 
+  it('matches a fresh index when Dart receiver types or export chains change (T-515)', async () => {
+    project.writeAll({
+      'pubspec.yaml': 'name: app\n',
+      'lib/core/logger.dart': "class Logger {\n  void info() {}\n  Logger child() => Logger();\n}\n",
+      'lib/core/core.dart': "export 'logger.dart';\n",
+      'lib/app.dart': "export 'core/core.dart';\n",
+      'lib/bus.dart': "import 'core/logger.dart';\nclass Bus {\n  final Logger log = Logger();\n  Logger make() => Logger();\n}\n",
+      'lib/main.dart':
+        "import 'package:app/app.dart';\nimport 'bus.dart';\nvoid main(Logger given, Bus bus) {\n  final log = given.child();\n  log.info();\n  bus.log.info();\n  bus.make().info();\n}\n",
+    });
+    await fullIndex(project.root, dataDir);
+    const initial = snapshotGraph(dataDir);
+    // child, info (local), info (field), make, info (returned).
+    expect(initial.edges.filter((e) => e.includes('"kind":"calls"'))).toHaveLength(5);
+
+    project.write('lib/core/core.dart', '\n');
+    await syncAndCompare('an export two levels down the chain disappears');
+
+    project.write('lib/core/core.dart', "export 'logger.dart';\n");
+    await syncAndCompare('the export comes back');
+
+    project.write('lib/bus.dart', project.read('lib/bus.dart').replace('Logger make()', 'make()'));
+    await syncAndCompare('a declared return type is dropped');
+
+    project.write('lib/bus.dart', project.read('lib/bus.dart').replace('final Logger log', 'final log'));
+    await syncAndCompare('a field falls back to its initializer');
+
+    project.write('lib/core/logger.dart', project.read('lib/core/logger.dart').replace('void info()', 'void warn()'));
+    await syncAndCompare('the target method is renamed');
+  });
+
   it('matches a fresh index after each of 30 seeded random edits over TS, Python and a Go package', async () => {
     const rand = mulberry32(0x5eed);
     const pick = <T>(items: readonly T[]): T => {

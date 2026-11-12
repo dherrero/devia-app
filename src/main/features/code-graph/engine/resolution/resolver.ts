@@ -47,6 +47,7 @@ export interface ResolveStats {
 
 const BATCH_SIZE = 500;
 const MAX_EXPORT_DEPTH = 8;
+const MAX_IMPORT_CLOSURE = 500;
 
 const IMPORT_KINDS: EdgeKind[] = ['imports', 'exports'];
 const HERITAGE_KINDS: EdgeKind[] = ['extends', 'implements'];
@@ -200,14 +201,17 @@ class ResolutionRun {
     };
     this.index = new SymbolIndex(
       db.nodeSummaries(),
-      db.edgesOfKinds(['contains', 'extends', 'implements', 'imports']),
+      db.edgesOfKinds(['contains', 'extends', 'implements', 'imports', 'exports']),
       files,
     );
     this.types = new TypeInference({
       index: this.index,
-      lookup: (name, from, call) => {
+      lookup: (name, from, call, note) => {
         const r = this.resolveName(name, from, undefined, call);
-        return r && (!r.heuristic || this.packageVisible(from, r.target)) ? [r.target] : [];
+        if (!r) return [];
+        return !r.heuristic || this.packageVisible(from, r.target) || this.importVisible(from, r.target, note)
+          ? [r.target]
+          : [];
       },
       noteFile: (file) => this.reads?.files.add(file),
       noteName: (name) => this.reads?.names.add(name),
@@ -341,6 +345,7 @@ class ResolutionRun {
       });
       if (ref.referenceKind === 'imports')
         this.index.addImport(ref.filePath, t);
+      else this.index.addExport(ref.filePath, t);
     }
     for (const [name, binding] of outcome.binds)
       this.bind(ref.filePath, name, binding);
@@ -763,6 +768,26 @@ class ResolutionRun {
     if (target.language !== from.language) return false;
     if (path.posix.dirname(target.filePath) === path.posix.dirname(from.filePath)) return true;
     return from.language === 'java' && this.index.imports(from.filePath, target.filePath);
+  }
+
+  /**
+   * Dart has no per-name import bindings: a library sees the top-level names of the libraries it
+   * imports and of everything they export, transitively. A project-wide hit is exact for type
+   * inference only when its file is in that closure (`show`/`hide` are not applied).
+   */
+  private importVisible(from: NodeSummary, target: NodeSummary, note: (file: string) => void): boolean {
+    if (from.language !== 'dart' || target.language !== 'dart' || !this.index.isTopLevel(target)) return false;
+    const seen = new Set<string>([from.filePath]);
+    const queue = [...this.index.importedFiles(from.filePath)];
+    while (queue.length > 0 && seen.size <= MAX_IMPORT_CLOSURE) {
+      const file = queue.shift() ?? '';
+      if (seen.has(file)) continue;
+      seen.add(file);
+      note(file);
+      if (file === target.filePath) return true;
+      queue.push(...this.index.exportedFiles(file));
+    }
+    return false;
   }
 
   /** ES modules only see other files' names through imports; scripts share one global scope. */

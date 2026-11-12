@@ -12,11 +12,17 @@ export interface Local {
   end: number;
 }
 
+/** A syntax node, or any range shaped like one (Dart signatures and their sibling bodies). */
+export interface Span {
+  startIndex: number;
+  endIndex: number;
+}
+
 export class ScopeStack {
   private readonly stack: Local[] = [];
 
   /** Visible from `from` (default: the start of `scope`) to the end of `scope`. */
-  declare(name: string, fact: string | undefined, scope: Node, from: number = scope.startIndex): void {
+  declare(name: string, fact: string | undefined, scope: Span, from: number = scope.startIndex): void {
     this.prune(from);
     this.stack.push({ name, fact, start: from, end: scope.endIndex });
   }

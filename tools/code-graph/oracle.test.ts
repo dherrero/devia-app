@@ -23,12 +23,11 @@ const BIN = process.env['CODEGRAPH_ORACLE_BIN'];
  * inferred (`this.repo.save()`, `const log = new Logger(); log.info()`), which
  * Devia's resolver does not do yet: kanban T-515. RATCHET: these only go up;
  * a language with no entry must meet THRESHOLDS.calls. TypeScript/JavaScript got
- * receiver type inference in T-515 phase 1 (39/39 on the fixture) and Java and Go in
- * phase 2 (37/37, 48/48); none of them has a floor.
+ * receiver type inference in T-515 phase 1 (39/39 on the fixture) and Java, Go and Dart
+ * in phase 2 (37/37, 48/48, 24/24); none of them has a floor.
  */
 const CALLS_FLOOR: Record<string, number> = {
   python: 63,
-  dart: 41,
 };
 
 interface Score {

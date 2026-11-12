@@ -10,7 +10,7 @@ import {
   parseType,
   UNKNOWN_TYPE,
 } from '../extraction/type-facts';
-import { byNamespace, isClassLike, type SymbolIndex } from './name-matcher';
+import { byNamespace, isClassLike, isConstructor, type SymbolIndex } from './name-matcher';
 
 // Receiver type inference (S-44 T-515), language-neutral: evaluates the TypeExpr facts that
 // extractors leave on nodes and refs (see extraction/type-facts.ts) down to a class-like node
@@ -34,8 +34,9 @@ export interface InferenceHost {
   /**
    * Candidates for a (possibly dotted) name as written in `from`'s file: bindings, scope, project.
    * `call`: whether the name is called (`f()`) or used as a value/type, when that matters.
+   * `note` receives every other file the answer depended on (an export chain it walked).
    */
-  lookup(name: string, from: NodeSummary, call?: boolean): NodeSummary[];
+  lookup(name: string, from: NodeSummary, call: boolean | undefined, note: (file: string) => void): NodeSummary[];
   /** Records what a resolution read, so a sync can re-resolve it when that changes. */
   noteFile(file: string): void;
   noteName(name: string): void;
@@ -74,6 +75,8 @@ export class TypeInference {
   private readonly cache = new Map<string, Cached>();
   /** What the evaluations in progress read; a cached result replays its reads to its new reader. */
   private readonly frames: Reads[] = [];
+
+  private readonly noter = (file: string): void => this.noteFile(file);
 
   constructor(private readonly host: InferenceHost) {}
 
@@ -162,6 +165,11 @@ export class TypeInference {
     const [hit] = hits;
     if (!hit) return call ? undefined : this.fieldType(owner, name);
     const env = this.memberEnv(owner, hit);
+    if (call && isConstructor(hit)) {
+      // A named constructor (`Foo.named()`) builds its own class.
+      const cls = this.host.index.parentOf(hit);
+      return cls && isClassLike(cls) ? { node: cls, env: EMPTY_ENV } : undefined;
+    }
     if (call) {
       return CALLABLE_KINDS.has(hit.kind) ? this.returnType(hit, env) : undefined;
     }
@@ -202,13 +210,13 @@ export class TypeInference {
       current = cls && !head.call ? { node: cls, env: cls.id === ctx.id ? env : this.enclosingEnv(ctx, cls, env) } : undefined;
     } else {
       this.noteName(head.name);
-      let hits = this.host.lookup(head.name, ctx, head.call);
+      let hits = this.host.lookup(head.name, ctx, head.call, this.noter);
       let call = head.call;
       const [first] = chain.segs;
       if (hits.length === 0 && !head.call && first) {
         // `pkg.New()`, `ns.member`: a namespace import is no value itself; its member is.
         this.noteName(first.name);
-        hits = this.host.lookup(`${head.name}.${first.name}`, ctx, first.call);
+        hits = this.host.lookup(`${head.name}.${first.name}`, ctx, first.call, this.noter);
         call = first.call;
         skip = 1;
       }
@@ -244,7 +252,7 @@ export class TypeInference {
       }
     }
     this.noteName(lastSegment(parsed.name));
-    const hits = this.host.lookup(parsed.name, ctx, false).filter(isClassLike);
+    const hits = this.host.lookup(parsed.name, ctx, false, this.noter).filter(isClassLike);
     const [node] = hits;
     if (hits.length !== 1 || !node) return undefined;
     this.noteFile(node.filePath);

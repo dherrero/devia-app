@@ -272,7 +272,8 @@ describe('dartExtractor', () => {
     expect(props).toHaveLength(2);
     expect(new Set(props.map((p) => p.id)).size).toBe(2);
     expect(props.map((p) => p.metadata)).toEqual([
-      { accessor: 'get' },
+      // `type`: the getter's declared type, a receiver type fact (T-515).
+      { accessor: 'get', type: 'int' },
       { accessor: 'set' },
     ]);
   });

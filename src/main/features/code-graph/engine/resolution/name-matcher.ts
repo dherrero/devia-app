@@ -31,6 +31,7 @@ const TOP_CONTAINERS: ReadonlySet<NodeKind> = new Set([
 /** Languages where a bare name inside a class body sees the class's (and inherited) members. */
 const CLASS_SCOPED: ReadonlySet<CodeGraphLanguage> = new Set(['java', 'dart']);
 const MAX_SUPER_DEPTH = 10;
+const EMPTY_SET: ReadonlySet<string> = new Set();
 /** Above this many nodes the project-wide name index is not built (memory guard). */
 export const MAX_GLOBAL_INDEX_NODES = 1_000_000;
 
@@ -72,6 +73,7 @@ export class SymbolIndex {
   private readonly children = new Map<string, NodeSummary[]>();
   private readonly supers = new Map<string, string[]>();
   private readonly importsOf = new Map<string, Set<string>>();
+  private readonly exportsOf = new Map<string, Set<string>>();
   private readonly byDir = new Map<string, string[]>();
 
   constructor(
@@ -107,6 +109,11 @@ export class SymbolIndex {
         const to = this.byId.get(e.target);
         if (from?.kind === 'file' && to?.kind === 'file')
           this.addImport(from.filePath, to.filePath);
+      } else if (e.kind === 'exports') {
+        const from = this.byId.get(e.source);
+        const to = this.byId.get(e.target);
+        if (from?.kind === 'file' && to?.kind === 'file')
+          this.addExport(from.filePath, to.filePath);
       }
     }
   }
@@ -123,8 +130,22 @@ export class SymbolIndex {
     set.add(to);
   }
 
+  addExport(from: string, to: string): void {
+    let set = this.exportsOf.get(from);
+    if (!set) this.exportsOf.set(from, (set = new Set()));
+    set.add(to);
+  }
+
   imports(file: string, target: string): boolean {
     return this.importsOf.get(file)?.has(target) === true;
+  }
+
+  importedFiles(file: string): ReadonlySet<string> {
+    return this.importsOf.get(file) ?? EMPTY_SET;
+  }
+
+  exportedFiles(file: string): ReadonlySet<string> {
+    return this.exportsOf.get(file) ?? EMPTY_SET;
   }
 
   nodesInFile(file: string): NodeSummary[] {

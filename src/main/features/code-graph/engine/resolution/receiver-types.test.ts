@@ -343,3 +343,74 @@ describe('receiver type inference — Go', () => {
     expect(gfn('main.go', 'run')).toEqual([h.sym('store/store.go', 'Store.Save', 'method').id]);
   });
 });
+
+describe('receiver type inference — Dart', () => {
+  const PUB = 'name: app\n';
+  const DLOGGER =
+    "class Logger {\n  Logger(this.scope);\n  Logger.root() : scope = '';\n  final String scope;\n  void info(String m) {}\n  Logger child(String s) => Logger(s);\n}\n";
+  const ENTITY = 'abstract class Entity {\n  String get id;\n  String describe() => id;\n}\n';
+  const ORDER =
+    "import 'entity.dart';\nclass Order extends Entity {\n  @override\n  String get id => '';\n  void markPaid() {}\n}\n";
+  const REPO =
+    "import 'package:app/models/entity.dart';\nclass InMemoryRepository<T extends Entity> {\n  T get(String id) => throw 1;\n  void save(T item) {\n    item.describe();\n  }\n}\n";
+
+  it('follows `final x = Foo()`, a named constructor, a typed parameter and a captured local', async () => {
+    await h.addFiles({
+      'pubspec.yaml': PUB,
+      'lib/core/logger.dart': DLOGGER,
+      'lib/app.dart': "export 'core/logger.dart';\n",
+      'lib/main.dart':
+        "import 'package:app/app.dart';\nvoid main(List<String> xs, Logger given) {\n  final log = Logger('a');\n  log.child('b');\n  Logger.root().info('r');\n  xs.forEach((x) => given.info(x));\n}\n",
+    });
+    resolveReferences(h.q, h.root);
+    expect(calls('lib/main.dart', 'main')).toEqual(
+      [h.sym('lib/core/logger.dart', 'Logger.child').id, h.sym('lib/core/logger.dart', 'Logger.info').id].sort(),
+    );
+  });
+
+  it('follows fields, generic substitution, a bounded type parameter, for-in and `on T catch (e)`', async () => {
+    await h.addFiles({
+      'pubspec.yaml': PUB,
+      'lib/models/entity.dart': ENTITY,
+      'lib/models/order.dart': ORDER,
+      'lib/errors.dart': 'class DomainException implements Exception {\n  String code() => "";\n}\n',
+      'lib/services/repository.dart': REPO,
+      'lib/services/order_service.dart':
+        "import 'package:app/models/order.dart';\nimport '../errors.dart';\nimport 'repository.dart';\nclass OrderService {\n  final InMemoryRepository<Order> _repo = InMemoryRepository<Order>();\n  void pay(String id, List<Order> all) {\n    final order = _repo.get(id);\n    order.markPaid();\n    this._repo.get(id).markPaid();\n    for (Order o in all) {\n      o.describe();\n    }\n    try {} on DomainException catch (e) {\n      e.code();\n    }\n  }\n}\n",
+    });
+    resolveReferences(h.q, h.root);
+    expect(calls('lib/services/order_service.dart', 'OrderService.pay')).toEqual(
+      [
+        h.sym('lib/services/repository.dart', 'InMemoryRepository.get').id,
+        h.sym('lib/models/order.dart', 'Order.markPaid').id,
+        h.sym('lib/models/entity.dart', 'Entity.describe').id,
+        h.sym('lib/errors.dart', 'DomainException.code').id,
+      ].sort(),
+    );
+    expect(calls('lib/services/repository.dart', 'InMemoryRepository.save')).toEqual([
+      h.sym('lib/models/entity.dart', 'Entity.describe').id,
+    ]);
+  });
+
+  it('stays silent on a type the library does not import and on untyped closure parameters', async () => {
+    await h.addFiles({
+      'pubspec.yaml': PUB,
+      'lib/core/logger.dart': DLOGGER,
+      'lib/main.dart':
+        "import 'package:logging/logging.dart';\nvoid main(List<Logger> xs, Logger log) {\n  log.info('x');\n  xs.forEach((l) => l.child('y'));\n}\n",
+    });
+    resolveReferences(h.q, h.root);
+    expect(calls('lib/main.dart', 'main')).toEqual([]);
+  });
+
+  it('types the receiver of a cascade instead of matching the bare method name', async () => {
+    await h.addFiles({
+      'pubspec.yaml': PUB,
+      'lib/core/logger.dart': DLOGGER,
+      'lib/main.dart':
+        "import 'core/logger.dart';\nclass App {\n  void info(String m) {}\n  void run() {\n    Logger('a')\n      ..info('x');\n  }\n}\n",
+    });
+    resolveReferences(h.q, h.root);
+    expect(calls('lib/main.dart', 'App.run')).toEqual([h.sym('lib/core/logger.dart', 'Logger.info').id]);
+  });
+});
