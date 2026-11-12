@@ -104,6 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_files_language ON files(language);
 
 CREATE INDEX IF NOT EXISTS idx_unresolved_from_node ON unresolved_refs(from_node_id);
 CREATE INDEX IF NOT EXISTS idx_unresolved_status ON unresolved_refs(status);
+CREATE INDEX IF NOT EXISTS idx_unresolved_file_status ON unresolved_refs(file_path, status);
 CREATE INDEX IF NOT EXISTS idx_unresolved_failed_tail ON unresolved_refs(name_tail) WHERE status = 'failed';
 
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(

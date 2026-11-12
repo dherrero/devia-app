@@ -35,6 +35,13 @@ const MIGRATIONS: Migration[] = [
          CREATE INDEX IF NOT EXISTS idx_resolution_deps_dep ON resolution_deps(kind, dep);`,
       ),
   },
+  {
+    version: 4,
+    description: 'Unresolved refs by file',
+    // A sync's partial resolution loads each touched file's stored import bindings; without it
+    // every lookup scanned all `bound` refs of the project (~5 s of a 7 s 1-file sync on Devia).
+    up: (db) => db.exec('CREATE INDEX IF NOT EXISTS idx_unresolved_file_status ON unresolved_refs(file_path, status)'),
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

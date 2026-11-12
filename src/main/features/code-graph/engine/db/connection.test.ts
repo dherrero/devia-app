@@ -62,10 +62,11 @@ describe('openGraphDb', () => {
 
   it('creates a new graph at the current schema version, with the id/file index', () => {
     const db = openGraphDb(path.join(dir, 'graph.db'));
-    expect(SCHEMA_VERSION).toBe(3);
-    expect(versions(db)).toEqual([1, 2, 3]);
+    expect(SCHEMA_VERSION).toBe(4);
+    expect(versions(db)).toEqual([1, 2, 3, 4]);
     expect(hasIdFileIndex(db)).toBe(true);
     expect(hasResolutionDeps(db)).toBe(true);
+    expect(hasIndex(db, 'idx_unresolved_file_status')).toBe(true);
     db.close();
   });
 
@@ -73,13 +74,14 @@ describe('openGraphDb', () => {
     const file = path.join(dir, 'graph.db');
     makeV1(file);
     const db = openGraphDb(file);
-    expect(versions(db)).toEqual([1, 2, 3]);
+    expect(versions(db)).toEqual([1, 2, 3, 4]);
     expect(hasIdFileIndex(db)).toBe(true);
     expect(hasResolutionDeps(db)).toBe(true);
+    expect(hasIndex(db, 'idx_unresolved_file_status')).toBe(true);
     expect(db.prepare("SELECT value FROM project_metadata WHERE key = 'k'").get()).toEqual({ value: 'v' });
     db.close();
     const again = openGraphDb(file);
-    expect(versions(again)).toEqual([1, 2, 3]);
+    expect(versions(again)).toEqual([1, 2, 3, 4]);
     again.close();
   });
 
@@ -101,5 +103,27 @@ describe('openGraphDb', () => {
       db.exec("INSERT INTO project_metadata VALUES ('a','b',1)"),
     ).toThrow();
     db.close();
+  });
+});
+
+function hasIndex(db: ReturnType<typeof openGraphDb>, name: string): boolean {
+  return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name) !== undefined;
+}
+
+describe('query plans', () => {
+  it('looks unresolved refs up by file through an index, not a scan of every bound ref', () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-plan-'));
+    const db = openGraphDb(path.join(d, 'graph.db'));
+    try {
+      const plan = (
+        db.prepare(
+          "EXPLAIN QUERY PLAN SELECT * FROM unresolved_refs WHERE status = 'bound' AND file_path IN ('a.ts')",
+        ).all() as { detail: string }[]
+      ).map((r) => r.detail);
+      expect(plan.join('\n')).toMatch(/idx_unresolved_file_status/);
+    } finally {
+      db.close();
+      fs.rmSync(d, { recursive: true, force: true });
+    }
   });
 });
