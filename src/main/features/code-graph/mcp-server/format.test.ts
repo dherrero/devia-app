@@ -52,6 +52,16 @@ describe('compileGlob', () => {
     expect(m('?.ts', '😀.ts')).toBe(false);
   });
 
+  it('keeps the same semantics past the RegExp fast path (3+ wildcards)', () => {
+    expect(m('**/src/**/*.ts', 'a/src/b/c.ts')).toBe(true);
+    expect(m('**/src/**/*.ts', 'src/c.ts')).toBe(true);
+    expect(m('**/src/**/*.ts', 'src/c.tsx')).toBe(false);
+    expect(m('*/*/*.ts', 'a/b/c.ts')).toBe(true);
+    expect(m('*/*/*.ts', 'a/c.ts')).toBe(false);
+    expect(m('a**b**c', 'a/x/b/y/c')).toBe(true);
+    expect(m('a**b**c', 'a/x/b/y/d')).toBe(false);
+  });
+
   it('stays linear on a crafted **x**x… pattern that would backtrack exponentially as a RegExp', () => {
     const glob = `${'**x'.repeat(40)}y`;
     const subject = 'x'.repeat(4000);

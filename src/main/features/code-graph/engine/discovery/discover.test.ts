@@ -221,6 +221,26 @@ describe('createIgnore', () => {
     expect(ig('src\\node_modules', true)).toBe(true);
   });
 
+  it('matches many-wildcard and class patterns without backtracking on a hostile .gitignore', () => {
+    write(
+      '.gitignore',
+      [`${'*a'.repeat(14)}b`, 'gen/**/x*/*/*.snap', 'lib/[a-c]?[!z].ts', 'bad[z-a].ts'].join('\n'),
+    );
+    const ig = createIgnore(root);
+    const start = performance.now();
+    // ~O(n^14) for a backtracking RegExp: it would not return in the lifetime of the test run.
+    expect(ig(`${'a'.repeat(60)}.ts`, false)).toBe(false);
+    expect(ig(`src/${'a'.repeat(30)}b`, false)).toBe(true);
+    expect(performance.now() - start).toBeLessThan(5000);
+    expect(ig('gen/p/q/xy/z/a.snap', false)).toBe(true);
+    expect(ig('gen/xy/z/a.snap', false)).toBe(true);
+    expect(ig('gen/xy/a.snap', false)).toBe(false);
+    expect(ig('lib/b1y.ts', false)).toBe(true);
+    expect(ig('lib/b1z.ts', false)).toBe(false);
+    expect(ig('lib/d1y.ts', false)).toBe(false);
+    expect(ig('badz.ts', false)).toBe(false);
+  });
+
   it('does not let a negation re-include a file under an ignored directory', () => {
     write('.gitignore', 'gen/\n!gen/keep.ts\n');
     const ig = createIgnore(root);

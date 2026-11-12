@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { compileGlobTokens, type GlobToken } from './glob-match';
 
 const DEFAULT_IGNORES = [
   '.git',
@@ -21,59 +22,71 @@ const DEFAULT_IGNORES = [
 ];
 
 interface Rule {
-  re: RegExp;
+  test: (rel: string) => boolean;
   negate: boolean;
   dirOnly: boolean;
 }
 
-function globToRegex(glob: string): string {
-  let out = '';
+// A .gitignore comes with the (possibly hostile) repository: its globs are matched without a
+// backtracking RegExp once they hold several wildcards (see compileGlobTokens).
+function globTokens(pattern: string): GlobToken[] {
+  const glob = Array.from(pattern);
+  const out: GlobToken[] = [];
   let i = 0;
   while (i < glob.length) {
-    const c = glob.charAt(i);
+    const c = glob[i] ?? '';
     if (c === '*') {
-      if (glob.charAt(i + 1) === '*') {
-        const atStart = i === 0 || glob.charAt(i - 1) === '/';
-        const next = glob.charAt(i + 2);
+      if (glob[i + 1] === '*') {
+        const atStart = i === 0 || glob[i - 1] === '/';
+        const next = glob[i + 2];
         if (atStart && next === '/') {
-          out += '(?:.*/)?';
+          out.push({ kind: 'groupAny' }, { kind: 'char', c: '/' });
           i += 3;
           continue;
         }
-        if (atStart && next === '') {
-          out += '.*';
+        if (atStart && next === undefined) {
+          out.push({ kind: 'any' });
           i += 2;
           continue;
         }
-        out += '[^/]*';
+        out.push({ kind: 'star' });
         i += 2;
         continue;
       }
-      out += '[^/]*';
+      out.push({ kind: 'star' });
       i += 1;
     } else if (c === '?') {
-      out += '[^/]';
+      out.push({ kind: 'one' });
       i += 1;
     } else if (c === '[') {
       const end = glob.indexOf(']', i + 2);
       if (end === -1) {
-        out += '\\[';
+        out.push({ kind: 'char', c: '[' });
         i += 1;
       } else {
-        let body = glob.slice(i + 1, end);
+        let body = glob.slice(i + 1, end).join('');
         if (body.startsWith('!')) body = `^${body.slice(1)}`;
-        out += `[${body.replace(/\\/g, '\\\\')}]`;
+        out.push(classToken(body.replace(/\\/g, '\\\\')));
         i = end + 1;
       }
     } else if (c === '\\' && i + 1 < glob.length) {
-      out += escapeRegex(glob.charAt(i + 1));
+      out.push({ kind: 'char', c: glob[i + 1] ?? '' });
       i += 2;
     } else {
-      out += escapeRegex(c);
+      out.push({ kind: 'char', c });
       i += 1;
     }
   }
   return out;
+}
+
+function classToken(body: string): GlobToken {
+  try {
+    return { kind: 'class', re: new RegExp(`^[${body}]$`, 'u') };
+  } catch {
+    // Not a valid class (e.g. a reversed range): git matches nothing there either.
+    return { kind: 'class', re: /^(?!)$/u };
+  }
 }
 
 function escapeRegex(s: string): string {
@@ -97,9 +110,9 @@ function parseLine(raw: string): Rule | null {
   if (line === '') return null;
   const anchored = line.includes('/');
   if (line.startsWith('/')) line = line.slice(1);
-  const body = globToRegex(line);
-  const re = new RegExp(anchored ? `^${body}$` : `^(?:.*/)?${body}$`, 'u');
-  return { re, negate, dirOnly };
+  const tokens = globTokens(line);
+  const all: GlobToken[] = anchored ? tokens : [{ kind: 'groupAny' }, { kind: 'char', c: '/' }, ...tokens];
+  return { test: compileGlobTokens(all), negate, dirOnly };
 }
 
 function parseIgnoreFile(text: string): Rule[] {
@@ -120,7 +133,7 @@ function evaluate(
   let result = current;
   for (const rule of rules) {
     if (rule.dirOnly && !isDir) continue;
-    if (rule.re.test(rel)) result = !rule.negate;
+    if (rule.test(rel)) result = !rule.negate;
   }
   return result;
 }
@@ -128,11 +141,10 @@ function evaluate(
 export function createIgnore(
   root: string,
 ): (rel: string, isDir: boolean) => boolean {
-  const defaults: Rule[] = DEFAULT_IGNORES.map((name) => ({
-    re: new RegExp(`^(?:.*/)?${escapeRegex(name)}$`, 'u'),
-    negate: false,
-    dirOnly: false,
-  }));
+  const defaults: Rule[] = DEFAULT_IGNORES.map((name) => {
+    const re = new RegExp(`^(?:.*/)?${escapeRegex(name)}$`, 'u');
+    return { test: (rel: string) => re.test(rel), negate: false, dirOnly: false };
+  });
   const fileCache = new Map<string, Rule[]>();
 
   const rulesFor = (dirRel: string): Rule[] => {
