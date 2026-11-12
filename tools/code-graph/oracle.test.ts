@@ -22,10 +22,10 @@ const BIN = process.env['CODEGRAPH_ORACLE_BIN'];
  * call measured on the fixtures is a call on a receiver whose type must be
  * inferred (`this.repo.save()`, `const log = new Logger(); log.info()`), which
  * Devia's resolver does not do yet: kanban T-515. RATCHET: these only go up;
- * when T-515 lands, replace them with THRESHOLDS.calls.
+ * a language with no entry must meet THRESHOLDS.calls. TypeScript/JavaScript got
+ * receiver type inference in T-515 phase 1 (39/39 on the fixture) and has no floor.
  */
 const CALLS_FLOOR: Record<string, number> = {
-  ts: 58,
   python: 63,
   java: 37,
   go: 60,
