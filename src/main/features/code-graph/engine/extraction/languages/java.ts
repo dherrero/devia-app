@@ -9,6 +9,8 @@ import {
   type LanguageExtractor,
   type SymbolInit,
 } from '../extractor';
+import { FACT_RETURNS, FACT_TYPE } from '../type-facts';
+import { genericFacts, JavaLocals, typeFact } from './java-types';
 
 // Adapted from codegraph (MIT), src/extraction/languages/java.ts.
 //
@@ -47,6 +49,8 @@ interface Ctx {
   namespace: GraphNode | undefined;
   /** Syntax node id → the symbol it declares. */
   owners: Map<number, GraphNode>;
+  /** Locals and parameters in scope, for receiver type facts (java-types.ts). */
+  locals: JavaLocals;
 }
 
 export const javaExtractor: LanguageExtractor = {
@@ -54,10 +58,11 @@ export const javaExtractor: LanguageExtractor = {
   extensions: ['.java'],
   extract(relPath: string, source: string, tree: Tree): FileExtraction {
     const b = new ExtractionBuilder(relPath, 'java', tree.rootNode);
-    const ctx: Ctx = { source, b, namespace: undefined, owners: new Map() };
+    const ctx: Ctx = { source, b, namespace: undefined, owners: new Map(), locals: new JavaLocals(source) };
     try {
       walk(tree.rootNode, (node) => {
         b.noteSyntaxError(node);
+        ctx.locals.declareBindings(node);
         const type = node.type;
         if (type in TYPE_KINDS) return declareType(node, ctx);
         if (METHOD_NODES.has(type)) return declareMethod(node, ctx);
@@ -102,8 +107,10 @@ function declareType(node: Node, ctx: Ctx): undefined {
   const kind = TYPE_KINDS[node.type] ?? 'class';
   const init = baseInit(kind, nodeText(source, nameNode), node, parent, ctx);
   init.signature = headerText(source, node, node.childForFieldName('body'), headerStart(node));
-  if (node.type === 'record_declaration') init.metadata = { javaKind: 'record' };
-  if (node.type === 'annotation_type_declaration') init.metadata = { javaKind: 'annotation' };
+  const facts: RefMetadata = genericFacts(node, source);
+  if (node.type === 'record_declaration') facts['javaKind'] = 'record';
+  if (node.type === 'annotation_type_declaration') facts['javaKind'] = 'annotation';
+  if (Object.keys(facts).length > 0) init.metadata = facts;
   const symbol = addDeclared(init, node, parent, ctx);
   b.enterScope(node, symbol);
 
@@ -129,8 +136,15 @@ function declareMethod(node: Node, ctx: Ctx): undefined {
   const body = node.childForFieldName('body');
   const init = baseInit('method', name, node, parent, ctx);
   init.signature = headerText(source, node, body, headerStart(node));
-  if (node.type !== 'method_declaration') init.metadata = { constructor: true };
-  else if (
+  const facts: RefMetadata = genericFacts(node, source);
+  if (node.type !== 'method_declaration') facts['constructor'] = true;
+  else {
+    const returns = typeFact(node.childForFieldName('type'), source);
+    if (returns && !node.childForFieldName('dimensions')) facts[FACT_RETURNS] = returns;
+  }
+  if (Object.keys(facts).length > 0) init.metadata = facts;
+  if (
+    node.type === 'method_declaration' &&
     parent.kind === 'interface' &&
     !body &&
     !hasModifier(node, 'default') &&
@@ -152,12 +166,14 @@ function declareFields(node: Node, ctx: Ctx): undefined {
   const parent = containerOf(node, ctx);
   if (!parent || !isTypeSymbol(parent)) return undefined;
   const signature = headerText(source, node, null, headerStart(node));
+  const type = typeFact(node.childForFieldName('type'), source);
   for (const decl of node.namedChildren) {
     if (decl?.type !== 'variable_declarator') continue;
     const nameNode = decl.childForFieldName('name');
     if (!nameNode) continue;
     const init = baseInit('field', nodeText(source, nameNode), node, parent, ctx);
     init.signature = signature;
+    if (type && !decl.childForFieldName('dimensions')) init.metadata = { [FACT_TYPE]: type };
     if (parent.kind === 'interface') init.isStatic = true;
     addDeclared(init, node, parent, ctx);
   }
@@ -207,7 +223,13 @@ function visitCall(node: Node, ctx: Ctx): undefined {
   const object = node.childForFieldName('object');
   const receiver = object ? receiverName(object, ctx.source) : undefined;
   const name = nodeText(ctx.source, nameNode);
-  ctx.b.addRef(ctx.b.scopeAt(node).node.id, receiver ? `${receiver}.${name}` : name, 'calls', node);
+  ctx.b.addRef(
+    ctx.b.scopeAt(node).node.id,
+    receiver ? `${receiver}.${name}` : name,
+    'calls',
+    node,
+    ctx.locals.callMetadata(object, receiver),
+  );
   return undefined;
 }
 

@@ -8,6 +8,7 @@ import {
   typeExpr,
   UNKNOWN_TYPE,
 } from '../type-facts';
+import { ScopeStack } from '../local-scopes';
 
 // Receiver type facts for TypeScript/JavaScript (S-44 T-515), in the shared TypeExpr form of
 // type-facts.ts. Declared types win; otherwise the initializer decides (`new X<A>()`, `x as X`,
@@ -25,44 +26,15 @@ export const FUNCTION_LIKE: ReadonlySet<string> = new Set([
   'method_definition',
 ]);
 
-interface Local {
-  name: string;
-  /** TypeExpr, or undefined when the type is unknown (the local still shadows outer names). */
-  fact: string | undefined;
-  start: number;
-  end: number;
-}
-
 export interface ParameterProperty {
   name: string;
   fact: string | undefined;
 }
 
 /** The locals and parameters in scope at the walk's position (walk visits in document order). */
-export class LocalScopes {
-  private readonly stack: Local[] = [];
-
-  constructor(private readonly source: string) {}
-
-  declare(name: string, fact: string | undefined, scope: Node): void {
-    this.prune(scope.startIndex);
-    this.stack.push({ name, fact, start: scope.startIndex, end: scope.endIndex });
-  }
-
-  /** The innermost local named `name` visible at `at`, if any. */
-  find(name: string, at: Node): Local | undefined {
-    this.prune(at.startIndex);
-    const pos = at.startIndex;
-    for (let i = this.stack.length - 1; i >= 0; i--) {
-      const l = this.stack[i];
-      if (l && l.name === name && l.start <= pos && pos < l.end) return l;
-    }
-    return undefined;
-  }
-
-  private prune(pos: number): void {
-    for (let top = this.stack[this.stack.length - 1]; top && top.end <= pos; top = this.stack[this.stack.length - 1])
-      this.stack.pop();
+export class LocalScopes extends ScopeStack {
+  constructor(private readonly source: string) {
+    super();
   }
 
   /** Parameters of a function-like node; returns its constructor parameter properties. */

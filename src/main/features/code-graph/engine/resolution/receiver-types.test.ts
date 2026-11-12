@@ -15,7 +15,7 @@ const LOGGER =
   'export class Logger {\n  info(m: string): void {}\n  child(s: string): Logger {\n    return new Logger();\n  }\n}\n';
 
 function calls(file: string, qname: string): string[] {
-  return h.targets(h.sym(file, qname).id, 'calls').sort();
+  return [...new Set(h.targets(h.sym(file, qname).id, 'calls'))].sort();
 }
 
 describe('receiver type inference — TypeScript', () => {
@@ -147,5 +147,127 @@ describe('receiver type inference — TypeScript', () => {
     expect(calls('src/app.ts', 'app')).toEqual(
       [h.sym('src/user-service.ts', 'UserService.find').id, h.sym('src/user.ts', 'User.hello').id].sort(),
     );
+  });
+});
+
+describe('receiver type inference — Java', () => {
+  const J = 'src/main/java/com/acme';
+  const JLOGGER =
+    'package com.acme.core;\npublic class Logger {\n  public Logger(String s) {}\n  public void info(String m) {}\n  public Logger child(String s) {\n    return new Logger(s);\n  }\n}\n';
+  const IDENTIFIED = 'package com.acme.model;\npublic interface Identified {\n  String getId();\n}\n';
+  const ENTITY =
+    'package com.acme.model;\npublic abstract class Entity implements Identified {\n  @Override\n  public String getId() {\n    return "";\n  }\n}\n';
+  const ORDER =
+    'package com.acme.model;\nimport java.util.List;\npublic class Order extends Entity {\n  public static class Line {\n    public long total() {\n      return 1;\n    }\n  }\n  private List<Line> lines;\n  public void markPaid() {}\n  public long total() {\n    long sum = 0;\n    for (Line l : lines) {\n      sum += l.total();\n    }\n    return sum;\n  }\n}\n';
+  const REPOSITORY =
+    'package com.acme.service;\nimport com.acme.model.Identified;\npublic interface Repository<T extends Identified> {\n  T get(String id);\n  void save(T item);\n}\n';
+  const IN_MEMORY =
+    'package com.acme.service;\nimport com.acme.model.Identified;\npublic class InMemoryRepository<T extends Identified> implements Repository<T> {\n  @Override\n  public T get(String id) {\n    return null;\n  }\n  @Override\n  public void save(T item) {\n    System.out.println(item.getId());\n  }\n}\n';
+
+  function jcalls(file: string, qname: string): string[] {
+    return calls(`${J}/${file}`, qname);
+  }
+  function jsym(file: string, qname: string): string {
+    return h.sym(`${J}/${file}`, qname, 'method').id;
+  }
+
+  it('follows a local built with `new`, a typed parameter and a captured local inside a lambda', async () => {
+    await h.addFiles({
+      [`${J}/core/Logger.java`]: JLOGGER,
+      [`${J}/App.java`]:
+        'package com.acme;\nimport com.acme.core.Logger;\nimport java.util.List;\npublic class App {\n  void main(List<String> xs, Logger given) {\n    Logger log = new Logger("a");\n    log.child("b");\n    var other = log.child("c");\n    other.info("x");\n    xs.forEach(x -> given.info(x));\n  }\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(jcalls('App.java', 'App.main')).toEqual(
+      [jsym('core/Logger.java', 'Logger.child'), jsym('core/Logger.java', 'Logger.info')].sort(),
+    );
+  });
+
+  it('follows a field declared with an interface type to the interface method, not the impl', async () => {
+    await h.addFiles({
+      [`${J}/model/Identified.java`]: IDENTIFIED,
+      [`${J}/model/Entity.java`]: ENTITY,
+      [`${J}/model/User.java`]: 'package com.acme.model;\npublic class User extends Entity {\n  public String getName() {\n    return "";\n  }\n}\n',
+      [`${J}/service/Repository.java`]: REPOSITORY,
+      [`${J}/service/InMemoryRepository.java`]: IN_MEMORY,
+      [`${J}/service/UserService.java`]:
+        'package com.acme.service;\nimport com.acme.model.User;\npublic class UserService {\n  private final Repository<User> repo = new InMemoryRepository<>();\n  public User find(String id) {\n    return repo.get(id);\n  }\n  public String name(String id) {\n    this.repo.save(null);\n    return find(id).getName() + repo.get(id).getId();\n  }\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(jcalls('service/UserService.java', 'UserService.find')).toEqual([jsym('service/Repository.java', 'Repository.get')]);
+    expect(jcalls('service/UserService.java', 'UserService.name')).toEqual(
+      [
+        jsym('service/Repository.java', 'Repository.save'),
+        jsym('service/Repository.java', 'Repository.get'),
+        jsym('service/UserService.java', 'UserService.find'),
+        jsym('model/User.java', 'User.getName'),
+        jsym('model/Entity.java', 'Entity.getId'),
+      ].sort(),
+    );
+  });
+
+  it('follows an enhanced-for variable, a catch parameter and a bounded type parameter', async () => {
+    await h.addFiles({
+      [`${J}/model/Identified.java`]: IDENTIFIED,
+      [`${J}/model/Entity.java`]: ENTITY,
+      [`${J}/model/Order.java`]: ORDER,
+      [`${J}/service/Repository.java`]: REPOSITORY,
+      [`${J}/service/InMemoryRepository.java`]: IN_MEMORY,
+      [`${J}/core/DomainException.java`]:
+        'package com.acme.core;\npublic class DomainException extends RuntimeException {\n  public String getCode() {\n    return "";\n  }\n}\n',
+      [`${J}/api/Router.java`]:
+        'package com.acme.api;\nimport com.acme.core.DomainException;\npublic class Router {\n  public String dispatch() {\n    try {\n      return "";\n    } catch (DomainException e) {\n      return e.getCode();\n    }\n  }\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(jcalls('model/Order.java', 'Order.total')).toEqual([jsym('model/Order.java', 'Order.Line.total')]);
+    expect(jcalls('api/Router.java', 'Router.dispatch')).toEqual([jsym('core/DomainException.java', 'DomainException.getCode')]);
+    expect(jcalls('service/InMemoryRepository.java', 'InMemoryRepository.save')).toEqual([
+      jsym('model/Identified.java', 'Identified.getId'),
+    ]);
+  });
+
+  it('substitutes generic arguments through a field and a chained call', async () => {
+    await h.addFiles({
+      [`${J}/model/Identified.java`]: IDENTIFIED,
+      [`${J}/model/Entity.java`]: ENTITY,
+      [`${J}/model/Order.java`]: ORDER,
+      [`${J}/service/Repository.java`]: REPOSITORY,
+      [`${J}/service/InMemoryRepository.java`]: IN_MEMORY,
+      [`${J}/service/OrderService.java`]:
+        'package com.acme.service;\nimport com.acme.model.Order;\npublic class OrderService {\n  private final InMemoryRepository<Order> repo = new InMemoryRepository<>();\n  public long pay(String id) {\n    Order order = this.repo.get(id);\n    order.markPaid();\n    return repo.get(id).total();\n  }\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(jcalls('service/OrderService.java', 'OrderService.pay')).toEqual(
+      [
+        jsym('service/InMemoryRepository.java', 'InMemoryRepository.get'),
+        jsym('model/Order.java', 'Order.markPaid'),
+        jsym('model/Order.java', 'Order.total'),
+      ].sort(),
+    );
+  });
+
+  it('tells a field from a method of the same name (`events` vs `events()`)', async () => {
+    await h.addFiles({
+      [`${J}/core/Bus.java`]: 'package com.acme.core;\npublic class Bus<T> {\n  public void publish(T e) {}\n  public void subscribe() {}\n}\n',
+      [`${J}/core/Service.java`]:
+        'package com.acme.core;\npublic class Service {\n  private final Bus<String> events = new Bus<>();\n  public Bus<String> events() {\n    return events;\n  }\n  void open() {\n    events.publish("x");\n  }\n}\n',
+      [`${J}/App.java`]:
+        'package com.acme;\nimport com.acme.core.Service;\npublic class App {\n  void main(Service s) {\n    s.events().subscribe();\n  }\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(jcalls('core/Service.java', 'Service.open')).toEqual([jsym('core/Bus.java', 'Bus.publish')]);
+    expect(jcalls('App.java', 'App.main')).toEqual(
+      [jsym('core/Service.java', 'Service.events'), jsym('core/Bus.java', 'Bus.subscribe')].sort(),
+    );
+  });
+
+  it('stays silent on untyped lambda parameters and unknown computed receivers', async () => {
+    await h.addFiles({
+      [`${J}/core/Logger.java`]: JLOGGER,
+      [`${J}/App.java`]:
+        'package com.acme;\nimport com.acme.core.Logger;\nimport java.util.List;\npublic class App {\n  private Logger log;\n  void info(String s) {}\n  void run(List<Logger> xs, String[] args) {\n    xs.forEach(log -> log.info("x"));\n    args[0].info();\n    String.valueOf(1).info();\n  }\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    expect(jcalls('App.java', 'App.run')).toEqual([]);
   });
 });

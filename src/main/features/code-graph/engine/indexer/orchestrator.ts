@@ -10,8 +10,11 @@ import { extractFile, isSupported, ParserPool, writeExtraction, type FileOutcome
 import { postIndex } from './post-index';
 import { CONFIG_HASHES_KEY, isResolutionConfig, resolutionConfigHashes } from './resolution-config';
 
-/** Bump when extractors change what they store: v2 adds receiver type facts (S-44 T-515). */
-export const EXTRACTION_VERSION = 2;
+/**
+ * Bump when extractors change what they store: v2 adds receiver type facts (S-44 T-515), v3 the
+ * Java/Go/Dart/Python ones and type parameter bounds.
+ */
+export const EXTRACTION_VERSION = 3;
 export const GRAPH_DB_FILE = 'graph.db';
 export const BUILDING_DB_FILE = 'graph.db.building';
 

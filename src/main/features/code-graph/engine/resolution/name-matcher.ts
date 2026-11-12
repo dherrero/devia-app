@@ -123,6 +123,10 @@ export class SymbolIndex {
     set.add(to);
   }
 
+  imports(file: string, target: string): boolean {
+    return this.importsOf.get(file)?.has(target) === true;
+  }
+
   nodesInFile(file: string): NodeSummary[] {
     return this.byFile.get(file) ?? [];
   }
@@ -291,6 +295,17 @@ export class SymbolIndex {
     }
     return current;
   }
+}
+
+/**
+ * Java keeps methods and fields in separate namespaces (`events` field next to `events()`): a
+ * call position wants the method, a receiver or value position the field. Other languages, and
+ * `call` undefined (position unknown), keep every hit.
+ */
+export function byNamespace(hits: NodeSummary[], call: boolean | undefined): NodeSummary[] {
+  if (hits.length < 2 || call === undefined || hits[0]?.language !== 'java') return hits;
+  const narrowed = hits.filter((h) => (h.kind === 'method') === call);
+  return narrowed.length > 0 ? narrowed : hits;
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { NodeSummary } from '../db/queries';
 import {
+  BOUND_FACT_PREFIX,
   FACT_RETURNS,
   FACT_TYPE,
   FACT_TYPE_PARAMS,
@@ -9,7 +10,7 @@ import {
   parseType,
   UNKNOWN_TYPE,
 } from '../extraction/type-facts';
-import { isClassLike, type SymbolIndex } from './name-matcher';
+import { byNamespace, isClassLike, type SymbolIndex } from './name-matcher';
 
 // Receiver type inference (S-44 T-515), language-neutral: evaluates the TypeExpr facts that
 // extractors leave on nodes and refs (see extraction/type-facts.ts) down to a class-like node
@@ -30,8 +31,11 @@ export interface TypeRef {
 
 export interface InferenceHost {
   readonly index: SymbolIndex;
-  /** Candidates for a (possibly dotted) name as written in `from`'s file: bindings, scope, project. */
-  lookup(name: string, from: NodeSummary): NodeSummary[];
+  /**
+   * Candidates for a (possibly dotted) name as written in `from`'s file: bindings, scope, project.
+   * `call`: whether the name is called (`f()`) or used as a value/type, when that matters.
+   */
+  lookup(name: string, from: NodeSummary, call?: boolean): NodeSummary[];
   /** Records what a resolution read, so a sync can re-resolve it when that changes. */
   noteFile(file: string): void;
   noteName(name: string): void;
@@ -153,7 +157,7 @@ export class TypeInference {
    */
   step(owner: TypeRef, name: string, call: boolean): TypeRef | undefined {
     this.noteName(name);
-    const hits = this.host.index.memberOf(owner.node, name);
+    const hits = byNamespace(this.host.index.memberOf(owner.node, name), call);
     if (hits.length > 1) return undefined;
     const [hit] = hits;
     if (!hit) return call ? undefined : this.fieldType(owner, name);
@@ -197,7 +201,7 @@ export class TypeInference {
       current = cls && !head.call ? { node: cls, env: cls.id === ctx.id ? env : this.enclosingEnv(ctx, cls, env) } : undefined;
     } else {
       this.noteName(head.name);
-      const hits = this.host.lookup(head.name, ctx);
+      const hits = this.host.lookup(head.name, ctx, head.call);
       const [only] = hits;
       if (hits.length === 1 && only) {
         this.noteFile(only.filePath);
@@ -221,9 +225,16 @@ export class TypeInference {
     if (!parsed) return undefined;
     const bound = env.get(parsed.name);
     if (bound) return bound;
-    if (this.isTypeParameter(parsed.name, ctx)) return undefined;
+    if (!parsed.name.includes('.')) {
+      const declarer = this.host.index.ancestors(ctx).find((n) => typeParams(n).includes(parsed.name));
+      if (declarer) {
+        // Unbound here: only its declared upper bound, if any, is known about it.
+        const upper = fact(declarer, `${BOUND_FACT_PREFIX}${parsed.name}`);
+        return upper === undefined ? undefined : this.typeOf(upper, declarer, EMPTY_ENV);
+      }
+    }
     this.noteName(lastSegment(parsed.name));
-    const hits = this.host.lookup(parsed.name, ctx).filter(isClassLike);
+    const hits = this.host.lookup(parsed.name, ctx, false).filter(isClassLike);
     const [node] = hits;
     if (hits.length !== 1 || !node) return undefined;
     this.noteFile(node.filePath);
@@ -238,11 +249,6 @@ export class TypeInference {
     return { node, env: bindings };
   }
 
-  /** `T` declared by the holder or an enclosing generic: unbound here, never a project type. */
-  private isTypeParameter(name: string, ctx: NodeSummary): boolean {
-    if (name.includes('.')) return false;
-    return this.host.index.ancestors(ctx).some((n) => typeParams(n).includes(name));
-  }
 }
 
 function lastSegment(name: string): string {

@@ -162,6 +162,39 @@ describe('sync parity with a full reindex', () => {
     await syncAndCompare('the field type changes in a file the caller does not import');
   });
 
+  it('matches a fresh index when Java receiver types change (T-515)', async () => {
+    const P = 'src/main/java/com/acme';
+    project.writeAll({
+      [`${P}/model/Identified.java`]: 'package com.acme.model;\npublic interface Identified {\n  String getId();\n}\n',
+      [`${P}/model/Order.java`]:
+        'package com.acme.model;\npublic class Order implements Identified {\n  public String getId() {\n    return "";\n  }\n  public void markPaid() {}\n}\n',
+      [`${P}/service/Repo.java`]:
+        'package com.acme.service;\nimport com.acme.model.Identified;\npublic class Repo<T extends Identified> {\n  public T get(String id) {\n    return null;\n  }\n  public void save(T item) {\n    item.getId();\n  }\n}\n',
+      [`${P}/service/Audit.java`]: 'package com.acme.service;\npublic class Audit {\n  public void log() {}\n}\n',
+      [`${P}/service/OrderService.java`]:
+        'package com.acme.service;\nimport com.acme.model.Order;\npublic class OrderService {\n  private final Repo<Order> repo = new Repo<>();\n  private Audit audit;\n  public void pay(String id) {\n    Order o = repo.get(id);\n    o.markPaid();\n    for (Order each : java.util.List.of(o)) each.getId();\n    audit.log();\n  }\n}\n',
+    });
+    await fullIndex(project.root, dataDir);
+    const initial = snapshotGraph(dataDir);
+    // getId (bound), get, markPaid, getId (for), log.
+    expect(initial.edges.filter((e) => e.includes('"kind":"calls"'))).toHaveLength(5);
+
+    project.write(`${P}/service/Repo.java`, project.read(`${P}/service/Repo.java`).replace('public T get', 'public Identified get'));
+    await syncAndCompare('a generic return type becomes the bound type');
+
+    project.write(`${P}/service/Repo.java`, project.read(`${P}/service/Repo.java`).replace('T extends Identified', 'T'));
+    await syncAndCompare('the type parameter bound is dropped');
+
+    project.remove(`${P}/service/Audit.java`);
+    await syncAndCompare('a same-package field type disappears');
+
+    project.write(`${P}/service/Audit.java`, 'package com.acme.service;\npublic class Audit {\n  public void log() {}\n}\n');
+    await syncAndCompare('the same-package field type comes back');
+
+    project.write(`${P}/model/Order.java`, project.read(`${P}/model/Order.java`).replace('markPaid', 'settle'));
+    await syncAndCompare('the target method is renamed');
+  });
+
   it('matches a fresh index after each of 30 seeded random edits over TS, Python and a Go package', async () => {
     const rand = mulberry32(0x5eed);
     const pick = <T>(items: readonly T[]): T => {

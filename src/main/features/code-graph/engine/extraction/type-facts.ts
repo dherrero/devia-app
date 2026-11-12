@@ -9,6 +9,8 @@
 // - node `returns`: the declared return type of a function or method.
 // - node `typeParams`: the generic parameter names of a class/interface/function (`T,K`), so a
 //   bare `T` is never looked up as a project type and `Repo<Order>` can bind `T` to `Order`.
+// - generic declaration `tb:<T>`: the single upper bound of type parameter `T`
+//   (`<T extends Identified>`); an unbound `T` receiver is then at least an `Identified`.
 // - class-like node `ft:<field>`: the type of a field that has no node of its own (a TS
 //   constructor parameter property, a Python `self.x = …` assignment).
 // - ref `headType`: the type of the reference name's FIRST segment, a local or parameter
@@ -31,6 +33,7 @@ export const FACT_TYPE = 'type';
 export const FACT_RETURNS = 'returns';
 export const FACT_TYPE_PARAMS = 'typeParams';
 export const FIELD_FACT_PREFIX = 'ft:';
+export const BOUND_FACT_PREFIX = 'tb:';
 export const REF_HEAD_TYPE = 'headType';
 export const REF_OWNER_TYPE = 'ownerType';
 export const UNKNOWN_TYPE = '?';

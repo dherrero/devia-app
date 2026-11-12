@@ -11,6 +11,7 @@ import { REF_HEAD_TYPE, REF_OWNER_TYPE, UNKNOWN_TYPE } from '../extraction/type-
 import { inferGoImplements } from './go-implements';
 import { resolverFor, type ResolveContext } from './language-resolvers';
 import {
+  byNamespace,
   collapseOverloads,
   isClassLike,
   isConstructor,
@@ -204,9 +205,9 @@ class ResolutionRun {
     );
     this.types = new TypeInference({
       index: this.index,
-      lookup: (name, from) => {
-        const r = this.resolveName(name, from);
-        return r && !r.heuristic ? [r.target] : [];
+      lookup: (name, from, call) => {
+        const r = this.resolveName(name, from, undefined, call);
+        return r && (!r.heuristic || this.packageVisible(from, r.target)) ? [r.target] : [];
       },
       noteFile: (file) => this.reads?.files.add(file),
       noteName: (name) => this.reads?.names.add(name),
@@ -587,7 +588,12 @@ class ResolutionRun {
   ): GraphEdge | undefined {
     if (ref.referenceKind === 'overrides')
       return this.resolveOverride(ref, from);
-    const resolution = this.resolveName(ref.referenceName, from, ref.metadata);
+    const resolution = this.resolveName(
+      ref.referenceName,
+      from,
+      ref.metadata,
+      ref.referenceKind === 'calls' ? true : undefined,
+    );
     if (!resolution) return undefined;
     const shaped = shapeEdge(ref.referenceKind, resolution.target, this.index);
     if (!shaped) return undefined;
@@ -620,10 +626,12 @@ class ResolutionRun {
     };
   }
 
+  /** `call`: whether the last segment is called, for Java's separate method/field namespaces. */
   private resolveName(
     name: string,
     from: NodeSummary,
     meta?: UnresolvedRef['metadata'],
+    call?: boolean,
   ): Resolution | undefined {
     const segs = name.split('.');
     const [head, ...rest] = segs;
@@ -688,7 +696,7 @@ class ResolutionRun {
           rest.splice(0, rest.length, ...after);
         }
       } else {
-        current = this.index.scopeLookup(head, from);
+        current = byNamespace(this.index.scopeLookup(head, from), rest.length > 0 ? false : call);
         if (current.length === 0 && this.allowsProjectLookup(from)) {
           current = this.index.projectLookup(head, from);
           heuristic = true;
@@ -702,14 +710,15 @@ class ResolutionRun {
       if (current.length !== 1 || !only) return undefined;
       let owner = only;
       let ownerEnv = env;
-      let hits = this.index.memberOf(owner, seg);
+      const segCall = i < rest.length - 1 ? false : call;
+      let hits = byNamespace(this.index.memberOf(owner, seg), segCall);
       if (hits.length === 0 && isValueNode(owner)) {
         // `x.m()` on a field/variable: the members of its declared type.
         const t = this.types.valueType(owner, env);
         if (t) {
           owner = t.node;
           ownerEnv = t.env;
-          hits = this.index.memberOf(owner, seg);
+          hits = byNamespace(this.index.memberOf(owner, seg), segCall);
           inferred = true;
         }
       }
@@ -742,6 +751,18 @@ class ResolutionRun {
       if (hit?.kind === 'symbol') hits.set(hit.node.id, hit.node);
     }
     return [...hits.values()];
+  }
+
+  /**
+   * A project-wide lookup hit that is nonetheless exact for type inference: a Java or Go type of
+   * the caller's own package (same directory) or, in Java, of a package it imports with `.*`.
+   * Anything else found only by name (`String` matching some project class) stays a guess.
+   */
+  private packageVisible(from: NodeSummary, target: NodeSummary): boolean {
+    if (from.language !== 'java' && from.language !== 'go') return false;
+    if (target.language !== from.language) return false;
+    if (path.posix.dirname(target.filePath) === path.posix.dirname(from.filePath)) return true;
+    return from.language === 'java' && this.index.imports(from.filePath, target.filePath);
   }
 
   /** ES modules only see other files' names through imports; scripts share one global scope. */
