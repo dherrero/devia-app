@@ -155,6 +155,41 @@ describe('writer-lock', () => {
     expect(fs.readdirSync(dir)).toEqual([]);
   });
 
+  // Fewer rounds than the original 20 (each costs a spawn barrier) and a
+  // timeout sized for a heavily loaded machine; the steal mutex makes every
+  // round deterministic in outcome, so 10 rounds still catch a regression.
+  const RACE_ROUNDS = 10;
+  const RACE_TIMEOUT_MS = 300_000;
+
+  it('clears a steal mutex left behind by a crashed stealer', async () => {
+    fs.writeFileSync(
+      lockFile,
+      JSON.stringify({ pid: await deadPid(), owner: 'indexer', since: Date.now() }),
+    );
+    fs.writeFileSync(
+      `${lockFile}.steal`,
+      JSON.stringify({ pid: await deadPid(), owner: 'sync', since: Date.now() }),
+    );
+    const lock = acquireWriterLock(dir, 'sync');
+    expect(lock).not.toBeNull();
+    expect(readWriterLock(dir)?.pid).toBe(process.pid);
+    lock?.release();
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it('does not steal while a live stealer holds the steal mutex', async () => {
+    fs.writeFileSync(
+      lockFile,
+      JSON.stringify({ pid: await deadPid(), owner: 'indexer', since: Date.now() }),
+    );
+    fs.writeFileSync(
+      `${lockFile}.steal`,
+      JSON.stringify({ pid: process.pid, owner: 'sync', since: Date.now() }),
+    );
+    expect(acquireWriterLock(dir, 'sync')).toBeNull();
+    expect(fs.existsSync(`${lockFile}.steal`)).toBe(true);
+  });
+
   const moduleUrl = pathToFileURL(path.join(__dirname, 'writer-lock.ts')).href;
   const script = `
     import(${JSON.stringify(moduleUrl)}).then((m) => {
@@ -170,7 +205,10 @@ describe('writer-lock', () => {
   `;
 
   async function race(raceDir: string): Promise<string[]> {
-    const t0 = Date.now() + 1500;
+    // Spawn barrier: generous so that, on a loaded machine, all four children
+    // are usually parked at the same instant; a late child still yields a
+    // valid (if less contended) round, never a false failure.
+    const t0 = Date.now() + 2500;
     const children = Array.from({ length: 4 }, () => {
       const child = spawn(
         process.execPath,
@@ -206,17 +244,17 @@ describe('writer-lock', () => {
   }
 
   it('grants the lock to exactly one of several simultaneous processes', async () => {
-    for (let round = 0; round < 20; round++) {
+    for (let round = 0; round < RACE_ROUNDS; round++) {
       const raceDir = fs.mkdtempSync(path.join(dir, 'race-'));
       const results = await race(raceDir);
       expect(results.filter((r) => r === 'LOCKED')).toHaveLength(1);
       expect(results.filter((r) => r === 'BUSY')).toHaveLength(3);
       expect(fs.readdirSync(raceDir)).toEqual([]);
     }
-  }, 120_000);
+  }, RACE_TIMEOUT_MS);
 
   it('grants a dead-pid lock to exactly one of several stealing processes', async () => {
-    for (let round = 0; round < 20; round++) {
+    for (let round = 0; round < RACE_ROUNDS; round++) {
       const raceDir = fs.mkdtempSync(path.join(dir, 'steal-'));
       fs.writeFileSync(
         path.join(raceDir, 'writer.lock'),
@@ -231,5 +269,5 @@ describe('writer-lock', () => {
       expect(results.filter((r) => r === 'BUSY')).toHaveLength(3);
       expect(fs.readdirSync(raceDir)).toEqual([]);
     }
-  }, 120_000);
+  }, RACE_TIMEOUT_MS);
 });

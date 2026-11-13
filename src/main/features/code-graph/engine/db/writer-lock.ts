@@ -19,6 +19,7 @@ const DEFAULT_STALE_MS = 30 * 60 * 1000;
 
 const STALE_UNPARSEABLE_GRACE_MS = 2000;
 const MAX_ATTEMPTS = 3;
+const STEAL_STALE_MS = 10_000;
 
 interface OwnedLock {
   file: string;
@@ -132,6 +133,75 @@ function isStale(file: string, raw: string | null, staleMs: number): boolean {
   }
 }
 
+type MoveOutcome = 'moved' | 'gone' | 'replaced' | 'busy';
+
+/**
+ * Moves `file` aside only if it still holds `expected`. A lock replaced after
+ * it was judged stale is linked back (best-effort) and reported `replaced`.
+ */
+function moveAsideIfUnchanged(file: string, expected: string): MoveOutcome {
+  const graveyard = `${file}.stale-${uniqueSuffix()}`;
+  try {
+    fs.renameSync(file, graveyard);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return 'gone';
+    if (code === 'EBUSY' || code === 'EPERM') return 'busy';
+    throw err;
+  }
+  if (readRaw(graveyard) !== expected) {
+    try {
+      fs.linkSync(graveyard, file);
+    } catch {
+      // someone else already holds a newer lock
+    }
+    fs.rmSync(graveyard, { force: true });
+    return 'replaced';
+  }
+  fs.rmSync(graveyard, { force: true });
+  return 'moved';
+}
+
+/**
+ * Removes a stale lock under a short-lived steal mutex (`writer.lock.steal`).
+ * Why: without it, two stealers that both judged the same lock stale could
+ * move a FRESH lock aside between them, and a third process could create its
+ * own lock in that gap, leaving two holders (seen under heavy machine load).
+ * With one stealer at a time, the only remaining gap is a stale-by-age owner
+ * that is still alive and releases during the steal, or a stealer that
+ * crashed while holding the mutex (cleared below by the same staleness rule);
+ * both are rare and graph.db (WAL + busy_timeout) still serialises the writes.
+ */
+function stealStale(
+  file: string,
+  raw: string,
+  owner: WriterOwner,
+  staleMs: number,
+): 'retry' | 'busy' {
+  const mutex = `${file}.steal`;
+  const mutexPayload = JSON.stringify({
+    pid: process.pid,
+    owner,
+    since: Date.now(),
+    token: crypto.randomBytes(8).toString('hex'),
+  });
+  if (!createExclusive(mutex, mutexPayload)) {
+    const held = readRaw(mutex);
+    if (held === null) return 'retry';
+    if (!isStale(mutex, held, STEAL_STALE_MS)) return 'busy';
+    return moveAsideIfUnchanged(mutex, held) === 'busy' ? 'busy' : 'retry';
+  }
+  try {
+    const current = readRaw(file);
+    if (current === null) return 'retry';
+    if (current !== raw && !isStale(file, current, staleMs)) return 'busy';
+    const moved = moveAsideIfUnchanged(file, current);
+    return moved === 'moved' || moved === 'gone' ? 'retry' : 'busy';
+  } finally {
+    if (readRaw(mutex) === mutexPayload) fs.rmSync(mutex, { force: true });
+  }
+}
+
 export function readWriterLock(dir: string): WriterLockInfo | null {
   const info = readFile(path.join(dir, LOCK_NAME));
   return info === null
@@ -168,30 +238,7 @@ export function acquireWriterLock(
     const raw = readRaw(file);
     if (raw === null) continue;
     if (!isStale(file, raw, staleMs)) return null;
-
-    const graveyard = `${file}.stale-${uniqueSuffix()}`;
-    try {
-      fs.renameSync(file, graveyard);
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') continue;
-      if (code === 'EBUSY' || code === 'EPERM') return null;
-      throw err;
-    }
-    if (readRaw(graveyard) !== raw) {
-      // We moved a lock that was replaced after we judged it stale: put it
-      // back. A narrow three-process interleaving can still yield two holders
-      // here; accepted because graph.db (WAL + busy_timeout) serialises the
-      // real writes, so a double holder costs a redundant run, not corruption.
-      try {
-        fs.linkSync(graveyard, file);
-      } catch {
-        // someone else already holds a newer lock
-      }
-      fs.rmSync(graveyard, { force: true });
-      return null;
-    }
-    fs.rmSync(graveyard, { force: true });
+    if (stealStale(file, raw, owner, staleMs) === 'busy') return null;
   }
   if (!acquired) return null;
 
