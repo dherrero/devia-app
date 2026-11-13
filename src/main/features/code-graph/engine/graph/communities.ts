@@ -201,7 +201,9 @@ export function persistCommunities(
   db: GraphQueries,
   assignments: Map<string, number>,
 ): void {
-  const obj: Record<string, number> = {};
+  // A null-prototype object: a file named `__proto__` would otherwise set the
+  // prototype instead of becoming a key, and vanish from the persisted JSON.
+  const obj = Object.create(null) as Record<string, number>;
   for (const [p, id] of assignments) obj[p] = id;
   db.setMeta(COMMUNITIES_KEY, JSON.stringify(obj));
   db.setMeta(COUNT_KEY, String(new Set(assignments.values()).size));

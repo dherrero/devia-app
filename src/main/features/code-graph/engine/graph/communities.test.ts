@@ -232,6 +232,16 @@ describe('persistCommunities / readCommunities', () => {
     expect(t.q.getMeta('community_count')).toBe('2');
   });
 
+  it('keeps a file literally named __proto__ (or constructor)', () => {
+    const m = new Map([
+      ['__proto__', 0],
+      ['constructor', 1],
+      ['src/a.ts', 1],
+    ]);
+    t.q.transaction(() => persistCommunities(t.q, m));
+    expect(readCommunities(t.q)).toEqual(m);
+  });
+
   it('returns an empty map when absent or corrupt', () => {
     expect(readCommunities(t.q).size).toBe(0);
     t.q.setMeta('communities', '{not json');

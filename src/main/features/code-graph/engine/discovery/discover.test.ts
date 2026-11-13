@@ -174,6 +174,21 @@ describe('createIgnore', () => {
     }
   });
 
+  it('reads a .gitignore saved with a UTF-8 BOM and keeps one bad pattern from dropping the rest', () => {
+    write('.gitignore', '\uFEFFgen/\n[z-a].ts\nsecret.ts\n');
+    const ig = createIgnore(root);
+    expect(ig('gen', true)).toBe(true);
+    expect(ig('secret.ts', false)).toBe(true);
+    expect(ig('z.ts', false)).toBe(false);
+  });
+
+  it('strips only trailing spaces, like git (a trailing tab is part of the pattern)', () => {
+    write('.gitignore', 'spaced.ts   \ntabbed.ts\t\n');
+    const ig = createIgnore(root);
+    expect(ig('spaced.ts', false)).toBe(true);
+    expect(ig('tabbed.ts', false)).toBe(false);
+  });
+
   it('always ignores .git even when negated', () => {
     write('.gitignore', '!.git\n!.git/**\n');
     const ig = createIgnore(root);

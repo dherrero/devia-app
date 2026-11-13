@@ -10,6 +10,7 @@ import {
   resolveWasmDir,
   setWasmDirForTests,
 } from './grammars';
+import { CODE_GRAPH_LANGUAGES, type CodeGraphLanguage } from '../../../../../shared/domain/code-graph';
 import { extractorFor, registerExtractor } from './registry';
 import { lineOf, nodeText, findChildByType, walk, type LanguageExtractor } from './extractor';
 import { makeNodeId } from './node-id';
@@ -90,6 +91,11 @@ describe('registry', () => {
     registerExtractor(e);
     expect(extractorFor('go')).toBe(e);
     expect(extractorFor('dart')?.language).toBe('dart');
+  });
+
+  it('has an extractor for every supported language and none for an unregistered key', () => {
+    for (const lang of CODE_GRAPH_LANGUAGES) expect(extractorFor(lang)?.language).toBe(lang);
+    expect(extractorFor('ruby' as CodeGraphLanguage)).toBeUndefined();
   });
 });
 

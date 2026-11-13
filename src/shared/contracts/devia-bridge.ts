@@ -716,6 +716,8 @@ export interface DeviaBridge {
    * expected states (a job already running, a cancelled index) resolve with the
    * current status; setters reject with `CODE_GRAPH_NOT_CREATED` when the
    * project has no graph and `watch` with `CODE_GRAPH_WATCH_LIMIT` at the cap.
+   * Electron wraps a rejection ("Error invoking remote method …: Error: CODE"),
+   * so match the code by inclusion (`message.includes(code)`), never `===`.
    */
   codeGraphStatus(project: string): Promise<CodeGraphStatus>;
   /** Progress arrives through `onCodeGraphProgress`; resolves with the final status. */

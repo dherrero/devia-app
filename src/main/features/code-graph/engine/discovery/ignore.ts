@@ -95,7 +95,8 @@ function escapeRegex(s: string): string {
 
 function parseLine(raw: string): Rule | null {
   let line = raw.replace(/\r$/, '');
-  line = line.replace(/(?<!\\)\s+$/, '');
+  // Git strips trailing SPACES only (unless escaped); a tab stays in the pattern.
+  line = line.replace(/(?<!\\) +$/, '');
   if (line === '' || line.startsWith('#')) return null;
   let negate = false;
   if (line.startsWith('!')) {
@@ -117,7 +118,8 @@ function parseLine(raw: string): Rule | null {
 
 function parseIgnoreFile(text: string): Rule[] {
   const rules: Rule[] = [];
-  for (const raw of text.split('\n')) {
+  // Editors on Windows often save .gitignore with a BOM, which git ignores.
+  for (const raw of text.replace(/^\uFEFF/, '').split('\n')) {
     const rule = parseLine(raw);
     if (rule) rules.push(rule);
   }
