@@ -19,6 +19,10 @@ export default defineConfig({
       //
       // Measured over the real surface: 61.2% statements, 58.0% branches,
       // 52.8% functions, 63.7% lines. The thresholds are set just under that.
+      // Re-measured for S-44 T-514 (2026-11-13, 3792 tests): 75.4% statements,
+      // 70.12% branches, 70.94% functions, 77.81% lines; thresholds raised to
+      // those numbers floored (src/main/features/code-graph alone: 90.7 / 81.5
+      // / 94.7 / 94.0).
       //
       // RATCHET: these only ever go UP. When a change pushes the real number
       // above a threshold by a comfortable margin, raise the threshold in the
@@ -28,10 +32,10 @@ export default defineConfig({
       exclude: ['**/*.test.ts', '**/*.spec.ts', '**/__fixtures__/**'],
       reporter: ['text', 'html'],
       thresholds: {
-        lines: 62,
-        functions: 50,
-        branches: 55,
-        statements: 60,
+        lines: 77,
+        functions: 70,
+        branches: 70,
+        statements: 75,
       },
     },
   },
