@@ -392,6 +392,19 @@ describe('syncProject', () => {
     await expectParity();
   });
 
+  it('releases the lock when removing an orphan building file throws', async () => {
+    await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
+    // A non-empty directory under a `.building` name makes the (non-recursive) rm throw, as an
+    // EBUSY/EPERM would on Windows.
+    const wedge = path.join(dataDir, `${GRAPH_DB_FILE}.building-wedge`);
+    fs.mkdirSync(wedge);
+    fs.writeFileSync(path.join(wedge, 'x'), 'x');
+    await expect(syncProject({ root: project.root, dataDir })).rejects.toThrow();
+    expect(readWriterLock(dataDir)).toBeNull();
+    fs.rmSync(wedge, { recursive: true, force: true });
+    expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ skippedBusy: false });
+  });
+
   it('asks for a full index instead of syncing when a resolution config changed', async () => {
     await indexed({ 'a.ts': A_TS, 'b.ts': B_TS, 'tsconfig.json': '{}\n', 'go.mod': 'module example.com/m\n' });
     project.write('b.ts', 'export function z(): number {\n  return 9;\n}\n');

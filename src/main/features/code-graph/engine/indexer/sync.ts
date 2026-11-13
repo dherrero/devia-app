@@ -86,16 +86,17 @@ export async function syncProject(opts: SyncOptions): Promise<SyncResult> {
   if (!fs.existsSync(dbPath)) throw new GraphNotFoundError(dataDir);
   const lock = acquireWriterLock(dataDir, 'sync');
   if (!lock) return { ...EMPTY, skippedBusy: true };
-  // Holding the writer lock means no full index is building: a `.building` file is the orphan of
-  // an index process that was killed (no finally ran), possibly hundreds of MB. Since the app's
-  // first writer after a restart is usually a sync, it is removed here as well as by the next index.
-  removeBuildingFiles(dataDir);
 
   const started = Date.now();
   const timeLeft = (): boolean => opts.deadlineMs === undefined || Date.now() - started < opts.deadlineMs;
   const pool = new ParserPool();
   let db: GraphDb | undefined;
   try {
+    // Holding the writer lock means no full index is building: a `.building` file is the orphan of
+    // an index process that was killed (no finally ran), possibly hundreds of MB. Since the app's
+    // first writer after a restart is usually a sync, it is removed here as well as by the next
+    // index. Inside the try: a failing rm (Windows EBUSY/EPERM) must not leak the lock.
+    removeBuildingFiles(dataDir);
     if (!fs.existsSync(dbPath)) throw new GraphNotFoundError(dataDir);
     db = openGraphDb(dbPath);
     const q = new GraphQueries(db);
