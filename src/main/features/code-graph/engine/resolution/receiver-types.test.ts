@@ -298,6 +298,20 @@ describe('receiver type inference — Go', () => {
     );
   });
 
+  it('resolves methods declared on a generic type (`func (b *Box[T]) Get()`)', async () => {
+    await h.addFiles({
+      'go.mod': MOD,
+      'box/box.go':
+        'package box\n\ntype Box[T any] struct{ v T }\n\nfunc New[T any](v T) *Box[T] {\n\treturn &Box[T]{v: v}\n}\n\nfunc (b *Box[T]) Get() T {\n\treturn b.v\n}\n\nfunc (b *Box[T]) Peek() T {\n\treturn b.Get()\n}\n',
+      'main.go':
+        'package main\n\nimport "example.com/m/box"\n\nfunc run() {\n\tb := box.New(1)\n\tb.Get()\n\tvar c box.Box[int]\n\tc.Get()\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    const get = h.sym('box/box.go', 'Box.Get', 'method').id;
+    expect(gfn('box/box.go', 'Box.Peek')).toEqual([get]);
+    expect(gfn('main.go', 'run')).toEqual([h.sym('box/box.go', 'New').id, get].sort());
+  });
+
   it('follows struct field types to the interface method, an interface parameter, and the first of several results', async () => {
     await h.addFiles({
       'go.mod': MOD,
