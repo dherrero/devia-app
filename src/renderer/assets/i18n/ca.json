@@ -699,12 +699,8 @@
     "loading": "Carregant el graf de codi…",
     "retry": "Torna-ho a provar",
     "state": {
-      "none": "Aquest projecte encara no té graf de codi.",
       "indexing": "Indexant el projecte…",
-      "ready": "Graf de codi llest.",
-      "stale": "El graf de codi està desactualitzat.",
-      "error": "No s'ha pogut carregar el graf de codi.",
-      "unsupported": "Aquest projecte no té llenguatges compatibles amb el graf de codi."
+      "error": "No s'ha pogut carregar el graf de codi."
     },
     "empty": {
       "title": "Explora aquest projecte com a graf de codi",
@@ -909,7 +905,6 @@
       "imports": "Importacions",
       "imported_by": "Importat per",
       "hubs": "Nodes centrals",
-      "language": "Llenguatge",
       "files": "{{count}} fitxer",
       "files_plural": "{{count}} fitxers",
       "symbols": "{{count}} símbol",
@@ -921,9 +916,7 @@
       "copy_failed": "No s'ha pogut copiar el camí.",
       "open_ide": "Obre a l'IDE",
       "open_failed": "No s'ha pogut obrir el fitxer a l'IDE.",
-      "reveal": "Mostra {{label}} al graf",
       "test": "Test",
-      "generated": "Generat",
       "hub": "Node central",
       "exported": "Exportat"
     }

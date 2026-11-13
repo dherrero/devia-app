@@ -699,12 +699,8 @@
     "loading": "Code-Graph wird geladen…",
     "retry": "Erneut versuchen",
     "state": {
-      "none": "Dieses Projekt hat noch keinen Code-Graph.",
       "indexing": "Projekt wird indexiert…",
-      "ready": "Code-Graph bereit.",
-      "stale": "Der Code-Graph ist veraltet.",
-      "error": "Der Code-Graph konnte nicht geladen werden.",
-      "unsupported": "Dieses Projekt enthält keine vom Code-Graph unterstützten Sprachen."
+      "error": "Der Code-Graph konnte nicht geladen werden."
     },
     "empty": {
       "title": "Dieses Projekt als Code-Graph erkunden",
@@ -909,7 +905,6 @@
       "imports": "Importiert",
       "imported_by": "Importiert von",
       "hubs": "Zentrale Knoten",
-      "language": "Sprache",
       "files": "{{count}} Datei",
       "files_plural": "{{count}} Dateien",
       "symbols": "{{count}} Symbol",
@@ -921,9 +916,7 @@
       "copy_failed": "Der Pfad konnte nicht kopiert werden.",
       "open_ide": "In IDE öffnen",
       "open_failed": "Die Datei konnte nicht in der IDE geöffnet werden.",
-      "reveal": "{{label}} im Graph anzeigen",
       "test": "Test",
-      "generated": "Generiert",
       "hub": "Zentraler Knoten",
       "exported": "Exportiert"
     }

@@ -695,12 +695,8 @@
     "loading": "正在加载代码图谱…",
     "retry": "重试",
     "state": {
-      "none": "此项目还没有代码图谱。",
       "indexing": "正在为项目建立索引…",
-      "ready": "代码图谱已就绪。",
-      "stale": "代码图谱已过期。",
-      "error": "无法加载代码图谱。",
-      "unsupported": "此项目没有代码图谱支持的语言。"
+      "error": "无法加载代码图谱。"
     },
     "empty": {
       "title": "以代码图谱的方式探索此项目",
@@ -905,7 +901,6 @@
       "imports": "导入",
       "imported_by": "被导入于",
       "hubs": "中心节点",
-      "language": "语言",
       "files": "{{count}} 个文件",
       "files_plural": "{{count}} 个文件",
       "symbols": "{{count}} 个符号",
@@ -917,9 +912,7 @@
       "copy_failed": "无法复制路径。",
       "open_ide": "在 IDE 中打开",
       "open_failed": "无法在 IDE 中打开该文件。",
-      "reveal": "在图谱中显示 {{label}}",
       "test": "测试",
-      "generated": "生成的",
       "hub": "中心节点",
       "exported": "已导出"
     }

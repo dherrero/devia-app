@@ -695,12 +695,8 @@
     "loading": "A carregar o grafo de código…",
     "retry": "Tentar novamente",
     "state": {
-      "none": "Este projeto ainda não tem um grafo de código.",
       "indexing": "A indexar o projeto…",
-      "ready": "Grafo de código pronto.",
-      "stale": "O grafo de código está desatualizado.",
-      "error": "Não foi possível carregar o grafo de código.",
-      "unsupported": "Este projeto não tem linguagens suportadas pelo grafo de código."
+      "error": "Não foi possível carregar o grafo de código."
     },
     "empty": {
       "title": "Explore este projeto como um grafo de código",
@@ -905,7 +901,6 @@
       "imports": "Importações",
       "imported_by": "Importado por",
       "hubs": "Nós centrais",
-      "language": "Linguagem",
       "files": "{{count}} ficheiro",
       "files_plural": "{{count}} ficheiros",
       "symbols": "{{count}} símbolo",
@@ -917,9 +912,7 @@
       "copy_failed": "Não foi possível copiar o caminho.",
       "open_ide": "Abrir no IDE",
       "open_failed": "Não foi possível abrir o ficheiro no IDE.",
-      "reveal": "Mostrar {{label}} no grafo",
       "test": "Teste",
-      "generated": "Gerado",
       "hub": "Nó central",
       "exported": "Exportado"
     }

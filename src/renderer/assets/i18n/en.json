@@ -1032,12 +1032,8 @@
     "loading": "Loading the code graph…",
     "retry": "Retry",
     "state": {
-      "none": "This project has no code graph yet.",
       "indexing": "Indexing the project…",
-      "ready": "Code graph ready.",
-      "stale": "The code graph is out of date.",
-      "error": "The code graph could not be loaded.",
-      "unsupported": "This project has no languages supported by the code graph."
+      "error": "The code graph could not be loaded."
     },
     "empty": {
       "title": "Explore this project as a code graph",
@@ -1242,7 +1238,6 @@
       "imports": "Imports",
       "imported_by": "Imported by",
       "hubs": "Central nodes",
-      "language": "Language",
       "files": "{{count}} file",
       "files_plural": "{{count}} files",
       "symbols": "{{count}} symbol",
@@ -1254,9 +1249,7 @@
       "copy_failed": "The path could not be copied.",
       "open_ide": "Open in IDE",
       "open_failed": "The file could not be opened in the IDE.",
-      "reveal": "Show {{label}} in the graph",
       "test": "Test",
-      "generated": "Generated",
       "hub": "Central node",
       "exported": "Exported"
     }
