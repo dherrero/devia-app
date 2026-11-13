@@ -92,11 +92,12 @@ export async function syncProject(opts: SyncOptions): Promise<SyncResult> {
   const pool = new ParserPool();
   let db: GraphDb | undefined;
   try {
-    // Holding the writer lock means no full index is building: a `.building` file is the orphan of
-    // an index process that was killed (no finally ran), possibly hundreds of MB. Since the app's
-    // first writer after a restart is usually a sync, it is removed here as well as by the next
-    // index. Inside the try: a failing rm (Windows EBUSY/EPERM) must not leak the lock.
-    removeBuildingFiles(dataDir);
+    // A `.building` file is the orphan of an index process that was killed (no finally ran),
+    // possibly hundreds of MB. Since the app's first writer after a restart is usually a sync, it
+    // is removed here as well as by the next index, but only when the lock was free or its holder
+    // is verifiably dead: a lock taken from a live (aged) holder may still have its index
+    // building. Inside the try: a failing rm (Windows EBUSY/EPERM) must not leak the lock.
+    if (lock.previousHolder !== 'live') removeBuildingFiles(dataDir);
     if (!fs.existsSync(dbPath)) throw new GraphNotFoundError(dataDir);
     db = openGraphDb(dbPath);
     const q = new GraphQueries(db);

@@ -20,6 +20,7 @@ export const GRAPH_DB_FILE = 'graph.db';
 export const BUILDING_DB_FILE = 'graph.db.building';
 
 const DEFAULT_BATCH_SIZE = 100;
+const LOCK_HEARTBEAT_MS = 60_000;
 const SWAP_ATTEMPTS = 8;
 const SWAP_BASE_DELAY_MS = 100;
 const SWAP_MAX_DELAY_MS = 800;
@@ -149,7 +150,8 @@ async function publish(
 export async function indexProject(opts: IndexProjectOptions): Promise<IndexResult> {
   const { root, dataDir, signal } = opts;
   fs.mkdirSync(dataDir, { recursive: true });
-  const lock = acquireWriterLock(dataDir, 'indexer');
+  // The heartbeat keeps a long index (large repo, slow disk) from ever looking stale to a sync.
+  const lock = acquireWriterLock(dataDir, 'indexer', { heartbeatMs: LOCK_HEARTBEAT_MS });
   if (!lock) throw new IndexBusyError();
 
   const started = Date.now();

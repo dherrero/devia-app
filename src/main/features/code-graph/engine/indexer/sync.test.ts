@@ -405,6 +405,43 @@ describe('syncProject', () => {
     expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ skippedBusy: false });
   });
 
+  describe('orphan building files and a live full index', () => {
+    const STALE = 31 * 60 * 1000;
+    const building = (): string => path.join(dataDir, `${GRAPH_DB_FILE}.building`);
+    const writeLock = (pid: number, since: number, mtime: number): void => {
+      const file = path.join(dataDir, 'writer.lock');
+      fs.writeFileSync(file, JSON.stringify({ pid, owner: 'indexer', since }));
+      fs.utimesSync(file, new Date(mtime), new Date(mtime));
+    };
+
+    it('removes them when the lock was free or held by a dead pid', async () => {
+      await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
+      fs.writeFileSync(building(), 'junk');
+      await syncProject({ root: project.root, dataDir });
+      expect(fs.existsSync(building())).toBe(false);
+      fs.writeFileSync(building(), 'junk');
+      writeLock(999999, Date.now(), Date.now());
+      expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ skippedBusy: false });
+      expect(fs.existsSync(building())).toBe(false);
+    });
+
+    it('never steals from a live indexer older than the stale age whose heartbeat is fresh', async () => {
+      await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
+      fs.writeFileSync(building(), 'live build');
+      writeLock(process.pid, Date.now() - STALE, Date.now());
+      expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ skippedBusy: true });
+      expect(fs.readFileSync(building(), 'utf8')).toBe('live build');
+    });
+
+    it('keeps them when it takes an aged lock from a pid that is still alive', async () => {
+      await indexed({ 'a.ts': A_TS, 'b.ts': B_TS });
+      fs.writeFileSync(building(), 'maybe live');
+      writeLock(process.pid, Date.now() - STALE, Date.now() - STALE);
+      expect(await syncProject({ root: project.root, dataDir })).toMatchObject({ skippedBusy: false });
+      expect(fs.readFileSync(building(), 'utf8')).toBe('maybe live');
+    });
+  });
+
   it('asks for a full index instead of syncing when a resolution config changed', async () => {
     await indexed({ 'a.ts': A_TS, 'b.ts': B_TS, 'tsconfig.json': '{}\n', 'go.mod': 'module example.com/m\n' });
     project.write('b.ts', 'export function z(): number {\n  return 9;\n}\n');

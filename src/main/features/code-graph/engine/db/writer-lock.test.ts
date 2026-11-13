@@ -67,10 +67,48 @@ describe('writer-lock', () => {
         since: Date.now() - 5000,
       }),
     );
+    const old = new Date(Date.now() - 5000);
+    fs.utimesSync(lockFile, old, old);
     const lock = acquireWriterLock(dir, 'indexer', { staleMs: 1000 });
     expect(lock).not.toBeNull();
+    expect(lock!.previousHolder).toBe('live');
     expect(readWriterLock(dir)?.owner).toBe('indexer');
     lock!.release();
+  });
+
+  it('does not steal a live lock older than staleMs whose heartbeat (mtime) is fresh', () => {
+    fs.writeFileSync(
+      lockFile,
+      JSON.stringify({ pid: process.pid, owner: 'indexer', since: Date.now() - 5000 }),
+    );
+    expect(acquireWriterLock(dir, 'sync', { staleMs: 1000 })).toBeNull();
+    expect(readWriterLock(dir)?.owner).toBe('indexer');
+  });
+
+  it('reports who held the lock before: nobody, a dead pid', () => {
+    const free = acquireWriterLock(dir, 'sync')!;
+    expect(free.previousHolder).toBe('none');
+    free.release();
+    fs.writeFileSync(
+      lockFile,
+      JSON.stringify({ pid: 999999, owner: 'indexer', since: Date.now() }),
+    );
+    const stolen = acquireWriterLock(dir, 'sync')!;
+    expect(stolen.previousHolder).toBe('dead');
+    stolen.release();
+  });
+
+  it('a heartbeat keeps the held lock fresh and stops on release', async () => {
+    const lock = acquireWriterLock(dir, 'indexer', { heartbeatMs: 20 })!;
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(lockFile, old, old);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(fs.statSync(lockFile).mtimeMs).toBeGreaterThan(Date.now() - 30_000);
+    expect(acquireWriterLock(dir, 'sync', { staleMs: 30_000 })).toBeNull();
+    lock.release();
+    expect(fs.existsSync(lockFile)).toBe(false);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(fs.existsSync(lockFile)).toBe(false);
   });
 
   it('does not steal a fresh live lock', () => {
