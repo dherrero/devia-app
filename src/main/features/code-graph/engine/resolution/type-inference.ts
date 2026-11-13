@@ -80,6 +80,11 @@ export class TypeInference {
 
   constructor(private readonly host: InferenceHost) {}
 
+  /** Records a file read on behalf of the evaluation in progress (or of the current reference). */
+  noteRead(file: string): void {
+    this.noteFile(file);
+  }
+
   private noteFile(file: string): void {
     const top = this.frames[this.frames.length - 1];
     if (top) top.files.add(file);

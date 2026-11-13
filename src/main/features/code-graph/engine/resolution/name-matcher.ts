@@ -75,6 +75,12 @@ export class SymbolIndex {
   private readonly importsOf = new Map<string, Set<string>>();
   private readonly exportsOf = new Map<string, Set<string>>();
   private readonly byDir = new Map<string, string[]>();
+  /**
+   * Told the file of every class an inherited-member lookup walks through (the owner and each
+   * supertype): their `extends`/`implements` decide the answer, so a sync must re-resolve the
+   * reader when any of them changes, however deep in the chain.
+   */
+  onHierarchyRead: ((file: string) => void) | undefined;
 
   constructor(
     nodes: NodeSummary[],
@@ -265,6 +271,7 @@ export class SymbolIndex {
   /** Breadth-first over resolved `extends`/`implements`; the nearest level that has the member wins. */
   inheritedMember(owner: NodeSummary, seg: string): NodeSummary[] {
     const seen = new Set<string>([owner.id]);
+    this.onHierarchyRead?.(owner.filePath);
     let level = this.supertypesOf(owner);
     for (let depth = 0; depth < MAX_SUPER_DEPTH && level.length > 0; depth++) {
       const hits: NodeSummary[] = [];
@@ -272,6 +279,7 @@ export class SymbolIndex {
       for (const s of level) {
         if (seen.has(s.id)) continue;
         seen.add(s.id);
+        this.onHierarchyRead?.(s.filePath);
         hits.push(...this.directMembers(s, seg));
         next.push(...this.supertypesOf(s));
       }

@@ -280,7 +280,9 @@ async function planSync(
  * (5) Receiver type inference (`resolution_deps`): files whose resolution read facts or import
  * bindings of a changed file OR of a dependent from rules 1-4 (its bindings may move), or looked
  * up a name the changed files had or now have. One level is enough: a file that only depends
- * through (5) keeps its own bindings, which is all another file can read from it.
+ * through (5) keeps its own bindings, which is all another file can read from it. Inherited
+ * member lookups record the file of every class on the walked supertype chain, so a heritage
+ * change any number of levels up reaches the reader directly.
  */
 function findDependents(
   q: GraphQueries,

@@ -162,6 +162,23 @@ describe('sync parity with a full reindex', () => {
     await syncAndCompare('the field type changes in a file the caller does not import');
   });
 
+  it('matches a fresh index when a class three levels up the chain changes its supertype', async () => {
+    const DEEP: Record<string, string> = {
+      'src/base.ts': 'export class Base {\n  greet(): void {}\n}\nexport class Other {\n  greet(): void {}\n}\n',
+      'src/child.ts': "import { Base, Other } from './base';\nexport class Child extends Base {}\n",
+      'src/grand.ts': "import { Child } from './child';\nexport class Grand extends Child {}\n",
+      'src/great.ts':
+        "import { Grand } from './grand';\nexport class Great extends Grand {\n  run(): void {\n    this.greet();\n  }\n}\n",
+      'src/use.ts': "import { Great } from './great';\nexport function f(x: Great): void {\n  x.greet();\n}\n",
+    };
+    project.writeAll(DEEP);
+    await fullIndex(project.root, dataDir);
+    project.write('src/child.ts', "import { Base, Other } from './base';\nexport class Child extends Other {}\n");
+    await syncAndCompare('the root of the chain now extends Other (inferred receiver and this.greet())');
+    project.write('src/child.ts', DEEP['src/child.ts'] ?? '');
+    await syncAndCompare('and back to Base');
+  });
+
   it('matches a fresh index when Java receiver types change (T-515)', async () => {
     const P = 'src/main/java/com/acme';
     project.writeAll({

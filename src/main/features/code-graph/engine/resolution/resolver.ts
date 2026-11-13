@@ -217,6 +217,7 @@ class ResolutionRun {
       noteFile: (file) => this.reads?.files.add(file),
       noteName: (name) => this.reads?.names.add(name),
     });
+    this.index.onHierarchyRead = (file) => this.types.noteRead(file);
   }
 
   run(onlyFiles: string[] | undefined): ResolveStats {
