@@ -214,6 +214,14 @@ describe('pythonExtractor', () => {
     expect(handler.signature).toBe('def handler(req):');
   });
 
+  it('classifies private upper-case module names (_CACHE, __X) as constants', async () => {
+    const ex = await extractSource('pkg/consts.py', '_CACHE = {}\n__SECRET = 1\n_lower = 2\nPUBLIC = 3\n');
+    expect(nodeOf(ex, 'constant', 'pkg.consts._CACHE').visibility).toBe('private');
+    nodeOf(ex, 'constant', 'pkg.consts.__SECRET');
+    nodeOf(ex, 'constant', 'pkg.consts.PUBLIC');
+    nodeOf(ex, 'variable', 'pkg.consts._lower');
+  });
+
   it('treats if/try/for at module level as module scope and ignores comprehensions', async () => {
     const ex = await extractFixture('functions.py');
     expect(ex.errors).toEqual([]);

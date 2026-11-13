@@ -12,9 +12,9 @@ import { CONFIG_HASHES_KEY, isResolutionConfig, resolutionConfigHashes } from '.
 
 /**
  * Bump when extractors change what they store: v2 adds receiver type facts (S-44 T-515), v3 the
- * Java/Go/Dart/Python ones and type parameter bounds.
+ * Java/Go/Dart/Python ones and type parameter bounds, v4 Python private upper-case constants.
  */
-export const EXTRACTION_VERSION = 3;
+export const EXTRACTION_VERSION = 4;
 export const GRAPH_DB_FILE = 'graph.db';
 export const BUILDING_DB_FILE = 'graph.db.building';
 

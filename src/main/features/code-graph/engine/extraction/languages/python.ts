@@ -257,7 +257,7 @@ function visitAssignment(node: Node, ctx: Ctx): undefined {
   const isLambda = right?.type === 'lambda';
   const kind: NodeKind = isLambda
     ? 'function'
-    : /^[A-Z][A-Z0-9_]*$/.test(name)
+    : /^_*[A-Z][A-Z0-9_]*$/.test(name)
       ? 'constant'
       : 'variable';
   const init: SymbolInit = {
