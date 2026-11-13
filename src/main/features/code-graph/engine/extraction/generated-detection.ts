@@ -1,3 +1,6 @@
+// Adapted from codegraph (MIT) — see NOTICE
+// Upstream codegraph: src/extraction/generated-detection.ts (path patterns and banner rules).
+
 const PATH_PATTERNS: ReadonlyArray<RegExp> = [
   /\.pb\.go$/,
   /\.pulsar\.go$/,

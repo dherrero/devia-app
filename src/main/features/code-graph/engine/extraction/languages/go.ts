@@ -1,3 +1,4 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import type { Node, Tree } from 'web-tree-sitter';
 import type {
   GraphNode,
@@ -17,7 +18,7 @@ import {
 import { FACT_RETURNS, FACT_TYPE, FACT_TYPE_PARAMS } from '../type-facts';
 import { genericFacts, GoLocals, receiverTypeParams, returnFact, typeFact } from './go-types';
 
-// Adapted from codegraph (MIT), src/extraction/languages/go.ts.
+// Upstream codegraph: src/extraction/languages/go.ts.
 //
 // Symbols: the package (namespace), package-level types, functions, methods, constants and
 // variables, struct fields and interface methods. Function-local declarations, closures and

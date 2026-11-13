@@ -1,9 +1,10 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import * as path from 'node:path';
 import type { CodeGraphLanguage } from '../../../../../shared/domain/code-graph';
 import type { LanguageResolver, ResolveContext } from './language-resolvers';
 import { joinInRoot, matchPathAlias, PathConfigCache } from './path-aliases';
 
-// Adapted from codegraph (MIT), src/resolution/import-resolver.ts (TS/JS part only).
+// Upstream codegraph: src/resolution/import-resolver.ts (TS/JS part only).
 
 const EXTENSIONS = [
   '.ts',

@@ -1,3 +1,4 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import type { Node, Tree } from 'web-tree-sitter';
 import type {
   GraphNode,
@@ -16,7 +17,7 @@ import {
 import { FACT_RETURNS, FACT_TYPE, FACT_TYPE_PARAMS, FIELD_FACT_PREFIX } from '../type-facts';
 import { chainBase, genericParams, PythonLocals, typeFact, type FunctionFacts } from './python-types';
 
-// Adapted from codegraph (MIT), src/extraction/languages/python.ts.
+// Upstream codegraph: src/extraction/languages/python.ts.
 //
 // Only function and class bodies introduce scope in Python. `if`/`try`/`for`/`while`/`with`
 // do not, so (unlike the TypeScript extractor, where blocks are scopes) declarations inside them

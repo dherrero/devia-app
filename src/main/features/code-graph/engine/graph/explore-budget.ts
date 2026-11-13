@@ -1,3 +1,6 @@
+// Adapted from codegraph (MIT) — see NOTICE
+// Upstream codegraph: src/mcp/tools.ts (getExploreBudget / getExploreOutputBudget tables).
+
 export interface ExploreOutputBudget {
   maxChars: number;
   maxFiles: number;

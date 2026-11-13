@@ -1,3 +1,6 @@
+// Adapted from codegraph (MIT) — see NOTICE
+// Upstream codegraph: src/extraction/grammars.ts (extension map and wasm loading).
+
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Language, Parser } from 'web-tree-sitter';

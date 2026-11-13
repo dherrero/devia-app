@@ -1,3 +1,6 @@
+-- Adapted from codegraph (MIT) — see NOTICE
+-- Upstream codegraph: src/db/schema.sql (trimmed: no synthesizer or vocabulary tables).
+
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
     applied_at INTEGER NOT NULL,

@@ -16,3 +16,85 @@ license text ships with the method in resources/kits/devia-method/LICENSE.
 The optional image dependency sharp (pulled in by @xenova/transformers) ships
 prebuilt libvips binaries licensed under LGPL-3.0-or-later. They are used as
 separate, dynamically loaded libraries and are not modified.
+
+-------------------------------------------------------------------------------
+Code Graph (S-44): adapted code and bundled third-party components
+-------------------------------------------------------------------------------
+
+1. codegraph (https://github.com/colbymchenry/codegraph), MIT License,
+   Copyright (c) 2026 Colby Mchenry.
+
+   Devia's code-graph engine (src/main/features/code-graph/) is its own
+   TypeScript implementation, but the files below were adapted from codegraph
+   1.6.2 and carry the header line "Adapted from codegraph (MIT) — see NOTICE".
+   codegraph is not a runtime dependency; it is only used, optionally and
+   outside this repository, as the parity oracle of tools/code-graph/oracle.mjs.
+
+     src/main/features/code-graph/engine/db/schema.sql
+     src/main/features/code-graph/engine/extraction/generated-detection.ts
+     src/main/features/code-graph/engine/extraction/grammars.ts
+     src/main/features/code-graph/engine/extraction/languages/dart.ts
+     src/main/features/code-graph/engine/extraction/languages/go.ts
+     src/main/features/code-graph/engine/extraction/languages/java.ts
+     src/main/features/code-graph/engine/extraction/languages/python.ts
+     src/main/features/code-graph/engine/extraction/languages/typescript.ts
+     src/main/features/code-graph/engine/graph/explore-budget.ts
+     src/main/features/code-graph/engine/indexer/sync.ts
+     src/main/features/code-graph/engine/resolution/import-resolver.ts
+     src/main/features/code-graph/engine/resolution/path-aliases.ts
+     src/main/features/code-graph/engine/resolution/resolver.ts
+
+   License text:
+
+   MIT License
+
+   Copyright (c) 2026 Colby Mchenry
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+2. Tree-sitter grammars (WebAssembly builds), vendored unchanged in
+   src/main/features/code-graph/engine/extraction/wasm/ and shipped in the
+   app. The seven files are byte-identical to the ones codegraph 1.6.2 vendors
+   in src/extraction/wasm/, built with tree-sitter-cli 0.25.10 (`build --wasm`)
+   from the upstream revisions below. All are MIT licensed by their authors.
+
+     tree-sitter-typescript.wasm  tree-sitter/tree-sitter-typescript v0.23.2 (f975a62)
+     tree-sitter-tsx.wasm         tree-sitter/tree-sitter-typescript v0.23.2 (f975a62)
+     tree-sitter-javascript.wasm  tree-sitter/tree-sitter-javascript v0.25.0 (44c892e)
+     tree-sitter-python.wasm      tree-sitter/tree-sitter-python v0.23.6 (bffb65a)
+     tree-sitter-java.wasm        tree-sitter/tree-sitter-java v0.23.5 (94703d5)
+     tree-sitter-go.wasm          tree-sitter/tree-sitter-go v0.23.4 (3c3775f)
+     tree-sitter-dart.wasm        UserNobody14/tree-sitter-dart (d4d8f3e), the
+                                  tree-sitter-wasms 0.1.13 artifact
+
+   The grammars are loaded with web-tree-sitter 0.25.10 (MIT, a runtime
+   dependency installed from npm).
+
+3. Graph view (renderer), bundled into the renderer's lazy code-graph chunk
+   at build time (devDependencies), all MIT License:
+
+     cytoscape 3.34.4              Copyright (c) 2016-2026, The Cytoscape Consortium
+     cytoscape-fcose 2.2.0         Copyright (c) 2018 - present, iVis-at-Bilkent
+     cose-base 2.2.0               Copyright (c) 2019 - present, iVis@Bilkent (via cytoscape-fcose)
+     layout-base 2.0.1             Copyright (c) 2019 iVis@Bilkent (via cose-base)
+     @types/cytoscape-fcose 2.2.5  type definitions only (not shipped)
+
+4. Ideas only, no code: community detection and hub scoring in
+   engine/graph/communities.ts follow ideas from graphify; the implementation
+   is Devia's own.

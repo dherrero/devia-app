@@ -1,7 +1,8 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-// Adapted from codegraph (MIT), src/resolution/path-aliases.ts: tsconfig/jsconfig `paths` +
+// Upstream codegraph: src/resolution/path-aliases.ts: tsconfig/jsconfig `paths` +
 // `baseUrl` with relative `extends`, nearest config per directory. Paths are root-relative, `/`.
 
 export interface PathAlias {

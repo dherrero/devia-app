@@ -1,3 +1,4 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -24,7 +25,7 @@ import {
   type Env,
 } from './type-inference';
 
-// Adapted from codegraph (MIT), src/resolution/index.ts, without frameworks or synthesizers.
+// Upstream codegraph: src/resolution/index.ts, without frameworks or synthesizers.
 //
 // Phases run in order so later ones can lean on earlier edges: imports (file→file edges and
 // per-file bindings) → extends/implements (supertypes for inherited members) → calls and the

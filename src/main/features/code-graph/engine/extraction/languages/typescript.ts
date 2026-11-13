@@ -1,3 +1,4 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import type { Node, Tree } from 'web-tree-sitter';
 import type {
   CodeGraphLanguage,
@@ -18,7 +19,7 @@ import {
 import { FACT_RETURNS, FACT_TYPE, FACT_TYPE_PARAMS, FIELD_FACT_PREFIX } from '../type-facts';
 import { FUNCTION_LIKE, LocalScopes, typeFact, typeParamsFact } from './typescript-types';
 
-// Adapted from codegraph (MIT), src/extraction/languages/typescript.ts and javascript.ts.
+// Upstream codegraph: src/extraction/languages/typescript.ts and javascript.ts.
 //
 // Which declarations become symbols is decided by their syntactic container, not by the scope
 // stack (blocks and callbacks are not scopes, so the stack alone leaks their locals to module level):

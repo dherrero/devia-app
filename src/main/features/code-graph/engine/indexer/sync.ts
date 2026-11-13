@@ -1,3 +1,4 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { openGraphDb, type GraphDb } from '../db/connection';
@@ -20,7 +21,7 @@ import { EXTRACTION_VERSION, GRAPH_DB_FILE, removeBuildingFiles } from './orches
 import { resolveGraph } from './post-index';
 import { isResolutionConfig, resolutionConfigHashes, sameConfigHashes, storedConfigHashes } from './resolution-config';
 
-// Adapted from codegraph (MIT), src/sync/ and the `sync` entry point of src/index.ts.
+// Upstream codegraph: src/sync/ and the `sync` entry point of src/index.ts.
 
 export interface SyncOptions {
   root: string;

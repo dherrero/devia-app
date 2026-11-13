@@ -1,3 +1,4 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import type { Node, Tree } from 'web-tree-sitter';
 import type {
   GraphNode,
@@ -17,7 +18,7 @@ import {
 import { FACT_RETURNS, FACT_TYPE } from '../type-facts';
 import { DartLocals, genericFacts, typeFact } from './dart-types';
 
-// Adapted from codegraph (MIT), src/extraction/languages/dart.ts.
+// Upstream codegraph: src/extraction/languages/dart.ts.
 //
 // The vendored grammar is flat: a function's signature and its `function_body` are siblings, a
 // call is an `identifier` followed by `selector` siblings, and top-level variables are loose

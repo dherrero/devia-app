@@ -1,3 +1,4 @@
+// Adapted from codegraph (MIT) — see NOTICE
 import type { Node, Tree } from 'web-tree-sitter';
 import type { GraphNode, NodeKind, RefMetadata } from '../../../../../../shared/domain/code-graph';
 import {
@@ -12,7 +13,7 @@ import {
 import { FACT_RETURNS, FACT_TYPE } from '../type-facts';
 import { genericFacts, JavaLocals, typeFact } from './java-types';
 
-// Adapted from codegraph (MIT), src/extraction/languages/java.ts.
+// Upstream codegraph: src/extraction/languages/java.ts.
 //
 // Symbols: the package (namespace), types declared at file level or directly in a type body, and
 // their methods, constructors, fields and enum constants. Local classes, anonymous classes,
