@@ -132,6 +132,21 @@ describe('receiver type inference — TypeScript', () => {
     expect(calls('src/s.ts', 'f')).toEqual([h.sym('src/s.ts', 'make').id]);
   });
 
+  it('a method\'s own type parameter shadows the class binding of the same name', async () => {
+    await h.addFiles({
+      'src/order.ts': 'export class Order {\n  pay(): void {}\n}\n',
+      'src/repo.ts':
+        'export class Repo<T> {\n  get(): T {\n    throw 1;\n  }\n  map<T>(f: () => T): T {\n    return f();\n  }\n}\n',
+      'src/m.ts':
+        "import { Repo } from './repo';\nimport { Order } from './order';\nexport function f(r: Repo<Order>): void {\n  r.map(() => 1).pay();\n  r.get().pay();\n}\n",
+    });
+    resolveReferences(h.q, h.root);
+    const pay = h.sym('src/order.ts', 'Order.pay').id;
+    const fromF = h.targets(h.sym('src/m.ts', 'f').id, 'calls');
+    // Only `r.get().pay()` reaches Order.pay; `map`'s T is its own, unbound.
+    expect(fromF.filter((t) => t === pay)).toHaveLength(1);
+  });
+
   it('re-resolving only the caller still sees the bindings of an untouched file that declares the type', async () => {
     await h.addFiles({
       'src/user.ts': 'export class User {\n  hello(): void {}\n}\n',
@@ -259,6 +274,20 @@ describe('receiver type inference — Java', () => {
     expect(jcalls('App.java', 'App.main')).toEqual(
       [jsym('core/Service.java', 'Service.events'), jsym('core/Bus.java', 'Bus.subscribe')].sort(),
     );
+  });
+
+  it('a generic method\'s own type parameter shadows the class binding of the same name', async () => {
+    await h.addFiles({
+      'src/main/java/p/Order.java': 'package p;\npublic class Order { public void pay() {} }\n',
+      'src/main/java/p/Box.java':
+        'package p;\npublic class Box<T> {\n  public T get() { return null; }\n  public <T> T conv(Object o) { return null; }\n}\n',
+      'src/main/java/p/C.java':
+        'package p;\npublic class C {\n  void run(Box<Order> b) {\n    b.conv(null).pay();\n  }\n  void ok(Box<Order> b) {\n    b.get().pay();\n  }\n}\n',
+    });
+    resolveReferences(h.q, h.root);
+    const pay = h.sym('src/main/java/p/Order.java', 'Order.pay').id;
+    expect(h.targets(h.sym('src/main/java/p/C.java', 'C.run').id, 'calls')).not.toContain(pay);
+    expect(h.targets(h.sym('src/main/java/p/C.java', 'C.ok').id, 'calls')).toContain(pay);
   });
 
   it('stays silent on untyped lambda parameters and unknown computed receivers', async () => {

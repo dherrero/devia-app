@@ -246,10 +246,12 @@ export class TypeInference {
   private namedType(expr: string, ctx: NodeSummary, env: Env): TypeRef | undefined {
     const parsed = parseType(expr);
     if (!parsed) return undefined;
-    const bound = env.get(parsed.name);
-    if (bound) return bound;
     if (!parsed.name.includes('.')) {
+      // The innermost declarer wins: `env` holds the enclosing class's arguments, so a method's
+      // own `<T>` shadows the class's `T` and stays unbound.
       const declarer = this.host.index.ancestors(ctx).find((n) => typeParams(n).includes(parsed.name));
+      const bound = env.get(parsed.name);
+      if (bound && (!declarer || declarer.id === this.host.index.enclosingClass(ctx)?.id)) return bound;
       if (declarer) {
         // Unbound here: only its declared upper bound, if any, is known about it.
         const upper = fact(declarer, `${BOUND_FACT_PREFIX}${parsed.name}`);
