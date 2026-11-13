@@ -212,6 +212,8 @@ Write no comments by default. Only document non-obvious _why_: hidden constraint
 - **Never leave work in progress uncommitted in a tree the app builds from.** `tsconfig.main.json` compiles everything under `src/main`: an untracked, half-written file or a dirty `queries.ts` breaks `npm run build` and therefore the whole app. Partial work lives on a feature branch in its worktree, committed in coherent steps.
 - Commits are local until the user says to push. An agent never pushes, never opens or merges a PR and never touches `main`/`dev` without an explicit request.
 - Commit messages follow Conventional Commits (`release.yml` bumps the version from them).
+- Branch names: `feature/<slug>` (new functionality), `fix/<slug>`, `refactor/<slug>`, `docs/<slug>`, `chore/<slug>` (tooling, deps, scripts); the older `feat/<slug>` form is also accepted.
+- Never bypass hooks (`--no-verify`, `--no-gpg-sign`) without explicit user authorization.
 
 ### Devia must keep working after every change (definition of done)
 
@@ -324,26 +326,6 @@ the app verifies is `latest*.yml`, not this file).
 notarization trio `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`.
 Without the mac secrets the macOS job still builds but ships unsigned/unnotarized.
 `DEVIA_SAAS_URL` is optional: unset, the upgrade deep link does nothing.
-
----
-
-## Git workflow
-
-GitHub Flow. Branch naming:
-
-- `feat/<slug>` — new functionality
-- `fix/<slug>` — bug fix
-- `refactor/<slug>` — non-behavioral change
-- `docs/<slug>` — documentation only
-- `chore/<slug>` — tooling, deps, scripts
-
-Hard rules:
-
-1. **Never commit to `main` directly.** Check current branch before any edit; create a branch if on main.
-2. **Never commit without explicit user confirmation** that the change works correctly.
-3. **Never open a PR without explicit user request.**
-4. **Push immediately after every commit** — the user reviews remotely; unpushed commits are invisible.
-5. **Never bypass hooks** (`--no-verify`, `--no-gpg-sign`) without explicit user authorization.
 
 ---
 
