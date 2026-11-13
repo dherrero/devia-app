@@ -610,6 +610,34 @@ describe('GraphViewStore (S-44 T-510)', () => {
       expect(store.notice()?.key).toBe('codeGraph.reveal.not_found');
     });
 
+    it('a vanished node leaves the view as it was: the levels this reveal opened are closed again', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      await store.expand('dir:B');
+      const before = [...ids(store)].sort();
+
+      await store.revealNode('s9', ['dir:A', 'a1']);
+
+      expect([...ids(store)].sort()).toEqual(before);
+      expect(store.expanded().has('dir:B')).toBe(true);
+      expect(store.expanded().has('dir:A')).toBe(false);
+    });
+
+    it('a reveal asked during a Retry reload waits for it and then lands', async () => {
+      const api = makeApi(smallGraph());
+      const store = setup(api);
+      await store.loadOverview(P);
+      const slow = deferred<GraphViewPage>();
+      api.codeGraphOverview.mockImplementationOnce(() => slow.promise);
+      const reloading = store.reload(P);
+      const revealed = store.revealNode('a1', ['dir:A']);
+      slow.resolve(smallGraph().overview());
+      await reloading;
+      await revealed;
+      expect(store.selectedId()).toBe('a1');
+    });
+
     it('a failing detail request surfaces as an action error, not a crash', async () => {
       const api = makeApi(smallGraph());
       api.codeGraphNodeDetail.mockRejectedValueOnce(new Error('db gone'));

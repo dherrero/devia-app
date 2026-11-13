@@ -211,6 +211,7 @@ export class GraphViewStore {
   private parentOf = new Map<string, string>();
   private inflight = new Map<string, Promise<void>>();
   private pendingLoad: Promise<void> | null = null;
+  private activeReload: Promise<void> | null = null;
   private target: ReloadTarget | null = null;
   private listeners = new Set<(change: GraphViewChange) => void>();
   private revealSeq = 0;
@@ -307,9 +308,12 @@ export class GraphViewStore {
    */
   async revealNode(id: string, ancestors?: readonly string[]): Promise<void> {
     const seq = ++this.revealSeq;
-    if (this.pendingLoad) {
-      await this.pendingLoad;
+    // A load (show) or a reload (show, or Retry) may be running: land after it.
+    for (let wait = this.pendingLoad ?? this.activeReload; wait; ) {
+      await wait;
       if (seq !== this.revealSeq) return;
+      const next = this.pendingLoad ?? this.activeReload;
+      wait = next === wait ? null : next;
     }
     const project = this.project;
     if (project === null || this._reloading()) return;
@@ -335,6 +339,7 @@ export class GraphViewStore {
       }
     }
     let parent: string | null = null;
+    const opened: string[] = [];
     for (const ancestor of chain) {
       if (this.expansions.has(ancestor)) {
         this.touch(ancestor);
@@ -345,13 +350,19 @@ export class GraphViewStore {
         await this.expand(ancestor);
         if (!live()) return;
         if (!this.expansions.has(ancestor)) break;
+        opened.push(ancestor);
       }
       parent = ancestor;
     }
     if (!this.nodeMap.has(id)) await this.pageUntil(parent, id, live);
     if (!live()) return;
-    if (this.nodeMap.has(id)) this.landReveal(id);
-    else this._notice.set({ key: NOT_FOUND_NOTICE, params: {} });
+    if (this.nodeMap.has(id)) {
+      this.landReveal(id);
+      return;
+    }
+    // The node vanished: close again what this reveal opened (innermost first).
+    for (const ancestor of opened.reverse()) this.collapse(ancestor);
+    this._notice.set({ key: NOT_FOUND_NOTICE, params: {} });
   }
 
   /** Loads the next pages of `parentId`'s level (null: the root) until `id` is on screen or the level ends. */
@@ -394,7 +405,15 @@ export class GraphViewStore {
    * and keeping the selection when its node survived. A reload that starts
    * while another runs restores the same target, never the half-built state.
    */
-  async reload(project: string): Promise<void> {
+  reload(project: string): Promise<void> {
+    const run = this.doReload(project).finally(() => {
+      if (this.activeReload === run) this.activeReload = null;
+    });
+    this.activeReload = run;
+    return run;
+  }
+
+  private async doReload(project: string): Promise<void> {
     const target = this.target ?? { expansions: [...this.expansions.keys()], selected: this._selectedId() };
     this.target = target;
     this._reloading.set(true);
@@ -444,6 +463,7 @@ export class GraphViewStore {
     this.revision = undefined;
     this._revision.set(undefined);
     this.pendingLoad = null;
+    this.activeReload = null;
     this.target = null;
     this._reloading.set(false);
     this.clear();
