@@ -74,7 +74,12 @@ const QUESTION_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
 
 /** Devia's memory server id (its `mem_*` tools). */
 const MEMORY_SERVER_ID = 'devia-memory';
-const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
+/**
+ * Devia's code-graph server id. A local copy because features never import each
+ * other; `features/code-graph-server-id.test.ts` pins it to the injector's id so
+ * a rename cannot silently drop the prompt block of graph runs.
+ */
+export const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
 
 /** S-2 F3.4: how fresh a previous-agent `mem_session_summary` must be to ride
  *  the handoff brief instead of the compressed/deterministic body. */
@@ -858,15 +863,15 @@ export class RunInstructionUseCase {
     // worktree — derived from the cwd itself (covers both the eager renderer
     // worktree and a re-attached one), never from the isolateSession flag.
     const worktreeHint = buildWorktreeProtocolHint(cwd !== cwdResult.resolvedPath);
-    // Plan mode blocks file-writers but keeps the kanban MCP: tell the agent to
-    // persist long plans as kanban specs instead of attempting failing writes.
-    // S-39: with the method on, plan mode hands its sequence over to the method's
-    // skills instead of ordering "explore, then persist" on its own.
     // T-508: gated on THIS run's delivery, never on a second graph lookup.
     const codeGraphHint =
       this.deps.codeGraphProtocol?.({
         serverRegistered: codeGraphServer !== undefined && delivery.mcpServerIds.includes(CODE_GRAPH_SERVER_ID),
       }) ?? null;
+    // Plan mode blocks file-writers but keeps the kanban MCP: tell the agent to
+    // persist long plans as kanban specs instead of attempting failing writes.
+    // S-39: with the method on, plan mode hands its sequence over to the method's
+    // skills instead of ordering "explore, then persist" on its own.
     const planHint = buildPlanProtocolHint(requestedMode === 'plan', kit !== null);
     // S-39: the kit's bootstrap and skill index — the same text for every agent.
     const kitHint = kit?.prompt ?? null;

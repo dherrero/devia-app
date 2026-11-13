@@ -36,8 +36,7 @@ import {
 } from '../../../shared/ui-rendezvous';
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
 import { UiMcpInjector, type UiServerHarness } from '../../ui-tools';
-import { codeGraphProtocol } from '../../code-graph/infrastructure/code-graph-protocol';
-import { CodeGraphMcpInjector } from '../../code-graph';
+import { CodeGraphMcpInjector, codeGraphProtocol } from '../../code-graph';
 import type { StarterKitsPort } from '../../../shared/ports';
 import type { HarnessCatalog } from '../domain/ports';
 import type {
@@ -3699,6 +3698,12 @@ describe('RunInstructionUseCase — devia-code-graph delivery (S-44)', () => {
   it('a remote run carries the guide like the other blocks (turn context for Claude)', () => {
     const { plan } = guideRun(claudeStreamDef, { codeGraphMcpServer: codeGraph() }, 'remote');
     expect(plan?.turnContext).toContain(GUIDE);
+  });
+
+  it('a remote run of a non-Claude agent carries the guide in its system prompt', () => {
+    const { plan, system } = guideRun({ id: 'pi', name: 'Pi' }, { codeGraphMcpServer: codeGraph() }, 'remote');
+    expect(system).toContain(GUIDE);
+    expect(plan?.turnContext).toBeUndefined();
   });
 
   it('the gemini rows really compare the plan-mode policy and the written native config', () => {

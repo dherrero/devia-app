@@ -21,8 +21,8 @@ const present = (...bodies: readonly (string | null)[]): string[] => bodies.filt
 /**
  * Every body, in the order the full system prompt has always carried them
  * (packs, skill registry, kit, memory protocol, memory context, handoff,
- * worktree, remote, UI fallback, code graph, plan). Agents that re-send the whole prompt on
- * every run keep receiving exactly this.
+ * worktree, remote, UI fallback, code graph, plan). Agents that re-send the
+ * whole prompt on every run keep receiving exactly this.
  */
 export function orderedBodies(b: PromptBodies): string[] {
   return [

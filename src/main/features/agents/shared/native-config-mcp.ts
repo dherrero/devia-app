@@ -17,7 +17,7 @@ const RETIRED_SERVER_IDS = ['devia-ask'];
  * graph that is off, deleted, or another project's. The writers only remove
  * entries Devia wrote, so a file that never held it is left as it was.
  */
-const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
+export const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
 
 export interface NativeConfigDelivery {
   /** The project config file written, or null when nothing could be written. */

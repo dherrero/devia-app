@@ -103,7 +103,7 @@ const DEVIA_MCP_SERVERS = ['devia-kanban', 'devia-memory', 'devia-ui'] as const;
  * Offered only to runs on a project with a graph: its rule is written only when the run carries the
  * server, so a run without a graph gets exactly the policy it got before the server existed.
  */
-const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
+export const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
 
 const allowRule = (server: string): string[] => [
   '[[rule]]',
