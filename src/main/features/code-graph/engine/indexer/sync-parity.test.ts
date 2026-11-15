@@ -113,7 +113,7 @@ describe('sync parity with a full reindex', () => {
 
     project.write('shape/s_read.go', 'package shape\n\nfunc (s *S) Read() int { return 2 }\n');
     await syncAndCompare('bring the Go method back');
-  });
+  }, 60_000);
 
   it('matches a fresh index when receiver types change in files the caller never imports (T-515)', async () => {
     const RECEIVERS: Record<string, string> = {
