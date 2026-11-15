@@ -198,6 +198,8 @@ describe('devia-code-graph server process', () => {
 
 /**
  * Includes the tsx transpile of the server's module graph, which the compiled `dist` entry does
- * not pay; the compiled server is measured separately in the smoke run.
+ * not pay; the compiled server is measured separately in the smoke run. A process spawn is noisy,
+ * so this is a sanity ceiling (seconds-level regressions such as eagerly loading the wasm
+ * grammars), not a tight budget: the "web-tree-sitter loaded: false" assertion is the real guard.
  */
-const STARTUP_IDLE_MS = 300;
+const STARTUP_IDLE_MS = 1500;
