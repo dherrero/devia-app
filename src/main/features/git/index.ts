@@ -1,5 +1,5 @@
 import type { Feature, FeatureContext } from '../../shared/feature';
-import type { ConfigRepository, GitInspector } from '../../shared/ports';
+import type { ConfigRepository, GitInspector, WorktreeLifecycleHooks } from '../../shared/ports';
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -14,6 +14,7 @@ import type { EnsureWorktreeResult } from './infrastructure/cli-git-worktree-man
 import { FsGitWatcher } from './infrastructure/fs-git-watcher';
 import { cleanupSession, sweepOrphans } from './infrastructure/worktree-lifecycle';
 import type { CleanupSessionResult } from './infrastructure/worktree-lifecycle';
+import { notifyWorktreeHook } from './infrastructure/worktree-hooks';
 import { registerGitIpc } from './ipc/git.ipc';
 import type { GitBrancher, GitSyncer, GitWatcher, GitWorktreeManager } from './domain/ports';
 import type { WorktreeRef } from './domain/worktree-ref';
@@ -24,6 +25,8 @@ export type { EnsureWorktreeResult } from './infrastructure/cli-git-worktree-man
 
 export interface GitDeps {
   config: ConfigRepository;
+  /** Best-effort observer of worktree create/remove; never alters the result. */
+  worktreeHooks?: WorktreeLifecycleHooks;
 }
 
 export interface GitExports {
@@ -97,7 +100,11 @@ export function buildGitFeature(deps: GitDeps): BuiltGitFeature {
     const base = resolveBase(baseProject);
     if (base === null) return null;
     const ref = worktreeRefFor(deps.config.deviaDir(), base, sessionId);
-    return cleanupSession(branch !== undefined ? { ...ref, branch } : ref);
+    const result = cleanupSession(branch !== undefined ? { ...ref, branch } : ref);
+    if (result.removed || !fs.existsSync(ref.worktreeDir)) {
+      notifyWorktreeHook(deps.worktreeHooks, 'onRemoved', { worktreePath: ref.worktreeDir });
+    }
+    return result;
   };
 
   const feature: Feature = {
@@ -112,6 +119,7 @@ export function buildGitFeature(deps: GitDeps): BuiltGitFeature {
         config: deps.config,
         baseRefFor,
         cleanup: cleanupByKey,
+        ...(deps.worktreeHooks ? { worktreeHooks: deps.worktreeHooks } : {}),
       });
     },
     onReady(ctx: FeatureContext) {
@@ -131,6 +139,7 @@ export function buildGitFeature(deps: GitDeps): BuiltGitFeature {
         const { swept } = sweepOrphans(deps.config.deviaDir());
         if (swept.length > 0) {
           console.log(`[git:sweep] removed ${swept.length} orphan worktree(s)`);
+          for (const worktreePath of swept) notifyWorktreeHook(deps.worktreeHooks, 'onRemoved', { worktreePath });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -150,7 +159,17 @@ export function buildGitFeature(deps: GitDeps): BuiltGitFeature {
       syncer,
       brancher,
       worktreeManager,
-      ensureSessionWorktree: (ref) => ensureWorktreeSync(ref, undefined, baseRefFor(ref.baseProject)),
+      ensureSessionWorktree: (ref) => {
+        const result = ensureWorktreeSync(ref, undefined, baseRefFor(ref.baseProject));
+        if (result.ok && result.created) {
+          notifyWorktreeHook(deps.worktreeHooks, 'onCreated', {
+            baseProject: ref.baseProject,
+            worktreePath: ref.worktreeDir,
+            sessionId: ref.sessionId,
+          });
+        }
+        return result;
+      },
       cleanupSessionWorktree: cleanupByKey,
       isLiveSessionWorktree: (workdir) => {
         const root = path.join(deps.config.deviaDir(), 'worktrees');
@@ -164,7 +183,13 @@ export function buildGitFeature(deps: GitDeps): BuiltGitFeature {
         // The persisted branch is authoritative — a sessionId-derived default
         // could drift if naming ever changes.
         const target = { ...ref, branch };
-        return reattachWorktreeSync(target) ? target.worktreeDir : null;
+        if (!reattachWorktreeSync(target)) return null;
+        notifyWorktreeHook(deps.worktreeHooks, 'onCreated', {
+          baseProject: base,
+          worktreePath: target.worktreeDir,
+          sessionId: target.sessionId,
+        });
+        return target.worktreeDir;
       },
     },
   };

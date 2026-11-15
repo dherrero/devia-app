@@ -1,0 +1,129 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { openGraphDb, type GraphDb } from './connection';
+import { SCHEMA_VERSION } from './migrations';
+
+const versions = (db: GraphDb): number[] =>
+  (db.prepare('SELECT version FROM schema_versions ORDER BY version').all() as { version: number }[]).map((r) => r.version);
+const hasIdFileIndex = (db: GraphDb): boolean =>
+  db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_nodes_id_file'").get() !== undefined;
+const hasResolutionDeps = (db: GraphDb): boolean =>
+  db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'resolution_deps'").get() !== undefined;
+
+/** A graph as schema v1 left it: no `idx_nodes_id_file`, only version 1 recorded. */
+function makeV1(file: string): void {
+  const db = openGraphDb(file);
+  db.exec('DROP INDEX idx_nodes_id_file');
+  db.exec('DROP TABLE resolution_deps');
+  db.exec('DELETE FROM schema_versions WHERE version > 1');
+  db.exec("INSERT INTO project_metadata VALUES ('k','v',1)");
+  db.close();
+}
+
+describe('openGraphDb', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-db-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('creates the file in WAL mode with foreign keys on', () => {
+    const file = path.join(dir, 'graph.db');
+    const db = openGraphDb(file);
+    expect(fs.existsSync(file)).toBe(true);
+    expect(
+      (db.prepare('PRAGMA journal_mode').get() as { journal_mode: string })
+        .journal_mode,
+    ).toBe('wal');
+    expect(
+      (db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number })
+        .foreign_keys,
+    ).toBe(1);
+    db.close();
+  });
+
+  it('does not re-apply the schema on reopen', () => {
+    const file = path.join(dir, 'graph.db');
+    openGraphDb(file).close();
+    const db = openGraphDb(file);
+    expect(
+      (
+        db.prepare('SELECT COUNT(*) AS c FROM schema_versions').get() as {
+          c: number;
+        }
+      ).c,
+    ).toBe(SCHEMA_VERSION);
+    db.close();
+  });
+
+  it('creates a new graph at the current schema version, with the id/file index', () => {
+    const db = openGraphDb(path.join(dir, 'graph.db'));
+    expect(SCHEMA_VERSION).toBe(4);
+    expect(versions(db)).toEqual([1, 2, 3, 4]);
+    expect(hasIdFileIndex(db)).toBe(true);
+    expect(hasResolutionDeps(db)).toBe(true);
+    expect(hasIndex(db, 'idx_unresolved_file_status')).toBe(true);
+    db.close();
+  });
+
+  it('upgrades a v1 graph opened for write and keeps its data', () => {
+    const file = path.join(dir, 'graph.db');
+    makeV1(file);
+    const db = openGraphDb(file);
+    expect(versions(db)).toEqual([1, 2, 3, 4]);
+    expect(hasIdFileIndex(db)).toBe(true);
+    expect(hasResolutionDeps(db)).toBe(true);
+    expect(hasIndex(db, 'idx_unresolved_file_status')).toBe(true);
+    expect(db.prepare("SELECT value FROM project_metadata WHERE key = 'k'").get()).toEqual({ value: 'v' });
+    db.close();
+    const again = openGraphDb(file);
+    expect(versions(again)).toEqual([1, 2, 3, 4]);
+    again.close();
+  });
+
+  it('opens a v1 graph read-only without upgrading it', () => {
+    const file = path.join(dir, 'graph.db');
+    makeV1(file);
+    const db = openGraphDb(file, { readonly: true });
+    expect(versions(db)).toEqual([1]);
+    expect(hasIdFileIndex(db)).toBe(false);
+    expect(db.prepare("SELECT value FROM project_metadata WHERE key = 'k'").get()).toEqual({ value: 'v' });
+    db.close();
+  });
+
+  it('opens read-only without writing', () => {
+    const file = path.join(dir, 'graph.db');
+    openGraphDb(file).close();
+    const db = openGraphDb(file, { readonly: true });
+    expect(() =>
+      db.exec("INSERT INTO project_metadata VALUES ('a','b',1)"),
+    ).toThrow();
+    db.close();
+  });
+});
+
+function hasIndex(db: ReturnType<typeof openGraphDb>, name: string): boolean {
+  return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name) !== undefined;
+}
+
+describe('query plans', () => {
+  it('looks unresolved refs up by file through an index, not a scan of every bound ref', () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-plan-'));
+    const db = openGraphDb(path.join(d, 'graph.db'));
+    try {
+      const plan = (
+        db.prepare(
+          "EXPLAIN QUERY PLAN SELECT * FROM unresolved_refs WHERE status = 'bound' AND file_path IN ('a.ts')",
+        ).all() as { detail: string }[]
+      ).map((r) => r.detail);
+      expect(plan.join('\n')).toMatch(/idx_unresolved_file_status/);
+    } finally {
+      db.close();
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+});

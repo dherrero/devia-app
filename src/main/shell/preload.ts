@@ -279,6 +279,31 @@ const bridge: DeviaBridge = {
     set:    (req)         => ipcRenderer.invoke('starter-kits:set', req),
   },
 
+  // Code graph (S-44).
+  codeGraphStatus:         (project)          => ipcRenderer.invoke('code-graph:status', project),
+  codeGraphIndex:          (project)          => ipcRenderer.invoke('code-graph:index', project),
+  codeGraphCancel:         (project)          => ipcRenderer.invoke('code-graph:cancel', project),
+  codeGraphReset:          (project)          => ipcRenderer.invoke('code-graph:reset', project),
+  codeGraphSetAgentAccess: (project, enabled) => ipcRenderer.invoke('code-graph:set-agent-access', project, enabled),
+  codeGraphSetAutoUpdate:  (project, enabled) => ipcRenderer.invoke('code-graph:set-auto-update', project, enabled),
+  codeGraphUpdate:         (project)          => ipcRenderer.invoke('code-graph:update', project),
+  codeGraphWatch:          (project)          => ipcRenderer.invoke('code-graph:watch', project),
+  codeGraphUnwatch:        (project)          => ipcRenderer.invoke('code-graph:unwatch', project),
+  codeGraphOverview:       (project, opts)    => ipcRenderer.invoke('code-graph:overview', project, opts),
+  codeGraphExpand:         (project, nodeId, opts) => ipcRenderer.invoke('code-graph:expand', project, nodeId, opts),
+  codeGraphNodeDetail:     (project, nodeId)  => ipcRenderer.invoke('code-graph:node-detail', project, nodeId),
+  codeGraphSearch:         (project, q)       => ipcRenderer.invoke('code-graph:search', project, q),
+  onCodeGraphProgress:     (cb)               => {
+    const handler = (_e: unknown, d: Parameters<typeof cb>[0]) => cb(d);
+    ipcRenderer.on('code-graph:progress', handler);
+    return () => ipcRenderer.removeListener('code-graph:progress', handler);
+  },
+  onCodeGraphStatusChanged: (cb)              => {
+    const handler = (_e: unknown, d: Parameters<typeof cb>[0]) => cb(d);
+    ipcRenderer.on('code-graph:status-changed', handler);
+    return () => ipcRenderer.removeListener('code-graph:status-changed', handler);
+  },
+
   // Devia internal memory + engram integration (S-1).
   memory: {
     detectEngram: ()        => ipcRenderer.invoke('memory:detect-engram'),

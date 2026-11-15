@@ -1,0 +1,92 @@
+@switch (variant()) {
+  @case ('none') {
+    <section class="cg-empty" data-testid="cg-empty">
+      <span class="cg-empty__badge" aria-hidden="true">
+        <dv-icon [icon]="LucideNetwork" size="lg" />
+      </span>
+      <h2 class="cg-empty__title">{{ 'codeGraph.empty.title' | translate }}</h2>
+      <p class="cg-empty__body">{{ 'codeGraph.empty.body' | translate }}</p>
+      <div class="cg-empty__languages">
+        <span class="cg-empty__languages-label">{{ 'codeGraph.empty.languages' | translate }}</span>
+        <ul class="cg-empty__pills">
+          @for (lang of languages; track lang) {
+            <li class="cg-empty__pill">{{ lang }}</li>
+          }
+        </ul>
+      </div>
+      <dv-button variant="primary"
+                 data-testid="cg-index" data-cg-primary
+                 [disabled]="graph.busy()"
+                 (clicked)="index()">
+        <dv-icon [icon]="LucideNetwork" size="sm" />
+        {{ 'codeGraph.empty.index' | translate }}
+      </dv-button>
+      <ds-cg-action-error class="cg-empty__error" />
+    </section>
+  }
+  @case ('unsupported') {
+    <section class="cg-empty" data-testid="cg-unsupported">
+      <span class="cg-empty__badge cg-empty__badge--muted" aria-hidden="true">
+        <dv-icon [icon]="LucideFileQuestion" size="lg" />
+      </span>
+      <h2 class="cg-empty__title">{{ 'codeGraph.unsupported.title' | translate }}</h2>
+      <p class="cg-empty__body">{{ 'codeGraph.unsupported.body' | translate }}</p>
+      <p class="cg-empty__hint">{{ 'codeGraph.unsupported.hint' | translate }}</p>
+      <dv-button variant="secondary"
+                 data-testid="cg-reindex" data-cg-primary
+                 [disabled]="graph.busy()"
+                 (clicked)="index()">
+        <dv-icon [icon]="LucideRotateCcw" size="sm" />
+        {{ 'codeGraph.unsupported.reindex' | translate }}
+      </dv-button>
+      <ds-cg-action-error class="cg-empty__error" />
+    </section>
+  }
+  @case ('failed') {
+    <section class="cg-empty" data-testid="cg-failed">
+      <span class="cg-empty__badge cg-empty__badge--danger" aria-hidden="true">
+        <dv-icon [icon]="LucideTriangleAlert" size="lg" />
+      </span>
+      <h2 class="cg-empty__title">{{ 'codeGraph.failed.title' | translate }}</h2>
+      @if (failure(); as f) {
+        <p class="cg-empty__body" role="alert">{{ f.detail ?? (f.key | translate) }}</p>
+      } @else {
+        <p class="cg-empty__body" role="alert">{{ 'codeGraph.failed.body' | translate }}</p>
+      }
+      <div class="cg-empty__actions">
+        <dv-button variant="primary"
+                   data-testid="cg-retry-index" data-cg-primary
+                   [disabled]="graph.busy()"
+                   (clicked)="index()">
+          <dv-icon [icon]="LucideRotateCcw" size="sm" />
+          {{ 'codeGraph.failed.retry_index' | translate }}
+        </dv-button>
+        <dv-button variant="secondary"
+                   data-testid="cg-reload"
+                   [disabled]="graph.busy()"
+                   (clicked)="reload()">
+          <dv-icon [icon]="LucideRefreshCw" size="sm" />
+          {{ 'codeGraph.failed.reload' | translate }}
+        </dv-button>
+      </div>
+    </section>
+  }
+  @case ('load-error') {
+    <section class="cg-empty" data-testid="cg-load-error">
+      <span class="cg-empty__badge cg-empty__badge--danger" aria-hidden="true">
+        <dv-icon [icon]="LucideTriangleAlert" size="lg" />
+      </span>
+      <h2 class="cg-empty__title">{{ 'codeGraph.state.error' | translate }}</h2>
+      @if (failure(); as f) {
+        <p class="cg-empty__body" role="alert">{{ f.key | translate }}</p>
+        @if (f.detail) {
+          <p class="cg-empty__hint">{{ f.detail }}</p>
+        }
+      }
+      <dv-button variant="secondary" data-testid="cg-retry" data-cg-primary (clicked)="reload()">
+        <dv-icon [icon]="LucideRefreshCw" size="sm" />
+        {{ 'codeGraph.retry' | translate }}
+      </dv-button>
+    </section>
+  }
+}

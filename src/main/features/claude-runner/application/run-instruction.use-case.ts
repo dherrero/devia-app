@@ -74,6 +74,12 @@ const QUESTION_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
 
 /** Devia's memory server id (its `mem_*` tools). */
 const MEMORY_SERVER_ID = 'devia-memory';
+/**
+ * Devia's code-graph server id. A local copy because features never import each
+ * other; `features/code-graph-server-id.test.ts` pins it to the injector's id so
+ * a rename cannot silently drop the prompt block of graph runs.
+ */
+export const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
 
 /** S-2 F3.4: how fresh a previous-agent `mem_session_summary` must be to ride
  *  the handoff brief instead of the compressed/deterministic body. */
@@ -229,6 +235,15 @@ export class RunInstructionUseCase {
      * server, gated by `config.memory.enabled`.
      */
     memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
+    /**
+     * S-44: provider for Devia's bundled `devia-code-graph` MCP server config,
+     * keyed by the run's EFFECTIVE cwd (graphs are per checkout). Null when that
+     * checkout has no graph or the user turned agent access off: the run then
+     * carries nothing of it.
+     */
+    codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
+    /** T-508: the brief prompt guide for the graph tools; null when the run has no graph server. */
+    codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
     /**
      * S-25: provider for Devia's bundled `devia-ui` MCP server config, keyed by
      * the PER-RUN rendezvous directory (not by project — unlike the other two
@@ -753,9 +768,12 @@ export class RunInstructionUseCase {
       ? `${replayBlock}\n\n## Mensaje actual del usuario\n${augmented}`
       : augmented;
 
-    // Devia's bundled servers, in delivery order (kanban, memory, ui).
+    // Devia's bundled servers, in delivery order (kanban, memory, code graph, ui).
     const kanbanServer = this.deps.kanbanMcpServer?.(projectCheckout);
     const memoryServer = cfg.memory.enabled ? this.deps.memoryMcpServer?.(projectCheckout, def.id) : undefined;
+    // Unlike memory/kanban, the graph describes the files the agent sees, so it
+    // is looked up on the effective cwd (the session worktree when isolated).
+    const codeGraphServer = this.deps.codeGraphMcpServer?.(cwd, def.id) ?? undefined;
     const uiServer =
       uiCandidate.length > 0
         ? this.deps.uiMcpServer?.(uiDir, uiCandidate, {
@@ -767,6 +785,7 @@ export class RunInstructionUseCase {
     const deviaServers = (withUi: boolean): McpServerConfig[] => [
       ...(kanbanServer ? [kanbanServer] : []),
       ...(memoryServer ? [memoryServer] : []),
+      ...(codeGraphServer ? [codeGraphServer] : []),
       ...(withUi && uiServer ? [uiServer] : []),
     ];
     // S-43: the files attached to THIS message live in `<deviaDir>/attachments`,
@@ -844,6 +863,11 @@ export class RunInstructionUseCase {
     // worktree — derived from the cwd itself (covers both the eager renderer
     // worktree and a re-attached one), never from the isolateSession flag.
     const worktreeHint = buildWorktreeProtocolHint(cwd !== cwdResult.resolvedPath);
+    // T-508: gated on THIS run's delivery, never on a second graph lookup.
+    const codeGraphHint =
+      this.deps.codeGraphProtocol?.({
+        serverRegistered: codeGraphServer !== undefined && delivery.mcpServerIds.includes(CODE_GRAPH_SERVER_ID),
+      }) ?? null;
     // Plan mode blocks file-writers but keeps the kanban MCP: tell the agent to
     // persist long plans as kanban specs instead of attempting failing writes.
     // S-39: with the method on, plan mode hands its sequence over to the method's
@@ -861,6 +885,7 @@ export class RunInstructionUseCase {
       worktree: worktreeHint || null,
       remote: remoteHint || null,
       uiFallback: uiFallbackHint || null,
+      codeGraph: codeGraphHint || null,
       plan: planHint || null,
     };
     const allBodies = orderedBodies(promptBodies);

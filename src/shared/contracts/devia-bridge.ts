@@ -12,6 +12,14 @@ import type {
 import type { NewFromBaseResult } from '../domain/base';
 import type { RemoteControlStatus, TelegramTestResult } from '../domain/remote-control';
 import type { UpdateStatus } from '../domain/update';
+import type {
+  CodeGraphStatus,
+  GraphExpandOptions,
+  GraphOverviewOptions,
+  GraphNodeDetail,
+  GraphSearchResult,
+  GraphViewPage,
+} from '../domain/code-graph';
 import type { ProjectEntry, PinnedEntry } from '../domain/project';
 import type { SessionMeta } from '../domain/session';
 import type {
@@ -30,6 +38,8 @@ import type { ComposeAction } from '../domain/compose';
 import type { IdeId, IdeInfo } from '../domain/ide';
 import type {
   ProcessStartEvent,
+  CodeGraphProgressPayload,
+  CodeGraphStatusChangedPayload,
   SessionHandoffEvent,
   SessionResetEvent,
   AutoResumeScheduledEvent,
@@ -701,6 +711,41 @@ export interface DeviaBridge {
     status(projectPath?: string): Promise<StarterKitView>;
     set(req: StarterKitSetRequest): Promise<StarterKitView>;
   };
+  /**
+   * Code graph (S-44). `project` is a workspace-relative key. Failures that are
+   * expected states (a job already running, a cancelled index) resolve with the
+   * current status; setters reject with `CODE_GRAPH_NOT_CREATED` when the
+   * project has no graph and `watch` with `CODE_GRAPH_WATCH_LIMIT` at the cap.
+   * Electron wraps a rejection ("Error invoking remote method …: Error: CODE"),
+   * so match the code by inclusion (`message.includes(code)`), never `===`.
+   */
+  codeGraphStatus(project: string): Promise<CodeGraphStatus>;
+  /** Progress arrives through `onCodeGraphProgress`; resolves with the final status. */
+  codeGraphIndex(project: string): Promise<CodeGraphStatus>;
+  codeGraphCancel(project: string): Promise<void>;
+  codeGraphReset(project: string): Promise<void>;
+  codeGraphSetAgentAccess(project: string, enabled: boolean): Promise<void>;
+  codeGraphSetAutoUpdate(project: string, enabled: boolean): Promise<void>;
+  /** Incremental sync; falls back to a full index when the graph needs one. */
+  codeGraphUpdate(project: string): Promise<CodeGraphStatus>;
+  /** Live status for the project open in the graph view (pushed via `onCodeGraphStatusChanged`). */
+  codeGraphWatch(project: string): Promise<void>;
+  codeGraphUnwatch(project: string): Promise<void>;
+  /**
+   * Graph view reads. Without a graph they resolve with an empty page, `undefined`
+   * or `[]`; unknown or vanished node ids give an empty page too. Directory ids
+   * are `dir:<root-relative path>`; pages hold at most 500 nodes (`hasMore` +
+   * `offset` for the rest, on the overview too) and `visibleIds` at most 2000 ids;
+   * edges are capped at 5000, heaviest first (`edgesTruncated`).
+   */
+  codeGraphOverview(project: string, opts?: GraphOverviewOptions): Promise<GraphViewPage>;
+  codeGraphExpand(project: string, nodeId: string, opts?: GraphExpandOptions): Promise<GraphViewPage>;
+  codeGraphNodeDetail(project: string, nodeId: string): Promise<GraphNodeDetail | undefined>;
+  /** At most 50 symbol and file-path hits. */
+  codeGraphSearch(project: string, q: string): Promise<GraphSearchResult[]>;
+  onCodeGraphProgress(cb: (e: CodeGraphProgressPayload) => void): () => void;
+  onCodeGraphStatusChanged(cb: (e: CodeGraphStatusChangedPayload) => void): () => void;
+
   /**
    * Devia internal memory (S-1). Devia ships its own memory store + the
    * `devia-memory` MCP server; this namespace covers detecting an external

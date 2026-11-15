@@ -82,12 +82,12 @@ export const geminiAgentDef: RuntimeAgentDef = {
   // tool is not marked read-only (it writes the board, memory, the cards), so the agent could neither record a
   // design on the kanban nor ask the user anything — and it was free to call `exit_plan_mode` and go on to
   // write files. A per-run policy allows Devia's own servers in plan mode and keeps the agent inside it.
-  buildRunFiles: ({ mode, deviaDir, runId }) => {
+  buildRunFiles: ({ mode, deviaDir, runId, deviaServerIds }) => {
     if (mode !== 'plan') return null;
     const file = path.join(deviaDir, 'tmp', `gemini-plan-policy-${runId}-${crypto.randomUUID().slice(0, 8)}.toml`);
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, GEMINI_PLAN_POLICY, { encoding: 'utf8', mode: 0o600 });
+      fs.writeFileSync(file, geminiPlanPolicy(deviaServerIds), { encoding: 'utf8', mode: 0o600 });
     } catch (err) {
       console.warn('[cli-adapters:gemini] could not write the plan-mode policy:', err instanceof Error ? err.message : String(err));
       return null;
@@ -96,28 +96,45 @@ export const geminiAgentDef: RuntimeAgentDef = {
   },
 };
 
-/** Devia's own MCP servers, as Gemini names them (`mcpName`). */
+/** Devia's own MCP servers, as Gemini names them (`mcpName`), always allowed in plan mode. */
 const DEVIA_MCP_SERVERS = ['devia-kanban', 'devia-memory', 'devia-ui'] as const;
 
-export const GEMINI_PLAN_POLICY = [
-  '# Devia plan mode (generated for one run). Gemini\'s plan mode denies every tool that is not read-only;',
-  '# Devia\'s own servers are how a plan is recorded and approved, so they are allowed there, and the agent',
-  '# may not leave plan mode by itself: the user\'s approval card does that.',
-  '',
-  ...DEVIA_MCP_SERVERS.flatMap((server) => [
-    '[[rule]]',
-    `mcpName = "${server}"`,
-    'toolName = "*"',
-    'decision = "allow"',
-    'priority = 900',
-    'modes = ["plan"]',
-    '',
-  ]),
+/**
+ * Offered only to runs on a project with a graph: its rule is written only when the run carries the
+ * server, so a run without a graph gets exactly the policy it got before the server existed.
+ */
+export const CODE_GRAPH_SERVER_ID = 'devia-code-graph';
+
+const allowRule = (server: string): string[] => [
   '[[rule]]',
-  'toolName = "exit_plan_mode"',
-  'decision = "deny"',
+  `mcpName = "${server}"`,
+  'toolName = "*"',
+  'decision = "allow"',
   'priority = 900',
   'modes = ["plan"]',
-  'denyMessage = "In Devia, plan mode ends when the user approves the plan with the plan card. Do not leave it yourself."',
   '',
-].join('\n');
+];
+
+/** The plan-mode policy for a run whose Devia servers are `deviaServerIds`. */
+export function geminiPlanPolicy(deviaServerIds: readonly string[]): string {
+  const servers: readonly string[] = deviaServerIds.includes(CODE_GRAPH_SERVER_ID)
+    ? ['devia-kanban', 'devia-memory', CODE_GRAPH_SERVER_ID, 'devia-ui']
+    : DEVIA_MCP_SERVERS;
+  return [
+    '# Devia plan mode (generated for one run). Gemini\'s plan mode denies every tool that is not read-only;',
+    '# Devia\'s own servers are how a plan is recorded and approved, so they are allowed there, and the agent',
+    '# may not leave plan mode by itself: the user\'s approval card does that.',
+    '',
+    ...servers.flatMap(allowRule),
+    '[[rule]]',
+    'toolName = "exit_plan_mode"',
+    'decision = "deny"',
+    'priority = 900',
+    'modes = ["plan"]',
+    'denyMessage = "In Devia, plan mode ends when the user approves the plan with the plan card. Do not leave it yourself."',
+    '',
+  ].join('\n');
+}
+
+/** The policy of a run without devia-code-graph. */
+export const GEMINI_PLAN_POLICY = geminiPlanPolicy([]);

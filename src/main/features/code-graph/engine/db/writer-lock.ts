@@ -1,0 +1,307 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export type WriterOwner = 'indexer' | 'sync';
+
+export interface WriterLockInfo {
+  pid: number;
+  owner: WriterOwner;
+  since: number;
+}
+
+/**
+ * Who held the lock before this acquire: nobody, a pid verified dead, or a live (or unverifiable)
+ * holder whose lock was stolen because it had aged. Only the first two prove that no writer is
+ * still running, so only they allow removing what such a writer leaves behind (`.building`).
+ */
+export type PreviousHolder = 'none' | 'dead' | 'live';
+
+export interface WriterLock {
+  readonly previousHolder: PreviousHolder;
+  release(): void;
+}
+
+const LOCK_NAME = 'writer.lock';
+const DEFAULT_STALE_MS = 30 * 60 * 1000;
+
+const STALE_UNPARSEABLE_GRACE_MS = 2000;
+const MAX_ATTEMPTS = 3;
+const STEAL_STALE_MS = 10_000;
+
+interface OwnedLock {
+  file: string;
+  token: string;
+}
+
+const owned = new Set<OwnedLock>();
+let exitHookRegistered = false;
+
+function registerExitHook(): void {
+  if (exitHookRegistered) return;
+  exitHookRegistered = true;
+  process.on('exit', () => {
+    for (const lock of owned) removeIfOurs(lock);
+  });
+}
+
+function parse(raw: string): (WriterLockInfo & { token?: string }) | null {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null) return null;
+    const { pid, owner, since, token } = value as Record<string, unknown>;
+    if (
+      typeof pid !== 'number' ||
+      typeof since !== 'number' ||
+      (owner !== 'indexer' && owner !== 'sync')
+    ) {
+      return null;
+    }
+    return typeof token === 'string'
+      ? { pid, owner, since, token }
+      : { pid, owner, since };
+  } catch {
+    return null;
+  }
+}
+
+function readRaw(file: string): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+function readFile(file: string) {
+  const raw = readRaw(file);
+  return raw === null ? null : parse(raw);
+}
+
+function removeIfOurs(lock: OwnedLock): void {
+  const current = readFile(lock.file);
+  if (current?.pid !== process.pid || current.token !== lock.token) return;
+  try {
+    fs.unlinkSync(lock.file);
+  } catch {
+    // already gone
+  }
+}
+
+/** Heartbeat: bumps the mtime (atomic, no rewrite, fine on Windows) only while the lock is ours. */
+function touchIfOurs(lock: OwnedLock): void {
+  const current = readFile(lock.file);
+  if (current?.pid !== process.pid || current.token !== lock.token) return;
+  try {
+    const now = new Date();
+    fs.utimesSync(lock.file, now, now);
+  } catch {
+    // gone or briefly locked by a reader: the next beat retries
+  }
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+function uniqueSuffix(): string {
+  return `${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+}
+
+function createExclusive(file: string, payload: string): boolean {
+  const tmp = `${file}.tmp-${uniqueSuffix()}`;
+  try {
+    fs.writeFileSync(tmp, payload, { flag: 'wx' });
+    fs.linkSync(tmp, file);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST') return false;
+    if (code !== 'ENOSYS' && code !== 'EPERM' && code !== 'ENOTSUP') throw err;
+    // Filesystem without hard links: fall back to O_EXCL create (the file is
+    // briefly empty, which readers cover with the unparseable-lock grace).
+    try {
+      fs.writeFileSync(file, payload, { flag: 'wx' });
+      return true;
+    } catch (inner) {
+      if ((inner as NodeJS.ErrnoException).code === 'EEXIST') return false;
+      throw inner;
+    }
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // already gone
+    }
+  }
+}
+
+function mtimeOf(file: string): number | undefined {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A live holder is stale only when both its start (`since`) and its last heartbeat (the file's
+ * mtime, refreshed by `heartbeatMs`) are older than `staleMs`; `since` itself never changes, so
+ * the in-process index runner can still recognise its own lock by it.
+ */
+function isStale(file: string, raw: string | null, staleMs: number): boolean {
+  const info = raw === null ? null : parse(raw);
+  if (info !== null) {
+    if (!isAlive(info.pid)) return true;
+    const last = Math.max(info.since, mtimeOf(file) ?? 0);
+    return Date.now() - last > staleMs;
+  }
+  try {
+    return Date.now() - fs.statSync(file).mtimeMs > STALE_UNPARSEABLE_GRACE_MS;
+  } catch {
+    return false;
+  }
+}
+
+type MoveOutcome = 'moved' | 'gone' | 'replaced' | 'busy';
+
+/**
+ * Moves `file` aside only if it still holds `expected`. A lock replaced after
+ * it was judged stale is linked back (best-effort) and reported `replaced`.
+ */
+function moveAsideIfUnchanged(file: string, expected: string): MoveOutcome {
+  const graveyard = `${file}.stale-${uniqueSuffix()}`;
+  try {
+    fs.renameSync(file, graveyard);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return 'gone';
+    if (code === 'EBUSY' || code === 'EPERM') return 'busy';
+    throw err;
+  }
+  if (readRaw(graveyard) !== expected) {
+    try {
+      fs.linkSync(graveyard, file);
+    } catch {
+      // someone else already holds a newer lock
+    }
+    fs.rmSync(graveyard, { force: true });
+    return 'replaced';
+  }
+  fs.rmSync(graveyard, { force: true });
+  return 'moved';
+}
+
+/**
+ * Removes a stale lock under a short-lived steal mutex (`writer.lock.steal`).
+ * Why: without it, two stealers that both judged the same lock stale could
+ * move a FRESH lock aside between them, and a third process could create its
+ * own lock in that gap, leaving two holders (seen under heavy machine load).
+ * With one stealer at a time, the only remaining gap is a stale-by-age owner
+ * that is still alive and releases during the steal, or a stealer that
+ * crashed while holding the mutex (cleared below by the same staleness rule);
+ * both are rare and graph.db (WAL + busy_timeout) still serialises the writes.
+ */
+function stealStale(
+  file: string,
+  raw: string,
+  owner: WriterOwner,
+  staleMs: number,
+  onStolen: (stolen: string) => void,
+): 'retry' | 'busy' {
+  const mutex = `${file}.steal`;
+  const mutexPayload = JSON.stringify({
+    pid: process.pid,
+    owner,
+    since: Date.now(),
+    token: crypto.randomBytes(8).toString('hex'),
+  });
+  if (!createExclusive(mutex, mutexPayload)) {
+    const held = readRaw(mutex);
+    if (held === null) return 'retry';
+    if (!isStale(mutex, held, STEAL_STALE_MS)) return 'busy';
+    return moveAsideIfUnchanged(mutex, held) === 'busy' ? 'busy' : 'retry';
+  }
+  try {
+    const current = readRaw(file);
+    if (current === null) return 'retry';
+    if (current !== raw && !isStale(file, current, staleMs)) return 'busy';
+    const moved = moveAsideIfUnchanged(file, current);
+    if (moved === 'moved') onStolen(current);
+    return moved === 'moved' || moved === 'gone' ? 'retry' : 'busy';
+  } finally {
+    if (readRaw(mutex) === mutexPayload) fs.rmSync(mutex, { force: true });
+  }
+}
+
+export function readWriterLock(dir: string): WriterLockInfo | null {
+  const info = readFile(path.join(dir, LOCK_NAME));
+  return info === null
+    ? null
+    : { pid: info.pid, owner: info.owner, since: info.since };
+}
+
+export function isFullIndexRunning(dir: string): boolean {
+  const info = readWriterLock(dir);
+  return info !== null && info.owner === 'indexer' && isAlive(info.pid);
+}
+
+export function acquireWriterLock(
+  dir: string,
+  owner: WriterOwner,
+  /** `heartbeatMs`: refresh the lock's mtime this often while held, so a long run never looks stale. */
+  opts: { staleMs?: number; heartbeatMs?: number } = {},
+): WriterLock | null {
+  const file = path.join(dir, LOCK_NAME);
+  const staleMs = opts.staleMs ?? DEFAULT_STALE_MS;
+  const token = crypto.randomBytes(8).toString('hex');
+  const payload = JSON.stringify({
+    pid: process.pid,
+    owner,
+    since: Date.now(),
+    token,
+  });
+
+  let acquired = false;
+  let previousHolder: PreviousHolder = 'none';
+  const onStolen = (stolen: string): void => {
+    const info = parse(stolen);
+    // Unparseable: nothing proves its writer is gone.
+    if (info === null || isAlive(info.pid)) previousHolder = 'live';
+    else if (previousHolder === 'none') previousHolder = 'dead';
+  };
+  for (let attempt = 0; attempt < MAX_ATTEMPTS && !acquired; attempt++) {
+    if (createExclusive(file, payload)) {
+      acquired = true;
+      break;
+    }
+    const raw = readRaw(file);
+    if (raw === null) continue;
+    if (!isStale(file, raw, staleMs)) return null;
+    if (stealStale(file, raw, owner, staleMs, onStolen) === 'busy') return null;
+  }
+  if (!acquired) return null;
+
+  const handle: OwnedLock = { file, token };
+  owned.add(handle);
+  registerExitHook();
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  if (opts.heartbeatMs !== undefined && opts.heartbeatMs > 0) {
+    heartbeat = setInterval(() => touchIfOurs(handle), opts.heartbeatMs);
+    heartbeat.unref?.();
+  }
+  return {
+    previousHolder,
+    release(): void {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      heartbeat = undefined;
+      owned.delete(handle);
+      removeIfOurs(handle);
+    },
+  };
+}

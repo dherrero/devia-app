@@ -46,6 +46,16 @@ describe('app.routes', () => {
     expect(kanban?.loadComponent).toBeTypeOf('function');
   });
 
+  it('declares the code graph as a lazy non-Pro route right after Kanban', () => {
+    const graph = routes.find((r) => r.path === 'graph');
+    expect(graph).toBeDefined();
+    expect((graph?.data ?? {})['chunkName']).toBe('code-graph');
+    expect((graph?.data ?? {})['pro']).toBeUndefined();
+    expect(graph?.loadComponent).toBeTypeOf('function');
+    const paths = routes.map((r) => r.path);
+    expect(paths.indexOf('graph')).toBe(paths.indexOf('kanban') + 1);
+  });
+
   it('ends with a wildcard redirect to "" so stale URLs land on chat', () => {
     const wildcard = routes.find((r) => r.path === '**');
     expect(wildcard).toBeDefined();

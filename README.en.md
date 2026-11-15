@@ -9,6 +9,7 @@
 - Streaming chat, diff viewer and per-line comments with "Send for review".
 - Split view with up to 4 agents in parallel, isolated in git worktrees.
 - Built-in spec-driven kanban, persistent memory and an MCP server manager.
+- A local code graph (TypeScript/JavaScript, Python, Java, Go and Dart) to explore the project, which agents query over MCP instead of grepping.
 - Telegram remote control, local voice transcription, terminal and branch switcher.
 - Everything runs locally, on top of your projects and your CLIs.
 

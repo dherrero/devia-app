@@ -12,6 +12,7 @@ export interface PromptBodies {
   readonly worktree: string | null;
   readonly remote: string | null;
   readonly uiFallback: string | null;
+  readonly codeGraph: string | null;
   readonly plan: string | null;
 }
 
@@ -20,13 +21,13 @@ const present = (...bodies: readonly (string | null)[]): string[] => bodies.filt
 /**
  * Every body, in the order the full system prompt has always carried them
  * (packs, skill registry, kit, memory protocol, memory context, handoff,
- * worktree, remote, UI fallback, plan). Agents that re-send the whole prompt on
- * every run keep receiving exactly this.
+ * worktree, remote, UI fallback, code graph, plan). Agents that re-send the
+ * whole prompt on every run keep receiving exactly this.
  */
 export function orderedBodies(b: PromptBodies): string[] {
   return [
     ...b.packs,
-    ...present(b.skillRegistry, b.kit, b.memoryProtocol, b.memoryContext, b.handoff, b.worktree, b.remote, b.uiFallback, b.plan),
+    ...present(b.skillRegistry, b.kit, b.memoryProtocol, b.memoryContext, b.handoff, b.worktree, b.remote, b.uiFallback, b.codeGraph, b.plan),
   ];
 }
 
@@ -44,6 +45,6 @@ export function splitBodies(b: PromptBodies, opts: { readonly firstTurn: boolean
       ...b.packs,
       ...present(b.skillRegistry, b.kit, b.memoryProtocol, memoryInStable ? b.memoryContext : null, b.handoff),
     ],
-    turn: present(memoryInStable ? null : b.memoryContext, b.worktree, b.remote, b.uiFallback, b.plan),
+    turn: present(memoryInStable ? null : b.memoryContext, b.worktree, b.remote, b.uiFallback, b.codeGraph, b.plan),
   };
 }

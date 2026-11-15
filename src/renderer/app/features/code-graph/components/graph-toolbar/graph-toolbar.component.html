@@ -1,0 +1,87 @@
+@if (status(); as s) {
+  <div class="cg-toolbar" role="toolbar" [attr.aria-label]="'codeGraph.toolbar.aria' | translate">
+    <div class="cg-toolbar__status">
+      @if (stale()) {
+        <dv-badge variant="warn" size="sm" [dot]="true" data-testid="cg-status-chip">
+          {{ 'codeGraph.toolbar.stale' | translate }}
+        </dv-badge>
+        @if (s.staleReason; as reason) {
+          <span class="cg-toolbar__reason" data-testid="cg-stale-reason">
+            {{ 'codeGraph.toolbar.stale_reason.' + reason | translate }}
+          </span>
+        }
+      } @else {
+        <dv-badge variant="success" size="sm" [dot]="true" data-testid="cg-status-chip">
+          {{ 'codeGraph.toolbar.up_to_date' | translate }}
+        </dv-badge>
+      }
+      <dv-button size="sm"
+                 data-testid="cg-update"
+                 [variant]="stale() ? 'primary' : 'secondary'"
+                 [disabled]="disabled()"
+                 [loading]="graph.busy()"
+                 [dvTooltip]="'codeGraph.toolbar.update_hint' | translate"
+                 (clicked)="update()">
+        <dv-icon [icon]="LucideRefreshCw" size="sm" />
+        {{ 'codeGraph.toolbar.update' | translate }}
+      </dv-button>
+    </div>
+
+    <div class="cg-toolbar__facts">
+      <span class="cg-toolbar__stats" data-testid="cg-stats">
+        <span><strong>{{ format(s.nodeCount) }}</strong> {{ plural('codeGraph.stats.nodes', s.nodeCount) | translate }}</span>
+        <span class="cg-toolbar__sep" aria-hidden="true">·</span>
+        <span><strong>{{ format(s.edgeCount) }}</strong> {{ plural('codeGraph.stats.edges', s.edgeCount) | translate }}</span>
+        <span class="cg-toolbar__sep" aria-hidden="true">·</span>
+        <span><strong>{{ format(s.fileCount) }}</strong> {{ plural('codeGraph.stats.files', s.fileCount) | translate }}</span>
+      </span>
+      @if (languages().length > 0) {
+        <ul class="cg-toolbar__langs" data-testid="cg-languages" [attr.aria-label]="'codeGraph.toolbar.languages' | translate">
+          @for (l of languages(); track l.name) {
+            <li class="cg-toolbar__lang">{{ l.name }} <span class="cg-toolbar__lang-count">{{ format(l.count) }}</span></li>
+          }
+        </ul>
+      }
+      @if (s.indexedAt; as at) {
+        <time class="cg-toolbar__time"
+              data-testid="cg-indexed-at"
+              [attr.datetime]="isoTime(at)"
+              [dvTooltip]="absoluteTime(at)">
+          {{ 'codeGraph.toolbar.indexed_at' | translate: { time: relativeTime(at) } }}
+        </time>
+      }
+    </div>
+
+    <div class="cg-toolbar__controls">
+      @if (watchWarning()) {
+        <dv-badge variant="warn" size="sm" data-testid="cg-watch-warning"
+                  [dvTooltip]="'codeGraph.toolbar.watch_unavailable_hint' | translate">
+          <dv-icon [icon]="LucideTriangleAlert" size="sm" />
+          {{ 'codeGraph.toolbar.watch_unavailable' | translate }}
+        </dv-badge>
+      }
+      <dv-toggle #agentToggle
+                 data-testid="cg-agent-access"
+                 [label]="'codeGraph.toolbar.agent_access' | translate"
+                 [disabled]="disabled()"
+                 [dvTooltip]="'codeGraph.toolbar.agent_access_hint' | translate"
+                 (valueChange)="setAgentAccess($event)" />
+      <dv-toggle #autoToggle
+                 data-testid="cg-auto-update"
+                 [label]="'codeGraph.toolbar.auto_update' | translate"
+                 [disabled]="disabled()"
+                 [dvTooltip]="'codeGraph.toolbar.auto_update_hint' | translate"
+                 (valueChange)="setAutoUpdate($event)" />
+      <dv-button variant="ghost"
+                 size="sm"
+                 data-testid="cg-reset"
+                 [disabled]="disabled()"
+                 [dvTooltip]="'codeGraph.toolbar.reset_hint' | translate"
+                 (clicked)="confirmReset()">
+        <dv-icon [icon]="LucideTrash2" size="sm" />
+        {{ 'codeGraph.toolbar.reset' | translate }}
+      </dv-button>
+    </div>
+  </div>
+  <ds-cg-action-error class="cg-toolbar__error" />
+}

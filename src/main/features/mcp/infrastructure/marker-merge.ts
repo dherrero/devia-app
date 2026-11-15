@@ -31,7 +31,7 @@ export const DEVIA_MANAGED_KEY = '__devia_managed';
  * must not prune them as "no longer listed" — only an explicit `removedIds`
  * entry removes one.
  */
-export const BUNDLED_SERVER_IDS: ReadonlySet<string> = new Set(['devia-memory', 'devia-kanban', 'devia-ui']);
+export const BUNDLED_SERVER_IDS: ReadonlySet<string> = new Set(['devia-memory', 'devia-kanban', 'devia-code-graph', 'devia-ui']);
 export const TOML_START_PREFIX = '# devia-mcp-start ';
 export const TOML_END_PREFIX = '# devia-mcp-end ';
 

@@ -256,6 +256,25 @@ export const IPC = {
   memoryForget:          'memory:forget',
   memoryClear:           'memory:clear',
 
+  // Code graph (S-44). `progress` and `statusChanged` are events main→renderer;
+  // `update` runs an incremental sync and falls back to a full index.
+  codeGraphStatus:          'code-graph:status',
+  codeGraphIndex:           'code-graph:index',
+  codeGraphCancel:          'code-graph:cancel',
+  codeGraphReset:           'code-graph:reset',
+  codeGraphSetAgentAccess:  'code-graph:set-agent-access',
+  codeGraphSetAutoUpdate:   'code-graph:set-auto-update',
+  codeGraphUpdate:          'code-graph:update',
+  codeGraphWatch:           'code-graph:watch',
+  codeGraphUnwatch:         'code-graph:unwatch',
+  codeGraphProgress:        'code-graph:progress',
+  codeGraphStatusChanged:   'code-graph:status-changed',
+  // Graph view reads (paged, success-shaped empties when there is no graph).
+  codeGraphOverview:        'code-graph:overview',
+  codeGraphExpand:          'code-graph:expand',
+  codeGraphNodeDetail:      'code-graph:node-detail',
+  codeGraphSearch:          'code-graph:search',
+
   // Remote control (E-DSK-14) — Telegram controller embedded in the main
   // process. `status` is the event main→renderer; the rest are renderer→main.
   remoteControlGetStatus: 'remoteControl:get-status',
