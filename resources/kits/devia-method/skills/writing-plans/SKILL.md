@@ -155,7 +155,7 @@ If you find issues, fix them with `kanban_update_task`. No need to re-review: ju
 
 ## Execution Handoff
 
-The plan is approved with the plan card, not with a link: call `devia_plan_approve` with the plan as markdown (what the spec asks for, the tasks by id, the risks) and `steps` set to the task titles in order. If cards aren't offered, summarize the plan in plain text and ask the user to confirm; end your turn.
+The plan is approved with the plan card, not with a link: call `devia_plan_approve` with the plan as markdown (what the spec asks for, the tasks by id, the risks) and `steps` set to the task titles in order. If cards aren't offered (only then), summarize the plan in plain text and ask the user to confirm; end your turn. Any other question you have for the user while planning also goes through `devia_ask_user` whenever it is offered.
 
 Say in the plan which execution approach you recommend and why, in one sentence from the plan itself: how much the tasks depend on each other's interfaces, how many there are, what a shipped mistake would cost.
 

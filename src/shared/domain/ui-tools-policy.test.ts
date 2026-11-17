@@ -25,6 +25,12 @@ describe('resolveAdvertisedUiTools', () => {
     expect(resolveAdvertisedUiTools({ ...base, mode: 'plan' })).not.toContain('confirm');
   });
 
+  it('a remote (Telegram) run never gets ask_user, in any mode', () => {
+    for (const mode of ['plan', 'apply', 'apply-yolo'] as const) {
+      expect(resolveAdvertisedUiTools({ ...base, mode, isRemote: true })).not.toContain('ask_user');
+    }
+  });
+
   it('withholds every interactive tool on a remote run', () => {
     expect(resolveAdvertisedUiTools({ ...base, isRemote: true })).toEqual([
       'todo',

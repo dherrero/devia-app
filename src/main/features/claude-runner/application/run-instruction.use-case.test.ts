@@ -15,6 +15,11 @@
  * `src/main/features/security/audit-log.test.ts` (FR5), so this file uses a
  * lightweight recording fake instead.
  */
+import {
+  ASK_USER_MANDATE_TAG,
+  REMINDER_TAG,
+  SYSTEM_PROMPT_WRAPPER_TAG,
+} from '../../../../shared/domain/ask-user-mandate';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -3345,7 +3350,7 @@ describe('RunInstructionUseCase — no volatile content in a frozen system promp
     uiFallback: 'Reaching the user — no interactive UI',
     worktree: '## MANDATORY — isolated session worktree',
   };
-  const ASK_USER_LINE = 'You MAY use `devia_ask_user`';
+  const ASK_USER_LINE = '<devia-ask-user-protocol priority="mandatory"';
   const MEMORY = 'Memory from previous sessions';
 
   function harness(extras: BuildExtras = {}): Harness {
@@ -3738,5 +3743,104 @@ describe('RunInstructionUseCase — devia-code-graph delivery (S-44)', () => {
     const withGraph = runFingerprint(claudeStreamDef, { codeGraphMcpServer: codeGraph() });
     expect(withGraph).not.toBe(baseline);
     expect(withGraph).toContain('mcp__devia-code-graph');
+  });
+});
+
+
+// ── S-46 — the ask_user mandate never reaches a Telegram run ─────────────────
+
+describe('RunInstructionUseCase — ask_user mandate gate (S-46)', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-mandate-'));
+    fs.mkdirSync(path.join(tmpDir, 'proj-a'), { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const TAGS = [ASK_USER_MANDATE_TAG, SYSTEM_PROMPT_WRAPPER_TAG, REMINDER_TAG];
+  const claudeDef: Partial<RuntimeAgentDef> = {
+    id: 'claude',
+    name: 'Claude Code',
+    streamFormat: 'claude-stream-json',
+    promptViaStdin: true,
+    promptInputFormat: 'stream-json',
+  };
+  const stdinAgentDef: Partial<RuntimeAgentDef> = { id: 'gemini', systemPromptStrategy: 'stdin-prepend' };
+
+  function harness(def: Partial<RuntimeAgentDef>, extras: BuildExtras = {}): Harness {
+    const cfg = new FakeConfig(path.join(tmpDir, '.devia-app'));
+    cfg.set({ workspaceRoot: tmpDir });
+    return build(def, { config: cfg, ...extras });
+  }
+  const withUi = (): BuildExtras => ({ uiMcpServer: uiServer, nativeMcp: nativeDelivery(true) });
+  const run = (h: Harness, mode: 'plan' | 'apply' | 'apply-yolo', origin: 'renderer' | 'remote'): CapturedLaunch => {
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), mode, [], origin);
+    return h.runner.last();
+  };
+  const hasAnyTag = (text: string): boolean => TAGS.some((tag) => text.includes(`<${tag}`) || text.includes(`</${tag}`));
+  const systemPromptOf = (h: Harness, n: number): string =>
+    (h.def.buildExtraArgs as ReturnType<typeof vi.fn>).mock.calls[n]?.[0]?.systemPrompt as string;
+  const contentTexts = (capture: CapturedLaunch): string[] =>
+    (JSON.parse(stdinOf(capture)) as { message: { content: Array<{ text: string }> } }).message.content.map((b) => b.text);
+  const finish = (capture: CapturedLaunch, sessionId = 'sess-1'): void => {
+    emitEvent(capture, { type: 'session_started', agentSessionId: sessionId });
+    emitEvent(capture, { type: 'text_delta', delta: 'x' });
+    capture.handlers.onDone(0);
+  };
+
+  it.each(['plan', 'apply', 'apply-yolo'] as const)(
+    'a remote (Telegram) %s run of a stdin-prepend agent carries none of the three tags',
+    (mode) => {
+      const h = harness(stdinAgentDef, withUi());
+      expect(hasAnyTag(stdinOf(run(h, mode, 'remote')))).toBe(false);
+    },
+  );
+
+  it.each(['plan', 'apply', 'apply-yolo'] as const)(
+    'a remote (Telegram) %s run of Claude carries none of the three tags, in the prompt or the turn context',
+    (mode) => {
+      const h = harness(claudeDef, withUi());
+      const capture = run(h, mode, 'remote');
+      expect(hasAnyTag(systemPromptOf(h, 0))).toBe(false);
+      expect(contentTexts(capture).some(hasAnyTag)).toBe(false);
+    },
+  );
+
+  it('a desktop run with ask_user gives a stdin-prepend agent the mandate, the wrapper and the reminder', () => {
+    const h = harness(stdinAgentDef, withUi());
+    const stdin = stdinOf(run(h, 'apply', 'renderer'));
+    expect(stdin).toContain(`<${ASK_USER_MANDATE_TAG}`);
+    expect(stdin).toContain(`<${SYSTEM_PROMPT_WRAPPER_TAG} priority="mandatory">`);
+    expect(stdin.trimEnd().endsWith(`</${REMINDER_TAG}>`)).toBe(true);
+  });
+
+  it('a desktop run WITHOUT ask_user (no devia-ui delivered) carries none of the tags', () => {
+    const h = harness(stdinAgentDef);
+    expect(hasAnyTag(stdinOf(run(h, 'apply', 'renderer')))).toBe(false);
+  });
+
+  it('the frozen Claude system prompt never carries the mandate, on any channel', () => {
+    const h = harness(claudeDef, withUi());
+    run(h, 'apply', 'renderer');
+    expect(hasAnyTag(systemPromptOf(h, 0))).toBe(false);
+  });
+
+  it('Claude session desktop -> telegram -> desktop: the turn context drops the mandate on the Telegram turn and brings it back', () => {
+    const h = harness(claudeDef, withUi());
+    const first = run(h, 'apply', 'renderer');
+    expect(contentTexts(first).some((t) => t.includes(`<${ASK_USER_MANDATE_TAG}`))).toBe(true);
+    finish(first);
+
+    const telegram = run(h, 'apply', 'remote');
+    const telegramBlock = contentTexts(telegram).find((t) => t.startsWith('<devia-turn-context'));
+    expect(telegramBlock).toBeDefined();
+    expect(telegramBlock).toContain('Telegram');
+    expect(hasAnyTag(telegramBlock as string)).toBe(false);
+    finish(telegram);
+
+    const back = run(h, 'apply', 'renderer');
+    expect(contentTexts(back).some((t) => t.includes(`<${ASK_USER_MANDATE_TAG}`))).toBe(true);
   });
 });

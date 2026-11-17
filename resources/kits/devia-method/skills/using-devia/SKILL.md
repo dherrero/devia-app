@@ -23,7 +23,7 @@ Load a skill with `devia_skill` (`{"op":"load","name":"<skill>"}`; Claude Code: 
 
 - **Spec and design** → a kanban spec. **Plan** → kanban tasks, ordered with `dependsOn`. **Progress, rulings, deferred findings** → the task's comment thread. **Done** → `kanban_close_task` with the commit. No plan, spec or ledger files.
 - **Decisions, root causes, lessons** → memory (`mem_save`); recall with `mem_search` before asking what the project may already have answered.
-- **Asking** → plain conversation for open questions, `devia_ask_user` for a choice. **Approving a plan** → `devia_plan_approve`. **Review** → `devia_request_review`. **A risky action** → `devia_confirm`.
+- **Asking** → ALWAYS `devia_ask_user`, for every question, open or closed (plain text only when the card is not offered). **Approving a plan** → `devia_plan_approve`. **Review** → `devia_request_review`. **A risky action** → `devia_confirm`.
 - **Isolation** → Devia's panes. Never create, switch or remove a git worktree or a session branch.
 - **Plan mode** cannot write files, and nothing here needs a file: the spec, the plan and the approval are all tool calls.
 

@@ -22,6 +22,25 @@ describe('buildUiToolsHint', () => {
     }
   });
 
+  it('ask_user is announced as a mandatory XML block', () => {
+    const hint = buildUiToolsHint(['ask_user']) as string;
+    expect(hint).toContain('<devia-ask-user-protocol priority="mandatory"');
+    expect(hint).toContain('</devia-ask-user-protocol>');
+    expect(hint).toContain('YOU MUST CALL `devia_ask_user`');
+    expect(hint).toContain('NEVER END A TURN WITH A QUESTION');
+    expect(hint).toContain('SELF-CHECK');
+    expect(hint).toContain('VOID');
+  });
+
+  it('no longer lets the agent ask open-ended questions as plain text', () => {
+    const hint = buildUiToolsHint([...UI_TOOL_NAMES]) as string;
+    expect(hint).not.toMatch(/open-ended clarifications, just ask inline/i);
+  });
+
+  it('has no mandate block without ask_user', () => {
+    expect(buildUiToolsHint(['todo', 'confirm']) as string).not.toContain('devia-ask-user-protocol');
+  });
+
   it('never mentions the retired Claude built-in', () => {
     expect(buildUiToolsHint([...UI_TOOL_NAMES])).not.toContain('AskUserQuestion');
   });
@@ -92,8 +111,10 @@ describe('ask_user availability (S-43)', () => {
     expect(hint).toContain('persistent');
   });
 
-  it('tells the agent to use ask_user for any choice or approval', () => {
-    expect(buildUiToolsHint(['ask_user']) as string).toContain('instead of asking by text');
+  it('tells the agent to use ask_user for every question, not only choices', () => {
+    const hint = buildUiToolsHint(['ask_user']) as string;
+    expect(hint).toContain('EVERY QUESTION');
+    expect(hint).toContain('AND ALSO OPEN-ENDED QUESTIONS');
   });
 });
 

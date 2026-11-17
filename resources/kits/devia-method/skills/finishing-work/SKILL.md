@@ -43,13 +43,13 @@ Everything is committed? `git status --porcelain` is empty, or the leftovers are
 
 ## Step 3: Get It Reviewed
 
-Ask for the human review with `devia_request_review` (apply mode): it shows the diff in the Changes view, where the user comments on lines, and the answer comes back as their decision. An empty diff answers by itself. If the user comes back with comments, handle them with `receiving-code-review`, then ask again. If the card isn't offered, say what changed and ask in plain text.
+Ask for the human review with `devia_request_review` (apply mode): it shows the diff in the Changes view, where the user comments on lines, and the answer comes back as their decision. An empty diff answers by itself. If the user comes back with comments, handle them with `receiving-code-review`, then ask again. If the card isn't offered (only then), say what changed and ask in plain text.
 
 For a plan executed with `executing-plans` or `subagent-driven-development`, the whole-branch review already happened; this review is the user's.
 
 ## Step 4: Present Options
 
-Ask with `devia_ask_user` (or in plain text if cards aren't offered) and wait. The integration decision is theirs:
+Ask with `devia_ask_user` (in plain text only if cards aren't offered) and wait. The integration decision is theirs:
 
 ```
 Implementation complete and reviewed. What would you like to do?
