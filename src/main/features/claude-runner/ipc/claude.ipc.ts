@@ -1,3 +1,4 @@
+import type { ConfigChangeBus } from '../../../shared/config-change-bus';
 import { Notification, powerMonitor } from 'electron';
 import type { FeatureContext } from '../../../shared/feature';
 import { AutoResumeScheduler } from '../application/auto-resume-scheduler';
@@ -47,6 +48,8 @@ export interface ClaudeRunnerIpcDeps {
    * rather than a failure.
    */
   notifyRemote?: (text: string) => void;
+  /** S-45: saved-config changes; turning an agent's auto-continue off cancels its pending resumes. */
+  configChanges?: ConfigChangeBus;
 }
 
 /** What the continue run needs to be the same kind of run as the one the limit cut short. */
@@ -99,6 +102,16 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
   });
   const onPowerResume = (): void => autoResume.tick();
   powerMonitor.on('resume', onPowerResume);
+
+  // Turning the switch off while a resume is waiting cancels it right away (every
+  // session of that agent), instead of leaving the countdown until it fires.
+  const unsubscribeConfig = deps.configChanges?.subscribe((next) => {
+    for (const [key, rc] of [...resumeContexts]) {
+      if (next.autoContinueSessions?.[rc.agentId] === true) continue;
+      autoResume.cancel(key, 'disabled');
+      deps.queue.dispatchNext(key);
+    }
+  });
 
   /** Cancels a pending resume and lets whatever was parked behind it run. */
   const cancelAutoResume = (key: string, reason: 'user' | 'stopped' | 'reset'): void => {
@@ -218,7 +231,6 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
     text?: string,
     runKey?: string,
   ): RunInstructionHandlers => {
-    let hitLimit = false;
     // Identity = the per-session key the renderer routes state by (T-143). For
     // a single pane it equals projectName, so events are byte-identical to
     // before. `projectName` is still used where the concern is the project
@@ -241,7 +253,6 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       deps.runGateway?.publish({ type: 'output', project: identity, runId, line });
     },
     onRateLimited: ({ agentId, resetsAt }) => {
-      hitLimit = true;
       if (!extras?.resume || resetsAt === undefined) return;
       if (deps.config.get().autoContinueSessions?.[agentId] !== true) return;
       resumeContexts.set(identity, { ...extras.resume, agentId });
@@ -249,7 +260,6 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
     },
     onProcessEnd: ({ runId, code, error, classification, signal, cancelReason, classifiedError }) => {
       if (error === 'busy') extras?.onBusy?.();
-      if (!hitLimit && code === 0) autoResume.noteCleanRun(identity);
       ctx.send('process:end', {
         project: identity,
         ...(runId !== undefined && { runId }),
@@ -602,6 +612,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
   return {
     dispose: () => {
       powerMonitor.removeListener('resume', onPowerResume);
+      unsubscribeConfig?.();
       autoResume.dispose();
     },
   };

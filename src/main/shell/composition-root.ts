@@ -70,6 +70,7 @@ import {
 } from '../features/telegram-controller';
 import { RunGateway } from '../shared/run-gateway';
 import { RunModeStore } from '../shared/run-mode-store';
+import { ConfigChangeBus } from '../shared/config-change-bus';
 import { seedRunModes } from '../shared/seed-run-modes';
 import type { RunMode } from '../../shared/domain/run-capabilities';
 import { auditSendFile } from '../shared/outbound-file-gate';
@@ -126,6 +127,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   const pinnedStore  = new InMemoryPinnedStore();         // pinned owns
   const sessionStore = new FsSessionStore(config);        // sessions owns
   const runGateway   = new RunGateway();                  // E-DSK-14 (runner ↔ remote)
+  const configChanges = new ConfigChangeBus();            // saved-config changes: workspace publishes, claude-runner reacts (S-45)
   const runModes     = new RunModeStore();                // run mode per session, shared app ↔ Telegram
 
   // Run mode sync. The desktop pushes its changes in; changes that originate in
@@ -408,6 +410,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       config, tech,
       projects: registry, sessions: sessionStore, pinned: pinnedStore, state: stateStore,
       sddPurger: sddBuilt.purger,
+      configChanges,
     }),
     cliAdapters.feature,
     promptPacksBuilt.feature,
@@ -439,6 +442,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // S-25 F2.6: `devia_notify` reaches the chat relay too. Lazy like
       // `pushChat` below — the controller resolves after its feature registers.
       notifyRemote: (text) => { void telegramBuilt.controller.push(text); },
+      configChanges,
       isConfirmationGranted: (projectAbs, action) =>
         uiToolsBuilt.confirmations.isGranted(projectAbs, action),
       grantConfirmation: (projectAbs, action, agentId) =>

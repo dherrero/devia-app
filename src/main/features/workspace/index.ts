@@ -28,6 +28,7 @@ import { TrashProjectUseCase } from './application/trash-project.use-case';
 import { GetConfigUseCase } from './application/get-config.use-case';
 import { SetConfigUseCase } from './application/set-config.use-case';
 
+import type { ConfigChangeBus } from '../../shared/config-change-bus';
 import { registerWorkspaceIpc } from './ipc/workspace.ipc';
 
 export { FsConfigRepository } from './infrastructure/fs-config-repository';
@@ -47,6 +48,8 @@ export interface WorkspaceDeps {
   /** E-DSK-12: clears a project's SDD cache (kanban + bootstrap marker)
    *  when it is trashed. Optional so non-SDD wirings still build. */
   sddPurger?: SddProjectPurger;
+  /** S-45: told after every `config:set`, so other features can react to the saved config. */
+  configChanges?: ConfigChangeBus;
 }
 
 export function buildWorkspaceFeature(deps: WorkspaceDeps): Feature {
@@ -87,6 +90,7 @@ export function buildWorkspaceFeature(deps: WorkspaceDeps): Feature {
         listProjects, searchProjects, newProject, newFolder, renameFolder, moveProject,
         listBases, newFromBase, readBasesJson, writeBasesJson,
         trashProject, getConfig, setConfig, dialog,
+        ...(deps.configChanges !== undefined && { configChanges: deps.configChanges }),
       });
     },
   };

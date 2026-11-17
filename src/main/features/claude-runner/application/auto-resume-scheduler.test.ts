@@ -83,22 +83,12 @@ describe('AutoResumeScheduler', () => {
     expect(due).toEqual(['p']);
   });
 
-  it('gives up after three resumes in a row that hit the limit again', () => {
-    for (let i = 0; i < 3; i += 1) {
+  it('keeps scheduling no matter how many resumes in a row hit the limit again', () => {
+    for (let i = 0; i < 10; i += 1) {
       expect(scheduler.schedule('p', clock + MIN)).toBe(true);
       advance(2 * MIN);
     }
-    expect(due).toHaveLength(3);
-    expect(scheduler.schedule('p', clock + MIN)).toBe(false);
-  });
-
-  it('a clean run starts a fresh streak', () => {
-    for (let i = 0; i < 3; i += 1) {
-      scheduler.schedule('p', clock + MIN);
-      advance(2 * MIN);
-    }
-    scheduler.noteCleanRun('p');
-    expect(scheduler.schedule('p', clock + MIN)).toBe(true);
+    expect(due).toHaveLength(10);
   });
 
   it('keeps sessions independent', () => {

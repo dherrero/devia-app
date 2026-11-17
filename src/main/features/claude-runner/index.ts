@@ -105,6 +105,8 @@ export interface ClaudeRunnerDeps {
   starterKits?: import('../../shared/ports').StarterKitsPort;
   /** S-25 F2.6: pushes a `devia_notify` message to the chat relay, when one is up. */
   notifyRemote?: (text: string) => void;
+  /** S-45: saved-config changes (auto-continue switch). */
+  configChanges?: import('../../shared/config-change-bus').ConfigChangeBus;
   /** S-25 F2.4: per-project "always allow" grants for `devia_confirm`. */
   isConfirmationGranted?: (projectAbs: string, action: string) => boolean;
   grantConfirmation?: (projectAbs: string, action: string, agentId: string) => void;
@@ -232,6 +234,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
         ...(deps.runGateway !== undefined && { runGateway: deps.runGateway }),
         ...(deps.onSessionReset !== undefined && { onSessionReset: deps.onSessionReset }),
         ...(deps.notifyRemote !== undefined && { notifyRemote: deps.notifyRemote }),
+        ...(deps.configChanges !== undefined && { configChanges: deps.configChanges }),
       });
     },
     onBeforeQuit() {
