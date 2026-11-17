@@ -65,6 +65,43 @@ describe('normalizeAskUserQuestionInput — devia_ask_user payload', () => {
   });
 });
 
+// Some models send `questions` as a JSON-encoded STRING instead of an array.
+// Without tolerating it the card showed the raw JSON as the question text and
+// drew no option buttons.
+describe('normalizeAskUserQuestionInput — questions sent as a JSON string', () => {
+  const payload = [{ question: '¿Qué camino?', options: [{ label: 'A', description: 'uno' }, { label: 'B' }] }];
+
+  it('parses a stringified array of questions', () => {
+    const normalized = normalizeAskUserQuestionInput({ questions: JSON.stringify(payload) });
+    expect(normalized.question).toBe('¿Qué camino?');
+    expect(normalized.options).toEqual([{ label: 'A', description: 'uno' }, { label: 'B' }]);
+    expect(normalized.questions).toHaveLength(1);
+  });
+
+  it('parses a stringified single question object', () => {
+    const normalized = normalizeAskUserQuestionInput({ questions: JSON.stringify(payload[0]) });
+    expect(normalized.question).toBe('¿Qué camino?');
+    expect(normalized.options).toHaveLength(2);
+  });
+
+  it('parses a doubly-stringified array', () => {
+    const normalized = normalizeAskUserQuestionInput({ questions: JSON.stringify(JSON.stringify(payload)) });
+    expect(normalized.question).toBe('¿Qué camino?');
+  });
+
+  it('keeps the old fallback for a string that is not JSON', () => {
+    const normalized = normalizeAskUserQuestionInput({ questions: 'not json at all' });
+    expect(normalized.questions).toHaveLength(1);
+    expect(normalized.options).toBeUndefined();
+  });
+
+  it('keeps the old fallback for JSON that holds no question', () => {
+    const normalized = normalizeAskUserQuestionInput({ questions: '[1,2,3]' });
+    expect(normalized.questions).toHaveLength(1);
+    expect(normalized.options).toBeUndefined();
+  });
+});
+
 describe('isAskUserTool', () => {
   it('recognises every name a question tool reaches the transcript under', () => {
     for (const name of [
