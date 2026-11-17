@@ -12,7 +12,7 @@
       "name": "using-devia",
       "origin": "own",
       "trigger": "Start of every conversation: how the method's skills work and when to load them.",
-      "note": "Replaces the bootstrap skill of the library Devia Method started from. Keeps the rule (load a skill if there is even a small chance it applies) and the red flags; drops the per-harness tool-mapping references; adds the skill index and the map of Devia's surfaces. Anything new is never the trivial exception."
+      "note": "Replaces the bootstrap skill of the library Devia Method started from. Keeps the rule (load a skill if there is even a small chance it applies) and the red flags; drops the per-harness tool-mapping references; adds the skill index and the map of Devia's surfaces. Anything new is never the trivial exception. Asking is ALWAYS the devia_ask_user card when it is offered (S-46)."
     },
     {
       "name": "brainstorming",
@@ -27,7 +27,7 @@
         "scripts"
       ],
       "trigger": "Before building or changing anything non-trivial: find out what the user really wants, agree a design, record it as a kanban spec.",
-      "note": "Keeps the conversation (one question at a time, playback, approaches, sizing, hard gate). Recalls memory and existing specs before asking; the design IS a kanban spec (no docs/ file, no commit); approval by card; decisions go to memory; a spike gets its own pane. Visual companion and its server removed."
+      "note": "Keeps the conversation (one question at a time, playback, approaches, sizing, hard gate). Recalls memory and existing specs before asking; the design IS a kanban spec (no docs/ file, no commit); approval by card; decisions go to memory; a spike gets its own pane. Visual companion and its server removed. Every question to the user, open or closed, goes through the devia_ask_user card whenever it is offered (S-46)."
     },
     {
       "name": "writing-plans",
@@ -37,7 +37,7 @@
         "SKILL.md"
       ],
       "trigger": "A design is agreed and the work has several steps: write the plan as kanban tasks.",
-      "note": "The plan is kanban tasks (dependsOn orders them); the plan header goes into the spec description and each task body keeps upstream's task structure (files, interfaces, TDD steps with Expected output). Handoff is the plan-approval card, not a file link."
+      "note": "The plan is kanban tasks (dependsOn orders them); the plan header goes into the spec description and each task body keeps upstream's task structure (files, interfaces, TDD steps with Expected output). Handoff is the plan-approval card, not a file link; any other question while planning also uses the devia_ask_user card (S-46)."
     },
     {
       "name": "executing-plans",
@@ -115,7 +115,7 @@
       "origin": "own",
       "from": "finishing-a-development-branch",
       "trigger": "Implementation is done and green: verify, hand it to the user, close the loop.",
-      "note": "Replaces finishing-a-development-branch. Verify, commit, ask for review, then let the user choose by card (leave it ready / push / pull request); close the tasks with their commit, suggest archiving the spec, write the session summary. Removes the local merge, branch deletion and worktree removal — upstream's cleanup deletes anything under worktrees/, which is where Devia keeps its session worktrees."
+      "note": "Replaces finishing-a-development-branch. Verify, commit, ask for review, then let the user choose by card (leave it ready / push / pull request); close the tasks with their commit, suggest archiving the spec, write the session summary. Questions use the card, with plain text only when it is not offered (S-46). Removes the local merge, branch deletion and worktree removal — upstream's cleanup deletes anything under worktrees/, which is where Devia keeps its session worktrees."
     },
     {
       "name": "test-driven-development",
