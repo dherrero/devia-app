@@ -275,6 +275,15 @@ notice on `available`, and a "restart to install" action toast on `downloaded`
 auto-update only works for the AppImage target** — `.deb` users update manually
 (a failed check is swallowed and surfaced as an `error` status, never a crash).
 
+**CI** (`.github/workflows/`). `ci-dev.yml` (PRs/push to `dev`: typecheck, lint,
+unit tests) and `ci.yml` (PRs/push to `main`: plus coverage, build and runtime
+audit) run each check as a parallel job. `dev`'s branch protection requires the
+check named `Dev · Typecheck · Lint · Test`, which is the `gate` job of
+`ci-dev.yml` (it aggregates the other jobs) — keep that job name, or update the
+rule, if you rename it. `paths-ignore` (`**.md`, `docs/**`) is applied to every
+trigger except `pull_request` on `dev`, so docs-only PRs still report the
+required check.
+
 **Release pipeline** (`.github/workflows/`). `release.yml` bumps the version from
 Conventional Commits and tags. `desktop-release.yml` runs after it via
 `workflow_run`: a `gate` job skips the build when that version already has
