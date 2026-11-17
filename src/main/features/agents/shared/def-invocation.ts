@@ -4,6 +4,12 @@ import * as path from 'node:path';
 
 import type { RuntimeAgentDef, RuntimeContext } from '../../cli-adapters/domain/runtime-agent-def';
 import { checkPromptArgvBudget } from '../../cli-adapters/infrastructure/prompt-budget';
+import {
+  ASK_USER_REMINDER,
+  REMINDER_TAG,
+  SYSTEM_PROMPT_WRAPPER_TAG,
+  hasAskUserMandate,
+} from '../../../../shared/domain/ask-user-mandate';
 import { sanitizeTurnContextTags } from '../../../../shared/domain/turn-context-tags';
 import type { AgentRunPlan, StdinPlan } from '../domain';
 
@@ -24,10 +30,31 @@ export type DefInvocationResult =
   | { readonly ok: true; readonly invocation: DefInvocation }
   | { readonly ok: false; readonly error: string };
 
-/** `stdin-prepend` / `argv-prepend` header. Neutral wording that travels across model families. */
+/**
+ * `stdin-prepend` / `argv-prepend` header. Neutral wording that travels across model families.
+ *
+ * S-46: when the system text carries the ask_user mandate, it is wrapped in a
+ * `devia-system-prompt` tag marked mandatory (these agents have no real system
+ * channel, so Devia's text rides inside the user's turn). Without the mandate —
+ * a Telegram run, or a run without `ask_user` — the header is byte-identical to
+ * what it always was.
+ */
 export function buildSystemPromptHeader(systemPrompt: string | undefined): string {
   if (!systemPrompt || systemPrompt.trim().length === 0) return '';
-  return `[System]\n${systemPrompt.trim()}\n\n[User]\n`;
+  const body = systemPrompt.trim();
+  const text = hasAskUserMandate(systemPrompt)
+    ? `<${SYSTEM_PROMPT_WRAPPER_TAG} priority="mandatory">\n${body}\n</${SYSTEM_PROMPT_WRAPPER_TAG}>`
+    : body;
+  return `[System]\n${text}\n\n[User]\n`;
+}
+
+/**
+ * S-46: closing reminder after the user's text for the same agents (models weigh
+ * the last instruction most). Empty unless the system text carries the mandate.
+ */
+export function buildSystemPromptTail(systemPrompt: string | undefined): string {
+  if (!hasAskUserMandate(systemPrompt)) return '';
+  return `\n\n<${REMINDER_TAG}>${ASK_USER_REMINDER}</${REMINDER_TAG}>`;
 }
 
 /**
@@ -93,7 +120,8 @@ function stdinPlanFor(def: RuntimeAgentDef, prompt: string, systemPrompt: string
     return { kind: 'stream', payload: buildStreamJsonUserMessage(prompt, turnContext) };
   }
   const header = def.systemPromptStrategy === 'stdin-prepend' ? buildSystemPromptHeader(systemPrompt) : '';
-  return { kind: 'text', payload: header + prompt };
+  const tail = def.systemPromptStrategy === 'stdin-prepend' ? buildSystemPromptTail(systemPrompt) : '';
+  return { kind: 'text', payload: header + prompt + tail };
 }
 
 /**
@@ -110,7 +138,7 @@ export function buildDefInvocation(
   // prompt argv — and that combined string is what the budget must measure.
   const effectivePrompt =
     def.systemPromptStrategy === 'argv-prepend' && def.promptViaStdin !== true
-      ? buildSystemPromptHeader(systemPrompt) + plan.prompt
+      ? buildSystemPromptHeader(systemPrompt) + plan.prompt + buildSystemPromptTail(systemPrompt)
       : plan.prompt;
   const budgetError = checkPromptArgvBudget(def, effectivePrompt);
   if (budgetError !== null) return { ok: false, error: budgetError.message };

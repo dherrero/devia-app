@@ -2,7 +2,7 @@ import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import type { McpServerConfig } from '../../../../shared/domain/mcp';
 import type { AgentAnswer, AgentSession, AgentSessionIo } from '../domain/agent-mapper';
 import type { AgentRunPlan } from '../domain/agent-run-plan';
-import { buildSystemPromptHeader } from '../shared/def-invocation';
+import { buildSystemPromptHeader, buildSystemPromptTail } from '../shared/def-invocation';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -242,7 +242,8 @@ export function openAcpSession(options: AcpSessionOptions): AgentSession {
         text:
           buildSystemPromptHeader(options.systemPrompt) +
           plan.prompt +
-          (options.userReminder ? `\n\n${options.userReminder}` : ''),
+          (options.userReminder ? `\n\n${options.userReminder}` : '') +
+          buildSystemPromptTail(options.systemPrompt),
       },
       ...(await Promise.all(plan.imagePaths.map((file) => imageBlock(file, canEmbedImages)))),
     ];
