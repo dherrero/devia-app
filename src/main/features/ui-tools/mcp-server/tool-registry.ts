@@ -172,11 +172,11 @@ const DEFS: Record<UiToolName, Omit<UiToolDef, 'publicName' | 'kind'>> = {
   ask_user: {
     name: 'ask_user',
     description:
-      'Ask the Devia user to pick between a few discrete options and WAIT for their choice. ' +
-      'Renders as a clickable card in the Devia chat and blocks until the user answers, ' +
-      'so the answer comes back within the same turn. ' +
-      'Use it for decisions with a small closed set of alternatives. ' +
-      'For open-ended clarifications, just ask in plain text in your reply instead.',
+      'Ask the Devia user a question and WAIT for the answer. ' +
+      'ALWAYS use this tool for EVERY question for the user: choices, approvals, yes/no and also ' +
+      'open-ended ones (offer likely answers as options). ' +
+      'NEVER ask in plain text instead. ' +
+      'Renders as a clickable card and blocks until the user answers, so the answer comes back within the same turn.',
     inputSchema: askUserSchema,
   },
   todo: {

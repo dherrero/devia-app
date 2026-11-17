@@ -3345,7 +3345,7 @@ describe('RunInstructionUseCase — no volatile content in a frozen system promp
     uiFallback: 'Reaching the user — no interactive UI',
     worktree: '## MANDATORY — isolated session worktree',
   };
-  const ASK_USER_LINE = 'You MAY use `devia_ask_user`';
+  const ASK_USER_LINE = '<devia-ask-user-protocol priority="mandatory"';
   const MEMORY = 'Memory from previous sessions';
 
   function harness(extras: BuildExtras = {}): Harness {
