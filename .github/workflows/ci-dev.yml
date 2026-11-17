@@ -1,13 +1,22 @@
 name: CI (dev)
 
 # Lightweight gate for the dev consolidation branch: types, lint and unit
-# tests only. The full pipeline (coverage, production build, dependency audit)
-# runs in ci.yml when dev is merged into main, to save CI minutes.
+# tests only, run as parallel jobs for fast feedback. The full pipeline
+# (coverage, production build, dependency audit) runs in ci.yml when dev is
+# merged into main.
+#
+# The final `gate` job keeps the name required by dev's branch protection, so
+# it stays the single required check while the work is split across jobs.
+# `paths-ignore` is NOT applied to pull_request: a docs-only PR would otherwise
+# never report the required check.
 on:
   pull_request:
     branches: [dev]
   push:
     branches: [dev]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 permissions:
   contents: read
@@ -17,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Dev · Typecheck · Lint · Test
+  static:
+    name: Typecheck · Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,6 +38,52 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run lint
+
+  test-main:
+    name: Test · main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - run: npm run test:main
+
+  test-renderer:
+    name: Test · renderer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - run: npm run test:renderer
+
+  test-libs:
+    name: Test · libs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - run: npm run test:libs
+
+  gate:
+    name: Dev · Typecheck · Lint · Test
+    runs-on: ubuntu-latest
+    needs: [static, test-main, test-renderer, test-libs]
+    if: always()
+    steps:
+      - name: Fail if any required job did not succeed
+        run: |
+          echo "needs: ${{ toJSON(needs.*.result) }}"
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "true" ]; then
+            exit 1
+          fi
