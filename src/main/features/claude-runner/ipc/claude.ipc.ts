@@ -218,7 +218,6 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
     text?: string,
     runKey?: string,
   ): RunInstructionHandlers => {
-    let hitLimit = false;
     // Identity = the per-session key the renderer routes state by (T-143). For
     // a single pane it equals projectName, so events are byte-identical to
     // before. `projectName` is still used where the concern is the project
@@ -241,7 +240,6 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       deps.runGateway?.publish({ type: 'output', project: identity, runId, line });
     },
     onRateLimited: ({ agentId, resetsAt }) => {
-      hitLimit = true;
       if (!extras?.resume || resetsAt === undefined) return;
       if (deps.config.get().autoContinueSessions?.[agentId] !== true) return;
       resumeContexts.set(identity, { ...extras.resume, agentId });
@@ -249,7 +247,6 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
     },
     onProcessEnd: ({ runId, code, error, classification, signal, cancelReason, classifiedError }) => {
       if (error === 'busy') extras?.onBusy?.();
-      if (!hitLimit && code === 0) autoResume.noteCleanRun(identity);
       ctx.send('process:end', {
         project: identity,
         ...(runId !== undefined && { runId }),

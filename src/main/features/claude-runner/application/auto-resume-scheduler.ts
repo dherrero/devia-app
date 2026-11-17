@@ -10,14 +10,11 @@ export interface AutoResumeSchedulerDeps {
   marginMs?: number;
   /** Longest wait worth scheduling. Must cover the weekly window (7 days). */
   maxWaitMs?: number;
-  /** Resumes in a row that ended in another limit hit before giving up. */
-  maxConsecutive?: number;
   pollMs?: number;
 }
 
 const DEFAULT_MARGIN_MS = 30_000;
 const DEFAULT_MAX_WAIT_MS = 8 * 24 * 60 * 60 * 1000;
-const DEFAULT_MAX_CONSECUTIVE = 3;
 const DEFAULT_POLL_MS = 15_000;
 
 /**
@@ -30,17 +27,15 @@ const DEFAULT_POLL_MS = 15_000;
  */
 export class AutoResumeScheduler {
   private readonly jobs = new Map<string, number>();
-  private readonly streak = new Map<string, number>();
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly deps: AutoResumeSchedulerDeps) {}
 
-  /** Returns whether a resume was scheduled (false: too far away, or the streak is spent). */
+  /** Returns whether a resume was scheduled (false: too far away). */
   schedule(key: string, resetsAt: number): boolean {
     const margin = this.deps.marginMs ?? DEFAULT_MARGIN_MS;
     const fireAt = resetsAt + margin;
     if (fireAt - this.deps.now() > (this.deps.maxWaitMs ?? DEFAULT_MAX_WAIT_MS)) return false;
-    if ((this.streak.get(key) ?? 0) >= (this.deps.maxConsecutive ?? DEFAULT_MAX_CONSECUTIVE)) return false;
     if (this.jobs.has(key)) this.cancel(key, 'replaced');
     this.jobs.set(key, fireAt);
     this.ensurePolling();
@@ -54,14 +49,8 @@ export class AutoResumeScheduler {
 
   cancel(key: string, reason: AutoResumeCancelReason): void {
     if (!this.jobs.delete(key)) return;
-    if (reason !== 'replaced') this.streak.delete(key);
     this.stopPollingIfIdle();
     this.deps.onCancelled(key, reason);
-  }
-
-  /** A run finished without hitting the limit: the next limit starts a fresh streak. */
-  noteCleanRun(key: string): void {
-    this.streak.delete(key);
   }
 
   tick(): void {
@@ -69,7 +58,6 @@ export class AutoResumeScheduler {
     for (const [key, fireAt] of [...this.jobs]) {
       if (fireAt > now) continue;
       this.jobs.delete(key);
-      this.streak.set(key, (this.streak.get(key) ?? 0) + 1);
       try {
         this.deps.onDue(key);
       } catch (err: unknown) {
