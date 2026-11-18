@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 
-import type { CodeGraphStatus, IndexProgress } from '../../../../../shared/domain/code-graph';
+import type { CodeGraphStatus, IndexProgress, ToolUsageSummary } from '../../../../../shared/domain/code-graph';
 import { ElectronApiService } from '../../../core/services/electron-api.service';
 
 const DOMAIN_CODES = ['CODE_GRAPH_NOT_CREATED', 'CODE_GRAPH_WATCH_LIMIT'] as const;
@@ -35,6 +35,7 @@ export class CodeGraphStateService {
   private readonly _error = signal<string | null>(null);
   private readonly _project = signal<string | null>(null);
   private readonly _watchUnavailable = signal(false);
+  private readonly _usage = signal<ToolUsageSummary | null>(null);
 
   readonly status = this._status.asReadonly();
   readonly progress = this._progress.asReadonly();
@@ -43,6 +44,8 @@ export class CodeGraphStateService {
   readonly error = this._error.asReadonly();
   readonly project = this._project.asReadonly();
   readonly watchUnavailable = this._watchUnavailable.asReadonly();
+  /** How much the agents have called the graph tools in this project (S-48); null until read. */
+  readonly usage = this._usage.asReadonly();
 
   private generation = 0;
   private current: string | null = null;
@@ -76,6 +79,19 @@ export class CodeGraphStateService {
       // Live updates are a nicety: at the watch cap (or on any watch failure)
       // the graph still works from explicit status reads.
       if (token === this.generation) this._watchUnavailable.set(true);
+    }
+  }
+
+  /** Re-reads the agent usage counters; a failure keeps the last value (it is a nicety). */
+  async refreshUsage(): Promise<void> {
+    const project = this.current;
+    const token = this.generation;
+    if (project === null) return;
+    try {
+      const usage = await this.api.codeGraphUsage(project);
+      if (token === this.generation) this._usage.set(usage);
+    } catch {
+      // keep the previous value
     }
   }
 
@@ -194,6 +210,7 @@ export class CodeGraphStateService {
     this._busy.set(false);
     this._error.set(null);
     this._watchUnavailable.set(false);
+    this._usage.set(null);
     if (previous === null || !wasWatching) return Promise.resolve();
     return this.api.codeGraphUnwatch(previous).catch(() => undefined);
   }

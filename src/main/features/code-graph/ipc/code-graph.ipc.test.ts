@@ -132,7 +132,7 @@ describe('code-graph IPC', () => {
     for (const key of [
       'codeGraphStatus', 'codeGraphIndex', 'codeGraphCancel', 'codeGraphReset', 'codeGraphSetAgentAccess',
       'codeGraphSetAutoUpdate', 'codeGraphUpdate', 'codeGraphWatch', 'codeGraphUnwatch',
-      'codeGraphOverview', 'codeGraphExpand', 'codeGraphNodeDetail', 'codeGraphSearch',
+      'codeGraphOverview', 'codeGraphExpand', 'codeGraphNodeDetail', 'codeGraphSearch', 'codeGraphUsage',
     ] as const) {
       expect(h.handlers.has(IPC[key]), key).toBe(true);
     }

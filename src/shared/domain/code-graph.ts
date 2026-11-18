@@ -239,3 +239,12 @@ export function isNodeKind(v: string): v is NodeKind {
 export function isEdgeKind(v: string): v is EdgeKind {
   return (EDGE_KINDS as readonly string[]).includes(v);
 }
+
+/** How much the agents have used the graph tools in one project (S-48). */
+export interface ToolUsageSummary {
+  total: number;
+  byTool: Record<string, number>;
+  byAgent: Record<string, number>;
+  /** Epoch ms of the latest call, null when there is none. */
+  lastAt: number | null;
+}

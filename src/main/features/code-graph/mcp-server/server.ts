@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as readline from 'node:readline';
 
 import { callGraphTool, createGraphToolContext, GRAPH_TOOLS, isGraphTool } from './graph-tools';
+import { createToolUsageStore } from '../infrastructure/tool-usage-store';
 import { SERVER_INSTRUCTIONS } from './server-instructions';
 
 /**
@@ -67,6 +68,9 @@ function main(): void {
 
   const ctx = createGraphToolContext({ deviaDir, project, log: (line) => process.stderr.write(`${line}\n`) });
 
+  const usage = createToolUsageStore(ctx.dataDir);
+  const agent = process.env['DEVIA_ACTIVE_AGENT_ID'] ?? null;
+
   const send = (msg: object): void => {
     process.stdout.write(`${JSON.stringify(msg)}\n`);
   };
@@ -115,6 +119,7 @@ function main(): void {
           fail(id, -32602, `Unknown tool: ${name || '(missing name)'}`);
           return;
         }
+        usage.record({ tool: name, agent, at: Date.now() });
         respond(id, await callGraphTool(ctx, name, params?.['arguments']));
         return;
       }

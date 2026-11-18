@@ -6,7 +6,7 @@ import {
 import { LucideRefreshCw, LucideTrash2, LucideTriangleAlert } from '@lucide/angular';
 import { firstValueFrom } from 'rxjs';
 
-import type { CodeGraphLanguage } from '../../../../../../shared/domain/code-graph';
+import type { CodeGraphLanguage, ToolUsageSummary } from '../../../../../../shared/domain/code-graph';
 import { CodeGraphStateService } from '../../services/code-graph-state.service';
 import { LANGUAGE_NAMES } from '../../utils/languages';
 import { uiLocale } from '../../utils/locale';
@@ -71,9 +71,20 @@ export class CodeGraphToolbarComponent {
     effect(() => {
       const s = this.status();
       if (!s) return;
+      void this.graph.refreshUsage();
       this.agentToggle()?.writeValue(s.agentAccess);
       this.autoToggle()?.writeValue(s.autoUpdate);
     });
+  }
+
+  /** Per-tool breakdown and last call, for the usage chip's tooltip. */
+  usageTooltip(u: ToolUsageSummary): string {
+    const tools = Object.entries(u.byTool)
+      .sort(([, a], [, b]) => b - a)
+      .map(([name, n]) => `${name} ${this.format(n)}`)
+      .join(' · ');
+    const last = u.lastAt === null ? '' : this.translate.instant('codeGraph.toolbar.usage_last', { when: this.relativeTime(u.lastAt) });
+    return [tools, last].filter(Boolean).join('\n');
   }
 
   plural(key: string, count: number): string {

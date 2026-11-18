@@ -18,6 +18,7 @@ import type {
   GraphOverviewOptions,
   GraphNodeDetail,
   GraphSearchResult,
+  ToolUsageSummary,
   GraphViewPage,
 } from '../domain/code-graph';
 import type { ProjectEntry, PinnedEntry } from '../domain/project';
@@ -743,6 +744,8 @@ export interface DeviaBridge {
   codeGraphNodeDetail(project: string, nodeId: string): Promise<GraphNodeDetail | undefined>;
   /** At most 50 symbol and file-path hits. */
   codeGraphSearch(project: string, q: string): Promise<GraphSearchResult[]>;
+  /** How much the agents have called the graph tools in this project (S-48). */
+  codeGraphUsage(project: string): Promise<ToolUsageSummary>;
   onCodeGraphProgress(cb: (e: CodeGraphProgressPayload) => void): () => void;
   onCodeGraphStatusChanged(cb: (e: CodeGraphStatusChangedPayload) => void): () => void;
 

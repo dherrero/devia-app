@@ -63,6 +63,25 @@ describe('CodeGraphToolbarComponent', () => {
     expect(button('cg-update')?.className).toContain('dv-button--primary');
   });
 
+  it('shows how many calls the agents made, and a warning chip when they made none (S-48)', () => {
+    expect(graph.refreshUsage).toHaveBeenCalled();
+    expect(byId('cg-usage')).toBeNull();
+    graph.usage.set({ total: 1234, byTool: { graph_explore: 1000, graph_node: 234 }, byAgent: { claude: 1234 }, lastAt: Date.now() });
+    fixture.detectChanges();
+    expect(byId('cg-usage')?.textContent).toContain('usage_calls');
+    graph.usage.set({ total: 0, byTool: {}, byAgent: {}, lastAt: null });
+    fixture.detectChanges();
+    expect(byId('cg-usage')?.textContent).toContain('usage_none');
+    expect(byId('cg-usage')?.classList.contains('cg-toolbar__usage--none')).toBe(true);
+  });
+
+  it('says so when the graph is switched off for agents (S-48)', () => {
+    setStatus({ agentAccess: false });
+    graph.usage.set({ total: 0, byTool: {}, byAgent: {}, lastAt: null });
+    fixture.detectChanges();
+    expect(byId('cg-usage')?.textContent).toContain('usage_off');
+  });
+
   it('the update button updates the graph', () => {
     button('cg-update')?.click();
     expect(graph.update).toHaveBeenCalledTimes(1);

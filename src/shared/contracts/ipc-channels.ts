@@ -274,6 +274,7 @@ export const IPC = {
   codeGraphExpand:          'code-graph:expand',
   codeGraphNodeDetail:      'code-graph:node-detail',
   codeGraphSearch:          'code-graph:search',
+  codeGraphUsage:           'code-graph:usage',
 
   // Remote control (E-DSK-14) — Telegram controller embedded in the main
   // process. `status` is the event main→renderer; the rest are renderer→main.

@@ -457,6 +457,7 @@ export class ElectronApiService {
   }
   codeGraphNodeDetail(project: string, nodeId: string) { return this.api.codeGraphNodeDetail(project, nodeId); }
   codeGraphSearch(project: string, q: string) { return this.api.codeGraphSearch(project, q); }
+  codeGraphUsage(project: string) { return this.api.codeGraphUsage(project); }
   onCodeGraphProgress(cb: Parameters<DeviaBridge['onCodeGraphProgress']>[0]): () => void {
     return this.api.onCodeGraphProgress(cb);
   }

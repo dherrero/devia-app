@@ -16,6 +16,7 @@ import { signal, type Type } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TranslateModule } from '@ngx-translate/core';
+import { LucideNetwork, LucideLayoutDashboard } from '@lucide/angular';
 import { ToolCallCardComponent } from './tool-call-card.component';
 import { ToolTerminalBlockComponent } from './components/tool-terminal-block/tool-terminal-block.component';
 import { ToolTodoBlockComponent } from './components/tool-todo-block/tool-todo-block.component';
@@ -80,6 +81,15 @@ describe('ToolCallCardComponent — pure computeds', () => {
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(ToolCallCardComponent);
+  });
+
+  it('toolIconLucide() uses the graph (network) icon for devia-code-graph calls and keeps kanban apart (S-48)', () => {
+    fixture.componentRef.setInput('toolCall', makeTc({ name: 'mcp__devia-code-graph__graph_explore' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.toolIconLucide()).toBe(LucideNetwork);
+    fixture.componentRef.setInput('toolCall', makeTc({ id: 'tc-2', name: 'mcp__devia-kanban__kanban_list' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.toolIconLucide()).toBe(LucideLayoutDashboard);
   });
 
   // ── isRunning ──────────────────────────────────────────────────────────

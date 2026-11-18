@@ -22,6 +22,8 @@
 }
 .cg-toolbar__lang-count { color: var(--dv-muted); font-variant-numeric: tabular-nums; }
 .cg-toolbar__time { white-space: nowrap; }
+.cg-toolbar__usage { white-space: nowrap; color: var(--dv-muted); }
+.cg-toolbar__usage--none { color: var(--dv-warn, var(--dv-muted)); }
 .cg-toolbar__controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-left: auto; flex: 0 1 auto; }
 .cg-toolbar__controls dv-toggle { font-size: 0.75rem; color: var(--dv-fg); white-space: nowrap; }
 .cg-toolbar__controls dv-badge dv-icon { margin-right: 0.125rem; }
