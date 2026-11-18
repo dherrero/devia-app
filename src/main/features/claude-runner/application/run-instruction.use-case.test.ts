@@ -15,6 +15,11 @@
  * `src/main/features/security/audit-log.test.ts` (FR5), so this file uses a
  * lightweight recording fake instead.
  */
+import {
+  ASK_USER_MANDATE_TAG,
+  REMINDER_TAG,
+  SYSTEM_PROMPT_WRAPPER_TAG,
+} from '../../../../shared/domain/ask-user-mandate';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -36,6 +41,7 @@ import {
 } from '../../../shared/ui-rendezvous';
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
 import { UiMcpInjector, type UiServerHarness } from '../../ui-tools';
+import { CodeGraphMcpInjector, codeGraphProtocol } from '../../code-graph';
 import type { StarterKitsPort } from '../../../shared/ports';
 import type { HarnessCatalog } from '../domain/ports';
 import type {
@@ -44,7 +50,8 @@ import type {
 } from '../infrastructure/cli-runner-adapter';
 import type { AgentProcessHandle, AgentRunHandlers } from '../domain/ports';
 import { StaticMapperRegistry } from '../../agents/infrastructure/static-mapper-registry';
-import type { NativeConfigDelivery } from '../../agents/shared/native-config-mcp';
+import { NativeConfigMcpDelivery, type NativeConfigDelivery } from '../../agents/shared/native-config-mcp';
+import { geminiAgentDef } from '../../cli-adapters/infrastructure/defs/gemini';
 import type { CliAdapterRegistry } from '../../cli-adapters';
 import type { WorktreeRef } from '../../git/domain/worktree-ref';
 import type { EnsureWorktreeResult } from '../../git';
@@ -298,12 +305,15 @@ interface Harness {
   registry: InMemoryProjectRegistry;
   audit: RecordingAuditLog;
   def: RuntimeAgentDef;
+  mappers: StaticMapperRegistry;
 }
 
 interface BuildExtras {
   config?: ConfigRepository;
   kanbanMcpServer?: (projectAbs: string) => McpServerConfig;
   memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
+  codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
+  codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
   saveMemoryPrompt?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   saveMemoryHandoff?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   handoffSummary?: (identity: string, sessionId: string) => string | null;
@@ -342,6 +352,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
   const runner = new FakeRunner();
   const registry = new InMemoryProjectRegistry();
   const audit = new RecordingAuditLog();
+  const mappers = makeMappers(extras);
   const uc = new RunInstructionUseCase({
     config: extras.config ?? new FakeConfig(),
     sessions: extras.sessions ?? new FakeSessions(),
@@ -349,7 +360,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     registry,
     runner,
     agents: new FakeRegistry(def),
-    mappers: makeMappers(extras),
+    mappers,
     attachments: new FakeAttachments(),
     outbox: extras.outbox ?? new FakeOutbox(),
     tech: new FakeTech(),
@@ -358,6 +369,8 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.harnessCatalog ? { harnessCatalog: extras.harnessCatalog } : {}),
     ...(extras.kanbanMcpServer ? { kanbanMcpServer: extras.kanbanMcpServer } : {}),
     ...(extras.memoryMcpServer ? { memoryMcpServer: extras.memoryMcpServer } : {}),
+    ...(extras.codeGraphMcpServer ? { codeGraphMcpServer: extras.codeGraphMcpServer } : {}),
+    ...(extras.codeGraphProtocol ? { codeGraphProtocol: extras.codeGraphProtocol } : {}),
     ...(extras.saveMemoryPrompt ? { saveMemoryPrompt: extras.saveMemoryPrompt } : {}),
     ...(extras.saveMemoryHandoff ? { saveMemoryHandoff: extras.saveMemoryHandoff } : {}),
     ...(extras.handoffSummary ? { handoffSummary: extras.handoffSummary } : {}),
@@ -374,7 +387,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.turnContextTracker ? { turnContextTracker: extras.turnContextTracker } : {}),
     ...(extras.consumeMemoryReinjection ? { consumeMemoryReinjection: extras.consumeMemoryReinjection } : {}),
   });
-  return { uc, runner, registry, audit, def };
+  return { uc, runner, registry, audit, def, mappers };
 }
 
 // ── FR1 — happy path ──────────────────────────────────────────────────────
@@ -844,6 +857,7 @@ function buildWithMcp(
   const registry = new InMemoryProjectRegistry();
   const audit = new RecordingAuditLog();
   const extraDeps = mcpServers !== undefined ? { mcpServers } : {};
+  const mappers = makeMappers();
   const uc = new RunInstructionUseCase({
     config: new FakeConfig(),
     sessions: new FakeSessions(),
@@ -851,14 +865,14 @@ function buildWithMcp(
     registry,
     runner,
     agents: new FakeRegistry(def),
-    mappers: makeMappers(),
+    mappers,
     attachments: new FakeAttachments(),
     outbox: new FakeOutbox(),
     tech: new FakeTech(),
     auditLog: audit,
     ...extraDeps,
   });
-  return { uc, runner, registry, audit, def };
+  return { uc, runner, registry, audit, def, mappers };
 }
 
 import type { McpServerConfig } from '../../../../shared/domain/mcp';
@@ -3336,7 +3350,7 @@ describe('RunInstructionUseCase — no volatile content in a frozen system promp
     uiFallback: 'Reaching the user — no interactive UI',
     worktree: '## MANDATORY — isolated session worktree',
   };
-  const ASK_USER_LINE = 'You MAY use `devia_ask_user`';
+  const ASK_USER_LINE = '<devia-ask-user-protocol priority="mandatory"';
   const MEMORY = 'Memory from previous sessions';
 
   function harness(extras: BuildExtras = {}): Harness {
@@ -3401,5 +3415,432 @@ describe('RunInstructionUseCase — no volatile content in a frozen system promp
     h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'plan', [], 'remote', true);
     const full = (h.def.buildExtraArgs as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]?.systemPrompt as string;
     for (const phrase of Object.values(VOLATILE)) expect(full).toContain(phrase);
+  });
+});
+
+// ── S-44 T-505: devia-code-graph delivery ────────────────────────────────────
+
+describe('RunInstructionUseCase — devia-code-graph delivery (S-44)', () => {
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-cg-run-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const deviaDir = (): string => path.join(tmpDir, '.devia-app');
+  const projectDir = (): string => path.join(tmpDir, 'proj-a');
+  function projectConfig(): FakeConfig {
+    const cfg = new FakeConfig(deviaDir());
+    cfg.set({ workspaceRoot: tmpDir });
+    return cfg;
+  }
+  /** Deterministic session ids so two runs can be compared byte for byte. */
+  class FixedSessions extends FakeSessions {
+    override newSessionId(): string { return 'sess-fixed'; }
+  }
+  const settingsFile = (): string => path.join(projectDir(), '.claude', 'settings.local.json');
+  const readAllow = (): string[] => {
+    if (!fs.existsSync(settingsFile())) return [];
+    const parsed = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as { permissions?: { allow?: string[] } };
+    return parsed.permissions?.allow ?? [];
+  };
+  const codeGraph = (calls: Array<[string, string | undefined]> = []) =>
+    (projectAbs: string, agentId?: string): McpServerConfig => {
+      calls.push([projectAbs, agentId]);
+      return enabledServer('devia-code-graph');
+    };
+  /** The temp `--mcp-config` file Claude got. */
+  const claudeMcpConfig = (h: Harness): { mcpServers: Record<string, unknown> } => {
+    const args = h.runner.last().req.prepared.args;
+    const file = args[args.indexOf('--mcp-config') + 1] ?? '';
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown> };
+  };
+
+  it('delivers devia-code-graph to Claude via --mcp-config and grants mcp__devia-code-graph', () => {
+    const calls: Array<[string, string | undefined]> = [];
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      kanbanMcpServer: () => enabledServer('devia-kanban'),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      codeGraphMcpServer: codeGraph(calls),
+    });
+    h.uc.execute('proj-a', 'where is add called?', [], makeHandlers(), 'apply');
+
+    expect(calls).toEqual([[projectDir(), 'claude']]);
+    expect(Object.keys(claudeMcpConfig(h).mcpServers)).toEqual(['devia-kanban', 'devia-memory', 'devia-code-graph']);
+    expect(readAllow()).toContain('mcp__devia-code-graph');
+  });
+
+  it("writes the real injector's entry into Claude's --mcp-config verbatim", () => {
+    const injector = new CodeGraphMcpInjector(deviaDir);
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      codeGraphMcpServer: (abs, agentId) => injector.serverConfig(abs, agentId),
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+
+    const server = injector.serverConfig(projectDir(), 'claude');
+    expect(claudeMcpConfig(h).mcpServers['devia-code-graph']).toEqual({
+      command: process.execPath,
+      args: server.args,
+      env: { ELECTRON_RUN_AS_NODE: '1', DEVIA_ACTIVE_AGENT_ID: 'claude' },
+    });
+  });
+
+  it('adds no server and no grant when there is no graph (provider returns null)', () => {
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      codeGraphMcpServer: () => null,
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+
+    expect(Object.keys(claudeMcpConfig(h).mcpServers)).toEqual(['devia-memory']);
+    expect(readAllow()).not.toContain('mcp__devia-code-graph');
+  });
+
+  it('an isolated run asks for the graph of the WORKTREE (its effective cwd), not the base checkout', () => {
+    const calls: Array<[string, string | undefined]> = [];
+    const h = build(claudeStreamDef, {
+      config: projectConfig(),
+      ensureSessionWorktree: () => ({ ok: true, created: true }),
+      codeGraphMcpServer: codeGraph(calls),
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply', [], 'renderer', true);
+
+    const worktreeCwd = h.runner.last().req.cwd;
+    expect(worktreeCwd).toContain('worktrees');
+    expect(calls).toEqual([[worktreeCwd, 'claude']]);
+  });
+
+  it('writes devia-code-graph to a native-config agent in the same single delivery as the other servers', () => {
+    const nativeMcp = nativeDelivery(true);
+    const h = build({ id: 'gemini', name: 'Gemini CLI' }, {
+      config: projectConfig(),
+      kanbanMcpServer: () => enabledServer('devia-kanban'),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      codeGraphMcpServer: codeGraph(),
+      nativeMcp,
+    });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+
+    expect(nativeMcp.deliver).toHaveBeenCalledTimes(1);
+    const servers = nativeMcp.deliver.mock.calls[0]?.[2] as McpServerConfig[];
+    expect(servers.map((s) => s.id)).toEqual(['devia-kanban', 'devia-memory', 'devia-code-graph']);
+    expect(h.runner.last().req.prepared.mcpServerIds).toContain('devia-code-graph');
+  });
+
+  it('delivers devia-code-graph to pi through its per-run extension', () => {
+    const h = build({ id: 'pi', name: 'Pi' }, { config: projectConfig(), codeGraphMcpServer: codeGraph() });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+
+    const args = h.runner.last().req.prepared.args;
+    const ext = args[args.indexOf('-e') + 1] ?? '';
+    expect(fs.readFileSync(ext, 'utf8')).toContain('"devia-code-graph"');
+  });
+
+  it("delivers devia-code-graph to OpenCode through its per-run config", () => {
+    const h = build({ id: 'opencode', name: 'OpenCode' }, { config: projectConfig(), codeGraphMcpServer: codeGraph() });
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+
+    const file = h.runner.last().req.prepared.agentEnv?.['OPENCODE_CONFIG'] ?? '';
+    const config = JSON.parse(fs.readFileSync(file, 'utf8')) as { mcp: Record<string, unknown> };
+    expect(Object.keys(config.mcp)).toContain('devia-code-graph');
+  });
+
+  it("hands devia-code-graph to an ACP agent's session with the other Devia servers", () => {
+    const h = build({ id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, { config: projectConfig(), codeGraphMcpServer: codeGraph() });
+    const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers());
+
+    const plan = prepare.mock.calls[0]?.[0];
+    expect(plan?.harness.mcp.devia.map((s) => s.id)).toContain('devia-code-graph');
+    expect(h.runner.last().req.prepared.mcpServerIds).toContain('devia-code-graph');
+  });
+
+  const homeDir = (): string => path.join(tmpDir, 'home');
+  /** Every file under `dir`, with its content, sorted — the persistent files a run left behind. */
+  const filesUnder = (dir: string): Array<[string, string]> =>
+    !fs.existsSync(dir)
+      ? []
+      : (fs.readdirSync(dir, { recursive: true }) as string[])
+          .map((rel) => path.join(dir, rel))
+          .filter((abs) => fs.statSync(abs).isFile())
+          .sort()
+          .map((abs) => [path.relative(tmpDir, abs), fs.readFileSync(abs, 'utf8')]);
+
+  /**
+   * Everything a run hands its agent: the plan, the system prompt, the delivery,
+   * the argv/env/stdin (Devia's temp files inlined by content), the ACP plan-mode
+   * trust list, and every persistent file the run wrote in the project and the
+   * home dir (Claude settings, the REAL native MCP config written by
+   * `NativeConfigMcpDelivery`, seeded with a hand-added server beforehand). The
+   * run id is the only legitimately different value.
+   */
+  function runFingerprint(defOverrides: Partial<RuntimeAgentDef>, extras: BuildExtras, mode: 'plan' | 'apply' = 'apply'): string {
+    fs.rmSync(projectDir(), { recursive: true, force: true });
+    fs.rmSync(deviaDir(), { recursive: true, force: true });
+    fs.rmSync(homeDir(), { recursive: true, force: true });
+    fs.mkdirSync(path.join(projectDir(), '.gemini'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir(), '.gemini', 'settings.json'),
+      JSON.stringify({ mcpServers: { github: { command: 'gh', args: [] } }, ui: { theme: 'x' } }),
+    );
+    const h = build(defOverrides, {
+      config: projectConfig(),
+      sessions: new FixedSessions(),
+      kanbanMcpServer: () => enabledServer('devia-kanban'),
+      memoryMcpServer: () => enabledServer('devia-memory'),
+      uiMcpServer: uiServer,
+      nativeMcp: new NativeConfigMcpDelivery(undefined, homeDir),
+      ...extras,
+    });
+    const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
+    // The capability token's expiry is derived from the clock.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    try {
+      h.uc.execute('proj-a', 'do thing', [], makeHandlers(), mode);
+    } finally {
+      now.mockRestore();
+    }
+    const req = h.runner.last().req;
+    const inline = (v: string): string =>
+      v.startsWith(deviaDir()) && fs.existsSync(v) && fs.statSync(v).isFile() ? `<file>${fs.readFileSync(v, 'utf8')}` : v;
+    const plan = prepare.mock.calls[0]?.[0];
+    const fingerprint = JSON.stringify({
+      cwd: req.cwd,
+      plan,
+      systemPrompt: prepare.mock.calls[0]?.[1],
+      delivery: prepare.mock.calls[0]?.[2],
+      args: req.prepared.args.map(inline),
+      stdin: req.prepared.stdin,
+      env: req.prepared.env,
+      agentEnv: Object.entries(req.prepared.agentEnv ?? {}).map(([k, v]) => [k, inline(v)]),
+      mcpServerIds: req.prepared.mcpServerIds,
+      // What an ACP session trusts in plan mode (acp/session.ts).
+      acpPlanTrust: plan?.harness.mcp.devia.map((s) => s.id),
+      persistentFiles: [...filesUnder(projectDir()), ...filesUnder(homeDir())],
+    });
+    return fingerprint.split(req.runId ?? '<no run id>').join('<run>');
+  }
+
+  /** Gemini with its real per-run plan-mode policy writer. */
+  const geminiDef: Partial<RuntimeAgentDef> = {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    ...(geminiAgentDef.buildRunFiles !== undefined && { buildRunFiles: geminiAgentDef.buildRunFiles }),
+  };
+  const AGENTS: ReadonlyArray<[string, Partial<RuntimeAgentDef>, 'plan' | 'apply']> = [
+    ['claude', claudeStreamDef, 'apply'],
+    ['gemini (native config)', geminiDef, 'apply'],
+    ['pi', { id: 'pi', name: 'Pi' }, 'apply'],
+    ['opencode', { id: 'opencode', name: 'OpenCode' }, 'apply'],
+    ['hermes (ACP)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, 'apply'],
+    ['gemini (native config, plan-mode policy)', geminiDef, 'plan'],
+    ['hermes (ACP plan-mode trust)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, 'plan'],
+  ];
+
+  it.each(AGENTS)('%s: a run without a graph is identical to a run built without the provider', (_name, def, mode) => {
+    const baseline = runFingerprint(def, {}, mode);
+    const withoutGraph = runFingerprint(def, { codeGraphMcpServer: () => null, codeGraphProtocol }, mode);
+    const withProtocolOnly = runFingerprint(def, { codeGraphProtocol }, mode);
+    expect(withoutGraph).toBe(baseline);
+    expect(withProtocolOnly).toBe(baseline);
+    expect(baseline).not.toContain('graph_explore');
+    expect(baseline).not.toContain('devia-code-graph');
+  });
+
+  const GUIDE = 'graph_explore';
+  const guideRun = (def: Partial<RuntimeAgentDef>, extras: BuildExtras, origin: 'renderer' | 'remote' = 'renderer', isolate = false) => {
+    const h = build(def, { config: projectConfig(), codeGraphProtocol, ...extras });
+    const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply', [], origin, isolate);
+    return { h, plan: prepare.mock.calls[0]?.[0], system: prepare.mock.calls[0]?.[1] ?? '' };
+  };
+
+  it('Claude with the graph delivered gets the guide in the turn context, not in the frozen system prompt', () => {
+    const { plan, system } = guideRun(claudeStreamDef, { codeGraphMcpServer: codeGraph() });
+    expect(plan?.turnContext).toContain(GUIDE);
+    expect(system).not.toContain(GUIDE);
+  });
+
+  it.each([
+    ['pi', { id: 'pi', name: 'Pi' }],
+    ['hermes', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }],
+  ] as const)('%s with the graph delivered gets the guide in the system prompt', (_n, def) => {
+    const { plan, system } = guideRun(def, { codeGraphMcpServer: codeGraph() });
+    expect(system).toContain(GUIDE);
+    expect(plan?.turnContext).toBeUndefined();
+  });
+
+  it('no guide when agent access is off or the checkout has no graph (provider returns null)', () => {
+    for (const def of [claudeStreamDef, { id: 'pi', name: 'Pi' }]) {
+      const { plan, system } = guideRun(def, { codeGraphMcpServer: () => null });
+      expect(system).not.toContain(GUIDE);
+      expect(plan?.turnContext ?? '').not.toContain(GUIDE);
+    }
+  });
+
+  it('a worktree run whose worktree has no graph gets no guide even if the base checkout has one', () => {
+    const { plan, system } = guideRun(
+      claudeStreamDef,
+      {
+        ensureSessionWorktree: () => ({ ok: true, created: true }),
+        codeGraphMcpServer: (abs) => (abs === projectDir() ? enabledServer('devia-code-graph') : null),
+      },
+      'renderer',
+      true,
+    );
+    expect(plan?.turnContext).toBeDefined();
+    expect(plan?.turnContext).not.toContain(GUIDE);
+    expect(system).not.toContain(GUIDE);
+  });
+
+  it('a worktree run with its own graph gets the guide in the turn context', () => {
+    const { plan } = guideRun(claudeStreamDef, { ensureSessionWorktree: () => ({ ok: true, created: true }), codeGraphMcpServer: codeGraph() },
+      'renderer', true);
+    expect(plan?.turnContext).toContain(GUIDE);
+  });
+
+  it('a remote run carries the guide like the other blocks (turn context for Claude)', () => {
+    const { plan } = guideRun(claudeStreamDef, { codeGraphMcpServer: codeGraph() }, 'remote');
+    expect(plan?.turnContext).toContain(GUIDE);
+  });
+
+  it('a remote run of a non-Claude agent carries the guide in its system prompt', () => {
+    const { plan, system } = guideRun({ id: 'pi', name: 'Pi' }, { codeGraphMcpServer: codeGraph() }, 'remote');
+    expect(system).toContain(GUIDE);
+    expect(plan?.turnContext).toBeUndefined();
+  });
+
+  it('the gemini rows really compare the plan-mode policy and the written native config', () => {
+    const plan = runFingerprint(geminiDef, {}, 'plan');
+    expect(plan).toContain('exit_plan_mode');
+    expect(plan).toContain(path.join('proj-a', '.gemini', 'settings.json'));
+    expect(plan).toContain('devia-kanban');
+  });
+
+  it.each([
+    ['gemini (native config + plan-mode policy)', geminiDef, 'plan'],
+    ['hermes (ACP plan-mode trust)', { id: 'hermes', name: 'Hermes', streamFormat: 'acp-json-rpc' }, 'plan'],
+  ] as const)('%s: the fingerprint does see the server when the graph exists', (_name, def, mode) => {
+    const baseline = runFingerprint(def, {}, mode);
+    const withGraph = runFingerprint(def, { codeGraphMcpServer: codeGraph() }, mode);
+    expect(withGraph).not.toBe(baseline);
+    expect(withGraph).toContain('devia-code-graph');
+  });
+
+  it('a gemini plan run with a graph writes the policy rule and the native entry for it', () => {
+    const withGraph = JSON.parse(runFingerprint(geminiDef, { codeGraphMcpServer: codeGraph() }, 'plan')) as {
+      args: string[];
+      persistentFiles: Array<[string, string]>;
+    };
+    expect(withGraph.args.find((a) => a.startsWith('<file>'))).toContain('mcpName = "devia-code-graph"');
+    const settings = withGraph.persistentFiles.find(([rel]) => rel.endsWith(path.join('.gemini', 'settings.json')))?.[1] ?? '';
+    expect(Object.keys((JSON.parse(settings) as { mcpServers: Record<string, unknown> }).mcpServers)).toContain('devia-code-graph');
+  });
+
+  it('the fingerprint does see the server when the graph exists (the comparison is not blind)', () => {
+    const baseline = runFingerprint(claudeStreamDef, {});
+    const withGraph = runFingerprint(claudeStreamDef, { codeGraphMcpServer: codeGraph() });
+    expect(withGraph).not.toBe(baseline);
+    expect(withGraph).toContain('mcp__devia-code-graph');
+  });
+});
+
+
+// ── S-46 — the ask_user mandate never reaches a Telegram run ─────────────────
+
+describe('RunInstructionUseCase — ask_user mandate gate (S-46)', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-mandate-'));
+    fs.mkdirSync(path.join(tmpDir, 'proj-a'), { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const TAGS = [ASK_USER_MANDATE_TAG, SYSTEM_PROMPT_WRAPPER_TAG, REMINDER_TAG];
+  const claudeDef: Partial<RuntimeAgentDef> = {
+    id: 'claude',
+    name: 'Claude Code',
+    streamFormat: 'claude-stream-json',
+    promptViaStdin: true,
+    promptInputFormat: 'stream-json',
+  };
+  const stdinAgentDef: Partial<RuntimeAgentDef> = { id: 'gemini', systemPromptStrategy: 'stdin-prepend' };
+
+  function harness(def: Partial<RuntimeAgentDef>, extras: BuildExtras = {}): Harness {
+    const cfg = new FakeConfig(path.join(tmpDir, '.devia-app'));
+    cfg.set({ workspaceRoot: tmpDir });
+    return build(def, { config: cfg, ...extras });
+  }
+  const withUi = (): BuildExtras => ({ uiMcpServer: uiServer, nativeMcp: nativeDelivery(true) });
+  const run = (h: Harness, mode: 'plan' | 'apply' | 'apply-yolo', origin: 'renderer' | 'remote'): CapturedLaunch => {
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), mode, [], origin);
+    return h.runner.last();
+  };
+  const hasAnyTag = (text: string): boolean => TAGS.some((tag) => text.includes(`<${tag}`) || text.includes(`</${tag}`));
+  const systemPromptOf = (h: Harness, n: number): string =>
+    (h.def.buildExtraArgs as ReturnType<typeof vi.fn>).mock.calls[n]?.[0]?.systemPrompt as string;
+  const contentTexts = (capture: CapturedLaunch): string[] =>
+    (JSON.parse(stdinOf(capture)) as { message: { content: Array<{ text: string }> } }).message.content.map((b) => b.text);
+  const finish = (capture: CapturedLaunch, sessionId = 'sess-1'): void => {
+    emitEvent(capture, { type: 'session_started', agentSessionId: sessionId });
+    emitEvent(capture, { type: 'text_delta', delta: 'x' });
+    capture.handlers.onDone(0);
+  };
+
+  it.each(['plan', 'apply', 'apply-yolo'] as const)(
+    'a remote (Telegram) %s run of a stdin-prepend agent carries none of the three tags',
+    (mode) => {
+      const h = harness(stdinAgentDef, withUi());
+      expect(hasAnyTag(stdinOf(run(h, mode, 'remote')))).toBe(false);
+    },
+  );
+
+  it.each(['plan', 'apply', 'apply-yolo'] as const)(
+    'a remote (Telegram) %s run of Claude carries none of the three tags, in the prompt or the turn context',
+    (mode) => {
+      const h = harness(claudeDef, withUi());
+      const capture = run(h, mode, 'remote');
+      expect(hasAnyTag(systemPromptOf(h, 0))).toBe(false);
+      expect(contentTexts(capture).some(hasAnyTag)).toBe(false);
+    },
+  );
+
+  it('a desktop run with ask_user gives a stdin-prepend agent the mandate, the wrapper and the reminder', () => {
+    const h = harness(stdinAgentDef, withUi());
+    const stdin = stdinOf(run(h, 'apply', 'renderer'));
+    expect(stdin).toContain(`<${ASK_USER_MANDATE_TAG}`);
+    expect(stdin).toContain(`<${SYSTEM_PROMPT_WRAPPER_TAG} priority="mandatory">`);
+    expect(stdin.trimEnd().endsWith(`</${REMINDER_TAG}>`)).toBe(true);
+  });
+
+  it('a desktop run WITHOUT ask_user (no devia-ui delivered) carries none of the tags', () => {
+    const h = harness(stdinAgentDef);
+    expect(hasAnyTag(stdinOf(run(h, 'apply', 'renderer')))).toBe(false);
+  });
+
+  it('the frozen Claude system prompt never carries the mandate, on any channel', () => {
+    const h = harness(claudeDef, withUi());
+    run(h, 'apply', 'renderer');
+    expect(hasAnyTag(systemPromptOf(h, 0))).toBe(false);
+  });
+
+  it('Claude session desktop -> telegram -> desktop: the turn context drops the mandate on the Telegram turn and brings it back', () => {
+    const h = harness(claudeDef, withUi());
+    const first = run(h, 'apply', 'renderer');
+    expect(contentTexts(first).some((t) => t.includes(`<${ASK_USER_MANDATE_TAG}`))).toBe(true);
+    finish(first);
+
+    const telegram = run(h, 'apply', 'remote');
+    const telegramBlock = contentTexts(telegram).find((t) => t.startsWith('<devia-turn-context'));
+    expect(telegramBlock).toBeDefined();
+    expect(telegramBlock).toContain('Telegram');
+    expect(hasAnyTag(telegramBlock as string)).toBe(false);
+    finish(telegram);
+
+    const back = run(h, 'apply', 'renderer');
+    expect(contentTexts(back).some((t) => t.includes(`<${ASK_USER_MANDATE_TAG}`))).toBe(true);
   });
 });

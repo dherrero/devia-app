@@ -14,6 +14,7 @@ import type { TrashProjectUseCase } from '../application/trash-project.use-case'
 import type { GetConfigUseCase } from '../application/get-config.use-case';
 import type { SetConfigUseCase } from '../application/set-config.use-case';
 import type { DialogService } from '../domain/ports';
+import type { ConfigChangeBus } from '../../../shared/config-change-bus';
 import type { DeviaConfig } from '../../../../shared/domain/config';
 
 export interface WorkspaceIpcDeps {
@@ -31,6 +32,8 @@ export interface WorkspaceIpcDeps {
   getConfig: GetConfigUseCase;
   setConfig: SetConfigUseCase;
   dialog: DialogService;
+  /** S-45: published after a successful `config:set`. */
+  configChanges?: ConfigChangeBus;
 }
 
 export function registerWorkspaceIpc(ctx: FeatureContext, deps: WorkspaceIpcDeps): void {
@@ -69,6 +72,7 @@ export function registerWorkspaceIpc(ctx: FeatureContext, deps: WorkspaceIpcDeps
   ctx.ipc.handle(IPC.configSet, (_e, partial: Partial<DeviaConfig> | undefined) => {
     const next = deps.setConfig.execute(partial ?? {});
     ctx.send('config:changed', next);
+    deps.configChanges?.publish(next);
     return next;
   });
 

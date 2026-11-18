@@ -1,0 +1,49 @@
+<section class="gf" [attr.aria-label]="'codeGraph.filters.title' | translate">
+  <div class="gf__head">
+    <h2 class="gf__title">{{ 'codeGraph.filters.title' | translate }}</h2>
+    @if (filtering()) {
+      <dv-button size="sm" variant="ghost" data-testid="cg-filter-reset" (clicked)="reset()">
+        {{ 'codeGraph.filters.reset' | translate }}
+      </dv-button>
+    }
+  </div>
+
+  @if (nodeChips().length > 0) {
+    <p class="gf__label" aria-hidden="true">{{ 'codeGraph.filters.node_kinds' | translate }}</p>
+    <div class="gf__chips" role="group" data-testid="cg-filter-node-kinds"
+         [attr.aria-label]="'codeGraph.filters.node_kinds' | translate">
+      @for (chip of nodeChips(); track chip.kind) {
+        <button type="button" class="gf__chip" [attr.aria-pressed]="chip.on" (click)="toggleNode(chip.kind)">
+          {{ chip.label | translate }}
+        </button>
+      }
+    </div>
+  }
+
+  @if (edgeChips().length > 0) {
+    <p class="gf__label" aria-hidden="true">{{ 'codeGraph.filters.edge_kinds' | translate }}</p>
+    <div class="gf__chips" role="group" data-testid="cg-filter-edge-kinds"
+         [attr.aria-label]="'codeGraph.filters.edge_kinds' | translate">
+      @for (chip of edgeChips(); track chip.kind) {
+        <button type="button" class="gf__chip" [attr.aria-pressed]="chip.on" (click)="toggleEdge(chip.kind)">
+          {{ chip.label | translate }}
+        </button>
+      }
+    </div>
+  }
+
+  <p class="gf__label" aria-hidden="true">{{ 'codeGraph.filters.include' | translate }}</p>
+  <div class="gf__chips" role="group" data-testid="cg-filter-include"
+       [attr.aria-label]="'codeGraph.filters.include' | translate">
+    <button type="button" class="gf__chip" [attr.aria-pressed]="filters().showTests" (click)="toggleTests()">
+      {{ 'codeGraph.filters.show_tests' | translate }}
+    </button>
+    <button type="button" class="gf__chip" [attr.aria-pressed]="filters().showGenerated" (click)="toggleGenerated()">
+      {{ 'codeGraph.filters.show_generated' | translate }}
+    </button>
+  </div>
+
+  @if (hidden() > 0) {
+    <p class="gf__hidden" data-testid="cg-filter-hidden">{{ hiddenKey() | translate: { count: hidden() } }}</p>
+  }
+</section>

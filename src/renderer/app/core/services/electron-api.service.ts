@@ -3,6 +3,7 @@ import type { DeviaBridge } from '../../../types/devia';
 import type { SessionStats } from '../../../../shared/domain/session-stats';
 import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import type { BranchCheckoutRef } from '../../../../shared/domain/git';
+import type { GraphExpandOptions, GraphOverviewOptions } from '../../../../shared/domain/code-graph';
 
 // Thin Angular wrapper around window.devia. Centralising it lets components
 // inject this service instead of touching window directly, which keeps the
@@ -438,5 +439,29 @@ export class ElectronApiService {
   installUpdate() { return this.api.update.install(); }
   onUpdateStatus(cb: Parameters<typeof this.api.update.onStatus>[0]) {
     this.api.update.onStatus(cb);
+  }
+
+  // Code graph (S-44). `project` is the workspace-relative key.
+  codeGraphStatus(project: string) { return this.api.codeGraphStatus(project); }
+  codeGraphIndex(project: string) { return this.api.codeGraphIndex(project); }
+  codeGraphCancel(project: string) { return this.api.codeGraphCancel(project); }
+  codeGraphReset(project: string) { return this.api.codeGraphReset(project); }
+  codeGraphSetAgentAccess(project: string, enabled: boolean) { return this.api.codeGraphSetAgentAccess(project, enabled); }
+  codeGraphSetAutoUpdate(project: string, enabled: boolean) { return this.api.codeGraphSetAutoUpdate(project, enabled); }
+  codeGraphUpdate(project: string) { return this.api.codeGraphUpdate(project); }
+  codeGraphWatch(project: string) { return this.api.codeGraphWatch(project); }
+  codeGraphUnwatch(project: string) { return this.api.codeGraphUnwatch(project); }
+  codeGraphOverview(project: string, opts?: GraphOverviewOptions) { return this.api.codeGraphOverview(project, opts); }
+  codeGraphExpand(project: string, nodeId: string, opts?: GraphExpandOptions) {
+    return this.api.codeGraphExpand(project, nodeId, opts);
+  }
+  codeGraphNodeDetail(project: string, nodeId: string) { return this.api.codeGraphNodeDetail(project, nodeId); }
+  codeGraphSearch(project: string, q: string) { return this.api.codeGraphSearch(project, q); }
+  codeGraphUsage(project: string) { return this.api.codeGraphUsage(project); }
+  onCodeGraphProgress(cb: Parameters<DeviaBridge['onCodeGraphProgress']>[0]): () => void {
+    return this.api.onCodeGraphProgress(cb);
+  }
+  onCodeGraphStatusChanged(cb: Parameters<DeviaBridge['onCodeGraphStatusChanged']>[0]): () => void {
+    return this.api.onCodeGraphStatusChanged(cb);
   }
 }

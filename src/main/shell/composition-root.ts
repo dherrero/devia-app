@@ -55,6 +55,7 @@ import { buildSubAgentsFeature, SubAgentReader } from '../features/sub-agents';
 import { createHarnessCatalog } from '../features/claude-runner/infrastructure/harness-catalog';
 import { buildSddFeature } from '../features/sdd';
 import { buildMemoryFeature } from '../features/memory';
+import { buildCodeGraphFeature, codeGraphProtocol } from '../features/code-graph';
 import { buildStarterKitsFeature } from '../features/starter-kits';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
@@ -69,6 +70,7 @@ import {
 } from '../features/telegram-controller';
 import { RunGateway } from '../shared/run-gateway';
 import { RunModeStore } from '../shared/run-mode-store';
+import { ConfigChangeBus } from '../shared/config-change-bus';
 import { seedRunModes } from '../shared/seed-run-modes';
 import type { RunMode } from '../../shared/domain/run-capabilities';
 import { auditSendFile } from '../shared/outbound-file-gate';
@@ -125,6 +127,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   const pinnedStore  = new InMemoryPinnedStore();         // pinned owns
   const sessionStore = new FsSessionStore(config);        // sessions owns
   const runGateway   = new RunGateway();                  // E-DSK-14 (runner ↔ remote)
+  const configChanges = new ConfigChangeBus();            // saved-config changes: workspace publishes, claude-runner reacts (S-45)
   const runModes     = new RunModeStore();                // run mode per session, shared app ↔ Telegram
 
   // Run mode sync. The desktop pushes its changes in; changes that originate in
@@ -177,7 +180,20 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   });
 
   // ── Phase 3: build features with all infra in scope. ─────────────────────
-  const gitBuilt = buildGitFeature({ config });
+  // S-44: worktree graphs follow the worktree lifecycle. `codeGraphBuilt` is built
+  // later in this function; the hooks only run once the app is up.
+  const gitBuilt = buildGitFeature({
+    config,
+    worktreeHooks: {
+      // The copy runs in a worker; registering synchronously lets a same-tick remove wait for it.
+      onCreated: ({ baseProject, worktreePath }) => {
+        codeGraphBuilt.seedWorktreeGraph({ baseProject, worktreePath }).catch((err: unknown) => console.warn('[code-graph] worktree seed failed:', err));
+      },
+      onRemoved: ({ worktreePath }) => {
+        codeGraphBuilt.dropWorktreeGraph(worktreePath).catch((err: unknown) => console.warn('[code-graph] worktree drop failed:', err));
+      },
+    },
+  });
 
   // S-2 F2.3: background LLM enrichment of the cross-agent handoff brief.
   // The runner's execute() is synchronous, so the summary is precomputed the
@@ -289,6 +305,10 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // (Phase 3b) the same way `sddBuilt.kanbanMcpServer` is.
   const memoryBuilt = buildMemoryFeature({ config });
 
+  // S-44: Code Graph (project knowledge graph). Built before the array so its
+  // `codeGraphMcpServer` callback can be handed to the runner like memory's.
+  const codeGraphBuilt = buildCodeGraphFeature({ config });
+
   // S-39: bundled methodology kits (Devia Method). The packaged app carries them
   // in `<resources>/kits` (outside the asar: they hold executable scripts); in
   // development they are read from the repository's `resources/kits`.
@@ -390,6 +410,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       config, tech,
       projects: registry, sessions: sessionStore, pinned: pinnedStore, state: stateStore,
       sddPurger: sddBuilt.purger,
+      configChanges,
     }),
     cliAdapters.feature,
     promptPacksBuilt.feature,
@@ -412,11 +433,16 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // S-1: Devia internal memory server. How it — like kanban and ui —
       // reaches each agent is that agent's mapper's job (S-30).
       memoryMcpServer: memoryBuilt.memoryMcpServer,
+      // S-44: the code-graph server, only for a checkout with a graph the user
+      // lets agents use. Delivered by each agent's mapper, like memory.
+      codeGraphMcpServer: codeGraphBuilt.codeGraphMcpServer,
+      codeGraphProtocol,
       // S-24: `devia_ask_user` — the question card, now a Devia MCP tool.
       // Keyed by the per-run rendezvous dir, not by project.
       // S-25 F2.6: `devia_notify` reaches the chat relay too. Lazy like
       // `pushChat` below — the controller resolves after its feature registers.
       notifyRemote: (text) => { void telegramBuilt.controller.push(text); },
+      configChanges,
       isConfirmationGranted: (projectAbs, action) =>
         uiToolsBuilt.confirmations.isGranted(projectAbs, action),
       grantConfirmation: (projectAbs, action, agentId) =>
@@ -500,6 +526,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     sddBuilt.feature,
     // S-1: Devia internal memory + engram integration.
     memoryBuilt.feature,
+    // S-44: Code Graph.
+    codeGraphBuilt.feature,
     // S-39: bundled starter kits (Devia Method).
     starterKitsBuilt.feature,
 

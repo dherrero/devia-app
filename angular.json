@@ -28,7 +28,10 @@
             "allowedCommonJsDependencies": [
               "@xterm/xterm",
               "@xterm/addon-fit",
-              "@xterm/addon-web-links"
+              "@xterm/addon-web-links",
+              "cytoscape-fcose",
+              "cose-base",
+              "layout-base"
             ],
             "stylePreprocessorOptions": {
               "includePaths": ["src/libs/styles/src"]

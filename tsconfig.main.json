@@ -31,6 +31,7 @@
     "node_modules",
     "dist",
     "src/renderer",
-    "src/libs"
+    "src/libs",
+    "src/**/__fixtures__/**"
   ]
 }

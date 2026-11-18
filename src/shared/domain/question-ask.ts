@@ -54,7 +54,26 @@ export function normalizeAskUserQuestionInput(input: unknown): NormalizedAskUser
   return { question: fallback, questions: [{ question: fallback }] };
 }
 
-function normalizeNestedQuestions(value: unknown): QuestionPrompt[] {
+/**
+ * Some models send `questions` as a JSON-encoded string (sometimes twice over)
+ * instead of an array. Decode it, so the card gets its question and options
+ * instead of the raw JSON; anything that does not decode stays as it was.
+ */
+function coerceQuestionsValue(value: unknown): unknown {
+  let current = value;
+  for (let depth = 0; depth < 2 && typeof current === 'string'; depth += 1) {
+    try {
+      current = JSON.parse(current);
+    } catch {
+      return value;
+    }
+  }
+  if (current !== null && typeof current === 'object' && !Array.isArray(current)) return [current];
+  return current;
+}
+
+function normalizeNestedQuestions(raw: unknown): QuestionPrompt[] {
+  const value = coerceQuestionsValue(raw);
   if (!Array.isArray(value)) return [];
   const questions: QuestionPrompt[] = [];
   value.forEach((entry, index) => {

@@ -1,0 +1,6 @@
+:host { display: block; }
+.cg-action-error { padding: 0.375rem 0.375rem 0.375rem 0.875rem; }
+.cg-action-error__row { display: flex; align-items: center; gap: 0.5rem; }
+.cg-action-error__text { flex: 1 1 auto; min-width: 0; text-align: left; }
+.cg-action-error__message { margin: 0; font-size: 0.8125rem; font-weight: 600; }
+.cg-action-error__detail { margin: 0.125rem 0 0; font-size: 0.75rem; color: var(--dv-muted); overflow-wrap: anywhere; }

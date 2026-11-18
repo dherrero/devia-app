@@ -1,0 +1,65 @@
+<div class="gs-field">
+  <dv-icon class="gs-field__icon" [icon]="LucideSearch" size="sm" aria-hidden="true" />
+  <input #input
+         class="gs-input"
+         type="text"
+         data-testid="cg-search-input"
+         role="combobox"
+         autocomplete="off"
+         spellcheck="false"
+         aria-autocomplete="list"
+         aria-keyshortcuts="Meta+F Control+F"
+         [attr.aria-label]="'codeGraph.search.label' | translate"
+         [attr.aria-expanded]="expanded()"
+         [attr.aria-controls]="listId"
+         [attr.aria-activedescendant]="activeId()"
+         [placeholder]="'codeGraph.search.placeholder' | translate"
+         (input)="onInput(input.value)"
+         (keydown)="onKeydown($event)"
+         (focus)="open.set(true)" />
+  @if (query() !== '') {
+    <button type="button"
+            class="gs-clear"
+            data-testid="cg-search-clear"
+            [attr.aria-label]="'codeGraph.search.clear' | translate"
+            [title]="'codeGraph.search.clear' | translate"
+            (click)="clear()">
+      <dv-icon [icon]="LucideX" size="sm" />
+    </button>
+  }
+</div>
+
+<ul class="gs-list"
+    role="listbox"
+    [id]="listId"
+    [hidden]="!expanded()"
+    [attr.aria-label]="'codeGraph.search.results' | translate">
+  @if (expanded()) {
+    @for (result of results(); track result.node.id; let i = $index) {
+      <li class="gs-option"
+          role="option"
+          [id]="optionId(i)"
+          [class.gs-option--active]="i === active()"
+          [attr.aria-selected]="i === active()"
+          (mousedown)="$event.preventDefault()"
+          (mouseenter)="active.set(i)"
+          (click)="choose(i)">
+        <dv-icon class="gs-option__icon" [icon]="kindIcon(result.node.kind)" size="sm" aria-hidden="true" />
+        <span class="gs-option__text">
+          <span class="gs-option__label">{{ result.node.label }}</span>
+          <span class="gs-option__meta">
+            <span>{{ 'codeGraph.canvas.kind.' + result.node.kind | translate }}</span>
+            <span aria-hidden="true">·</span>
+            <span class="gs-option__path">{{ result.node.path }}{{ result.node.line ? ':' + result.node.line : '' }}</span>
+          </span>
+        </span>
+      </li>
+    }
+  }
+</ul>
+
+<p class="gs-sr" data-testid="cg-search-status" role="status" aria-live="polite" aria-atomic="true">
+  @if (statusText(); as s) {
+    {{ s.key | translate: s.params }}
+  }
+</p>

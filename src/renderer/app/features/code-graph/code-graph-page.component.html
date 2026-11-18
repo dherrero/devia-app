@@ -1,0 +1,62 @@
+<header class="cg-header">
+  <div class="cg-title">
+    <dv-icon [icon]="LucideNetwork" size="sm" />
+    <span>{{ 'codeGraph.title' | translate }}</span>
+    @if (project(); as p) {
+      <span class="cg-project">{{ p }}</span>
+    }
+  </div>
+  @if (view() === 'graph') {
+    <ds-cg-search class="cg-search" />
+  }
+  <dv-button iconOnly
+             variant="ghost"
+             size="sm"
+             data-testid="cg-back"
+             (clicked)="back()"
+             [dvTooltip]="'codeGraph.back' | translate"
+             [ariaLabel]="'codeGraph.back' | translate">
+    <dv-icon [icon]="LucideX" size="sm" />
+  </dv-button>
+</header>
+
+<div class="cg-body">
+  @switch (view()) {
+    @case ('no-project') {
+      <div class="cg-center" data-testid="cg-no-project">
+        <p class="cg-message">{{ 'empty_state.select_project' | translate }}</p>
+      </div>
+    }
+    @case ('loading') {
+      <div class="cg-center" data-testid="cg-loading" role="status">
+        <dv-spinner size="lg" />
+        <p class="cg-message">{{ 'codeGraph.loading' | translate }}</p>
+      </div>
+    }
+    @case ('load-error') {
+      <ds-cg-empty-state variant="load-error" />
+    }
+    @case ('error') {
+      <ds-cg-empty-state variant="failed" />
+    }
+    @case ('unsupported') {
+      <ds-cg-empty-state variant="unsupported" />
+    }
+    @case ('none') {
+      <ds-cg-empty-state variant="none" />
+    }
+    @case ('indexing') {
+      <ds-cg-index-progress />
+    }
+    @case ('graph') {
+      <ds-cg-toolbar />
+      <div class="cg-graph">
+        <ds-graph-canvas [project]="graphProject()" [revision]="revision()" />
+        <aside class="cg-side" data-testid="cg-side">
+          <ds-cg-filters class="cg-side__filters" />
+          <ds-cg-node-detail class="cg-side__detail" />
+        </aside>
+      </div>
+    }
+  }
+</div>

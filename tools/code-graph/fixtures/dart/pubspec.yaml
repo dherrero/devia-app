@@ -1,0 +1,8 @@
+name: shop_app
+description: Oracle fixture for Devia's code graph.
+version: 0.0.0
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter

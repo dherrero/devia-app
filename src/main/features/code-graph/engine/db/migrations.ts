@@ -1,0 +1,79 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+
+interface Migration {
+  version: number;
+  description: string;
+  up(db: DatabaseSync): void;
+}
+
+// Every step must be idempotent: v1 runs schema.sql, which already holds the later
+// indexes, so a new graph runs the later steps as no-ops.
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    description: 'Initial schema',
+    up: (db) => db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8')),
+  },
+  {
+    version: 2,
+    description: 'Graph view id/file index',
+    up: (db) => db.exec('CREATE INDEX IF NOT EXISTS idx_nodes_id_file ON nodes(id, file_path)'),
+  },
+  {
+    version: 3,
+    description: 'Receiver type inference dependencies',
+    up: (db) =>
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS resolution_deps (
+           file_path TEXT NOT NULL,
+           kind TEXT NOT NULL,
+           dep TEXT NOT NULL,
+           PRIMARY KEY (file_path, kind, dep)
+         ) WITHOUT ROWID;
+         CREATE INDEX IF NOT EXISTS idx_resolution_deps_dep ON resolution_deps(kind, dep);`,
+      ),
+  },
+  {
+    version: 4,
+    description: 'Unresolved refs by file',
+    // A sync's partial resolution loads each touched file's stored import bindings; without it
+    // every lookup scanned all `bound` refs of the project (~5 s of a 7 s 1-file sync on Devia).
+    up: (db) => db.exec('CREATE INDEX IF NOT EXISTS idx_unresolved_file_status ON unresolved_refs(file_path, status)'),
+  },
+];
+
+export const SCHEMA_VERSION = MIGRATIONS.length;
+
+function currentVersion(db: DatabaseSync): number {
+  const table = db
+    .prepare(
+      "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'schema_versions'",
+    )
+    .get();
+  if (!table) return 0;
+  const row = db
+    .prepare('SELECT MAX(version) AS v FROM schema_versions')
+    .get() as { v: number | null };
+  return row.v ?? 0;
+}
+
+export function applyMigrations(db: DatabaseSync): void {
+  if (currentVersion(db) >= SCHEMA_VERSION) return;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const from = currentVersion(db);
+    for (const m of MIGRATIONS) {
+      if (m.version <= from) continue;
+      m.up(db);
+      db.prepare(
+        'INSERT OR IGNORE INTO schema_versions (version, applied_at, description) VALUES (?, ?, ?)',
+      ).run(m.version, Date.now(), m.description);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}

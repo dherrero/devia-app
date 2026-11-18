@@ -72,6 +72,16 @@ describe('openAcpSession — simple turn', () => {
     });
   });
 
+  it('wraps the system text and closes the user text with a reminder when the ask_user mandate is present (S-46)', async () => {
+    const system = 'SYS <devia-ask-user-protocol priority="mandatory">x</devia-ask-user-protocol>';
+    const { child } = start(SIMPLE, { systemPrompt: system, plan: makePlan({ prompt: 'hello' }) });
+    await waitFor(() => finished(child));
+    const text = (child.record.prompts[0] as { prompt: Array<{ text: string }> }).prompt[0]!.text;
+    expect(text).toContain('<devia-system-prompt priority="mandatory">');
+    expect(text.endsWith('</devia-reminder>')).toBe(true);
+    expect(text.split('<devia-reminder>')).toHaveLength(2); // exactly once
+  });
+
   it('sends only the user text when the system prompt is empty', async () => {
     const { child } = start(SIMPLE);
     await waitFor(() => finished(child));

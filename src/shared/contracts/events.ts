@@ -311,6 +311,17 @@ export interface RendererEvents {
   'remoteControl:select-project': RemoteSelectProjectEvent;
   'runMode:changed': RunModeChangedEvent;
   'update:status': UpdateStatus;
+  'code-graph:progress': CodeGraphProgressPayload;
+  'code-graph:status-changed': CodeGraphStatusChangedPayload;
+}
+
+export interface CodeGraphProgressPayload {
+  project: string;
+  progress: import('../domain/code-graph').IndexProgress;
+}
+export interface CodeGraphStatusChangedPayload {
+  project: string;
+  status: import('../domain/code-graph').CodeGraphStatus;
 }
 
 export type McpListChangedPayload = import('../domain/mcp').McpListChangedEvent;

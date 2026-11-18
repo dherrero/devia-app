@@ -126,6 +126,12 @@ describe('mergeJson', () => {
     expect(Object.keys(root['mcpServers'] as object).sort()).toEqual(['devia-kanban', 'devia-ui', 'github']);
   });
 
+  it('a catalog sync never prunes devia-code-graph either (S-44)', () => {
+    let root = mergeJson(null, { parentKey: 'mcpServers', managed: [makeServer('devia-code-graph')], composeEnv: noEnv, prune: false });
+    root = mergeJson(root, { parentKey: 'mcpServers', managed: [makeServer('github')], composeEnv: noEnv });
+    expect(Object.keys(root['mcpServers'] as object).sort()).toEqual(['devia-code-graph', 'github']);
+  });
+
   it('removes a bundled server when it is explicitly listed in removedIds', () => {
     const root = mergeJson(null, { parentKey: 'mcpServers', managed: [makeServer('devia-ui')], composeEnv: noEnv });
     const out = mergeJson(root, { parentKey: 'mcpServers', managed: [], removedIds: ['devia-ui'], composeEnv: noEnv, prune: false });

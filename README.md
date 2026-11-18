@@ -9,6 +9,7 @@
 - Chat con streaming, visor de diffs y comentarios por línea con "Enviar a revisar".
 - Vista dividida con hasta 4 agentes en paralelo, aislados en git worktrees.
 - Kanban spec-driven integrado, memoria persistente y gestor de servidores MCP.
+- Grafo de código local (TypeScript/JavaScript, Python, Java, Go y Dart) para explorar el proyecto y que los agentes lo consulten por MCP en vez de buscar con grep.
 - Control remoto por Telegram, transcripción de voz local, terminal y cambio de rama.
 - Todo funciona en local, sobre tus proyectos y tus CLIs.
 

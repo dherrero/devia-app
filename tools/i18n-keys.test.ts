@@ -171,7 +171,17 @@ describe('round trip against the real files', () => {
     // was added untranslated (the parity gate should have caught it).
     // 269: +4 for the auto-continue switch and banner (es/en only).
     // 293: +24 for the starter kit settings tab and first-run card (es/en only).
+    // 303: +10 for the code graph screen (es/en only; T-513 translates).
+    // 352: +49 for the code graph empty state, progress and toolbar (es/en only; T-513 translates).
+    // 356: +4 plural forms (_plural) for the code graph counts (es/en only; T-513 translates).
+    // 358: +2 for the code graph canvas "older nodes collapsed" notice (es/en only; T-513 translates).
+    // 413: +55 for the interactive graph canvas (es/en only; T-513 translates).
+    // 417: +4 for the graph canvas reload announcement and legend rows (es/en only; T-513 translates).
+    // 488: +71 for the graph search, filters and node detail panel (es/en only; T-513 translates).
+    // 293: T-513 translated every codeGraph key into the nine locales (-195); what is
+    // left is the pre-existing S-27 backlog, none of it under codeGraph.
     expect(Object.keys(missing).length).toBe(293);
+    expect(Object.keys(missing).filter((key) => key.startsWith('codeGraph.'))).toEqual([]);
   });
 
   it('extracts nothing for the complete language', () => {

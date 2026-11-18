@@ -14,6 +14,8 @@ vi.mock('electron', () => ({
 import { IPC } from '../../../../shared/contracts/ipc-channels';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { FeatureContext } from '../../../shared/feature';
+import { ConfigChangeBus } from '../../../shared/config-change-bus';
+import type { DeviaConfig } from '../../../../shared/domain/config';
 import { RunGateway, type RunFile, type RunGatewayEvent } from '../../../shared/run-gateway';
 import type { RunInstructionHandlers } from '../application/run-instruction.use-case';
 import { registerClaudeRunnerIpc, type ClaudeRunnerIpcDeps } from './claude.ipc';
@@ -44,6 +46,7 @@ function setup(autoContinue: Record<string, boolean> = {}) {
   gateway.subscribe((e) => events.push(e));
 
   const dispatchNext = vi.fn();
+  const configChanges = new ConfigChangeBus();
   const deps = {
     runInstruction: {
       execute: (_p: string, _t: string, _a: unknown, handlers: RunInstructionHandlers) => {
@@ -64,6 +67,7 @@ function setup(autoContinue: Record<string, boolean> = {}) {
     config: { get: () => ({ agentId: 'claude', autoContinueSessions: autoContinue }) },
     auditLog: { append: vi.fn(), readLast: () => [] },
     runGateway: gateway,
+    configChanges,
   } as unknown as ClaudeRunnerIpcDeps;
 
   const ipc = registerClaudeRunnerIpc(ctx, deps);
@@ -76,7 +80,7 @@ function setup(autoContinue: Record<string, boolean> = {}) {
     return captured[captured.length - 1]!;
   };
   const fileEvents = () => events.filter((e) => e.type === 'file');
-  return { start, send, fileEvents, events, ipc, handles, dispatchNext };
+  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges };
 }
 
 describe('claude.ipc — auto-continue after the usage limit', () => {
@@ -131,6 +135,40 @@ describe('claude.ipc — auto-continue after the usage limit', () => {
     t.start('proj-a');
     expect(t.send).toHaveBeenCalledWith('autoresume:cancelled', { project: 'proj-a', reason: 'user' });
     t.ipc.dispose();
+  });
+
+  const cfgWith = (autoContinueSessions: Record<string, boolean>) =>
+    ({ agentId: 'claude', autoContinueSessions }) as unknown as DeviaConfig;
+
+  it('turning the switch off cancels every pending resume of that agent and frees its queue', () => {
+    const t = setup({ claude: true, other: true });
+    t.start('proj-a').onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: inAMinute() });
+    t.start('proj-b').onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: inAMinute() });
+    t.start('proj-c').onRateLimited!({ runId: RUN_ID, agentId: 'other', resetsAt: inAMinute() });
+    t.configChanges.publish(cfgWith({ claude: false, other: true }));
+    expect(t.send).toHaveBeenCalledWith('autoresume:cancelled', { project: 'proj-a', reason: 'disabled' });
+    expect(t.send).toHaveBeenCalledWith('autoresume:cancelled', { project: 'proj-b', reason: 'disabled' });
+    expect(t.send).not.toHaveBeenCalledWith('autoresume:cancelled', expect.objectContaining({ project: 'proj-c' }));
+    expect(t.dispatchNext).toHaveBeenCalledWith('proj-a');
+    expect(t.dispatchNext).toHaveBeenCalledWith('proj-b');
+    expect(t.dispatchNext).not.toHaveBeenCalledWith('proj-c');
+    t.ipc.dispose();
+  });
+
+  it('a config saved with the switch unchanged cancels nothing', () => {
+    const t = setup({ claude: true });
+    t.start('proj-a').onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: inAMinute() });
+    t.configChanges.publish(cfgWith({ claude: true }));
+    expect(t.send).not.toHaveBeenCalledWith('autoresume:cancelled', expect.anything());
+    t.ipc.dispose();
+  });
+
+  it('stops listening after dispose', () => {
+    const t = setup({ claude: true });
+    t.start('proj-a').onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: inAMinute() });
+    t.ipc.dispose();
+    t.configChanges.publish(cfgWith({ claude: false }));
+    expect(t.send).not.toHaveBeenCalledWith('autoresume:cancelled', expect.anything());
   });
 });
 

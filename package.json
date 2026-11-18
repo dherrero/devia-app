@@ -24,7 +24,7 @@
     "dev:live": "node scripts/kill-port.cjs 4300 && concurrently -k -n main,renderer,electron \"npm:watch:main\" \"npm:serve:renderer\" \"wait-on file:dist/main/main/shell/main.js tcp:4300 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:4300 ELECTRON_ENABLE_LOGGING=1 electron --remote-debugging-port=9222 . --dev\"",
     "start": "npm run build && electron .",
     "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc -p tsconfig.main.json",
+    "build:main": "tsc -p tsconfig.main.json && node scripts/copy-assets.cjs",
     "build:renderer": "ng build --project devia-renderer --configuration=production",
     "watch:main": "tsc -p tsconfig.main.json --watch --preserveWatchOutput",
     "watch:renderer": "ng build --project devia-renderer --configuration=development --watch",
@@ -148,6 +148,7 @@
     "@agentclientprotocol/sdk": "1.9.0",
     "electron-updater": "^6.6.2",
     "node-pty": "^1.1.0",
+    "web-tree-sitter": "^0.25.10",
     "zod": "4.6.6"
   },
   "devDependencies": {
@@ -176,6 +177,7 @@
     "@ngx-translate/core": "^15.0.0",
     "@ngx-translate/http-loader": "^8.0.0",
     "@playwright/test": "^1.61.0",
+    "@types/cytoscape-fcose": "^2.2.5",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^22.13.0",
     "@typescript-eslint/eslint-plugin": "^8.62.0",
@@ -188,6 +190,8 @@
     "bootstrap": "^5.3.2",
     "concurrently": "^10.0.3",
     "cross-env": "^10.1.0",
+    "cytoscape": "^3.34.4",
+    "cytoscape-fcose": "^2.2.0",
     "dompurify": "^3.4.11",
     "electron": "^41.4.0",
     "electron-builder": "^26.8.1",

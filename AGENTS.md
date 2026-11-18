@@ -19,7 +19,7 @@ devia-app/
 │   ├── main/               Electron main process (TS → dist/main/main/, CommonJS)
 │   │   ├── shell/          Entry points: main.ts, preload.ts, composition-root.ts
 │   │   ├── shared/         Cross-feature ports, persistence helpers, workspace-paths
-│   │   └── features/       20 bounded contexts (one folder = one feature)
+│   │   └── features/       34 bounded contexts (one folder = one feature)
 │   │
 │   ├── renderer/           Angular 21 SPA (TS → dist/renderer/)
 │   │   ├── main.ts         bootstrapApplication
@@ -35,10 +35,11 @@ devia-app/
 │   └── libs/               @devia/ui (components) and @devia/styles (tokens), consumed from source
 │
 ├── build/                  electron-builder resources (icon, macOS entitlements)
-├── scripts/                postinstall (native rebuild), audit gate, release manifest
-├── tools/                  i18n parity, scss token check, agent e2e harness
+├── scripts/                postinstall (native rebuild), audit gate, release manifest, copy-assets (wasm + .sql → dist)
+├── tools/                  i18n parity, scss token check, agent e2e harness, code-graph oracle + bench
 ├── tests/                  Visual-regression and MCP smoke scenarios
 ├── docs/                   Technical plans, stories, architecture decisions
+├── NOTICE                  Third-party attribution (codegraph, tree-sitter grammars, cytoscape, …)
 ├── vitest.config.ts        Main-process test config (env: node)
 ├── vitest.angular.config.ts Renderer test config (env: jsdom + Angular)
 ├── tsconfig.json           Base TypeScript config (strict: true) + @devia/* paths
@@ -90,6 +91,7 @@ The compiled main process keeps a doubled `main/` on purpose: `dist/main/main/sh
 | `security`        | Audit log (JSONL, timestamped rotation, 30-day retention)                                                              |
 | `memory`          | Devia internal persistent memory: JSON store + `devia-memory` MCP server + engram detection/import (S-1)               |
 | `ui-tools`        | S-25: ALL of Devia's interface tools, served as one `devia-ui` MCP server (`devia_ask_user`, `devia_todo`, `devia_plan_approve`, `devia_request_review`, `devia_confirm`, `devia_pick`, `devia_notify`, `devia_skill`, and since S-32 `devia_send_file`). Replaces S-24's `devia-ask` server, whose code was deleted in S-25 F4.2 — only the cleanup of its leftovers in already-used projects remains (see Multi-agent support). Owns the per-project `ui-confirmations.json` store and a small IPC surface for the settings panel; everything else happens per run, driven by `RunInstructionUseCase` |
+| `code-graph`      | S-44: Devia's own code graph. A pure engine (tree-sitter wasm → `node:sqlite` → resolution → queries) indexes a project on demand into `~/.devia-app/code-graph/<projectKey>/graph.db`, keeps it current (watcher + incremental sync), serves it to every agent as the `devia-code-graph` MCP server and to the full-screen `/graph` view — see "Code Graph (S-44)" |
 | `telegram-controller` | Telegram remote control (E-DSK-14): in-process long-poll bot that drives runs through the `RunGateway` and mirrors them in the UI; command router (`/status` reports active project + git branch/working-tree state + the active session's context-usage % and accumulated cost as plain numbers, read from the S-7 `SessionStats` rollup via the `sessionStats` port) + gated shell + optional desktop→chat conversation mirror (`remoteControl.mirrorDesktop`) + inbound attachments (photo/document/video/audio downloaded, saved via `AttachmentEnricher`, appended to the caption for the agent to Read). **`/clean` stops the in-flight run, resets the session, clears the visible thread, AND drops the pending queue:** `ResetSessionUseCase` first `registry.stopProject`s the active run (a reset starts from scratch, so a still-streaming run belongs to the OLD session — otherwise the killed agent keeps generating with the previous context and its output lands in the fresh session) and then resets the main-process registry pointers; `claude.ipc.ts` wraps it in `resetSessionFor` (reset + `queue.clear` so parked instructions from the old conversation don't dispatch into the fresh session — Telegram CAN queue: `submitInstruction` enqueues remote-origin runs too while busy). The renderer side of the kill: `AppStateService.resetSessionLocal` also drops the in-flight `assistantStreams` entry for the key, so the trailing `process:end` from the killed run can't finalise the old partial reply into the now-fresh thread. The Telegram path (`bindResetSession`) additionally emits the `session:reset` event because the renderer owns the in-memory chat; the renderer subscribes and runs `AppStateService.resetSessionLocal` (clear in-memory chat + "session reset" marker + immediate persist + refresh the per-base session list) — the single source of truth the chat-panel button and the sidebar reset also call. Without the event the renderer kept appending the next instruction to the SAME on-disk session/thread. The renderer-initiated `IPC.sessionReset` path also goes through `resetSessionFor` (so the desktop reset drains the queue too) but does NOT emit the event (it clears its own chat state), so there is no double-clear. Sleep/wake resilient: the poller caps each long-poll with a client-side timeout and exposes `wake()`; the feature wires `powerMonitor('resume') → wake()` (dead socket reconnects at once instead of stalling on undici's 300s bodyTimeout) and holds a `powerSaveBlocker('prevent-app-suspension')` only while the bot is connected. **UI tools over Telegram (S-25 F3.1, generalises S-24):** a remote user can't click anything, so a run started from the bot carries `origin: 'remote'` (threaded `RunGateway.submit → RunInstructionUseCase.execute`, and persisted on queued items so a queued remote run keeps it). S-24 withheld the whole server; S-25 decides **tool by tool**: the tools that need no interaction survive (`devia_todo`, `devia_notify`, `devia_skill`, plus `devia_send_file` when `canSendFiles` — S-32) and the five that carry a decision are withheld. `devia_notify` is MORE useful there than on the desktop — the chat is the only channel someone away from their desk has. Measured effect: a remote turn carries three tool schemas (four with `devia_send_file`) in the cached prefix instead of seven. The agent learns the plain-text equivalent of every withheld capability from `infrastructure/ui-tools-protocol.ts`, the pack shared with any run that lacks them; `infrastructure/remote-protocol.ts` adds only what is specific to the chat relay (no clickable UI at all, phone-sized replies) and deliberately does NOT restate the fallback's rule. A runtime safety net remains for an agent's OWN built-in picker: it auto-answers with a canned "you're on Telegram, re-ask as text" tool result through that agent's channel (`writeToolResult` — never the rendezvous file, which nothing would read for a tool that was not delivered) **instead of** waiting for the 5-minute kill timeout. Permission requests (ACP) are left untouched. **File output (S-32):** the `RunForwarder` accumulates the run's `file` events (deduped by path) alongside the text and, once the router calls `finish()` after `end`, sends the text reply FIRST (with `📎 N archivo(s) a continuación`) and then the files via `TelegramClient.sendFile` / `sendMediaGroup` (multipart, global `FormData`/`Blob`; one 429 retry honouring `retry_after` ≤ 30 s). `planFileBatches` orders them: photo+video albums, document albums, audio albums — max `MAX_MEDIA_GROUP` (10) per album, each item keeps its OWN caption (never joined). No photo over `MAX_PHOTO_BYTES` (10 MB) reaches this point: the gate (`revalidateOutboundFile`) already downgraded it to `document`. An album that fails with a **400** is retried item by item through `sendFile` (which can still fall back photo→document); any other album error (429/401/413/network) fails the whole batch. Files are read ONE AT A TIME right before the upload by `readOutboundFile`: `open(O_RDONLY | O_NOFOLLOW)`, `fstat` on the handle, then it must be a regular file with `nlink === 1`, the same `dev`/`ino` as the admitted `RunFile.identity` and exactly the validated `size` (≤ `MAX_UPLOAD_BYTES`), and only that many bytes are read from the handle — never `readFile` on the path. Refusals surface as `changed` / `hardlink` / `not-a-file` / `too-large`, a swapped-in symlink as `symlink` (ELOOP). A partly failed album rejects with `PartialUploadError` so each file gets its own outcome. Upload failures (one batch failing never aborts the rest) and `file_rejected` events (outbox files the gate refused, and `devia_send_file` requests main refused on revalidation, `source: 'tool'`) are reported in ONE trailing `⚠️ No pude enviar: name (reason), …` message. Files are still sent when the run ended in error, but **NOT when the user stopped it** (`end.error === 'stopped'` or `end.cancelReason === 'user'`, published by `claude.ipc.ts`; idle/question timeouts are not user stops): the reply carries `⏹️ *Detenido*` without the 📎 line, then ONE `⏹️ Ejecución detenida: no envié N archivo(s)` message, and each pending file is audited `failed:stopped`. A per-project promise tail makes the next run's reply wait for the previous run's uploads. The desktop mirror uses `pushFile(s)` (same `sendFiles`, but a disconnected bot REJECTS with `not-connected` so the file is audited `failed:not-connected`, never `delivered`). Every upload outcome is audited (`delivered` / `failed:<reason>`, name + size only) via `onFileOutcome → auditSendFile`. The Telegram limits (`MAX_UPLOAD_BYTES`, `MAX_PHOTO_BYTES`, `MAX_CAPTION_CHARS`, `MAX_MEDIA_GROUP`) live in `src/shared/domain/outbound-file-policy.ts` (shared by guard, gate and client; `telegram-client.ts` re-exports them) |
 
 ---
@@ -147,6 +149,7 @@ Plain TypeScript interfaces, no logic, no side effects. Key types:
 | `toRelativePath()`                                                               | `path-display.ts`           |
 | `IdeId`, `IdeInfo`, `IDE_CATALOG`, `buildIdeSpawn()`, `availableIdes()`           | `ide.ts`                    |
 | `ReviewComment`, `buildReviewPrompt()`, `diffSignature()`, `reconcileComments()` | `review-comment.ts`         |
+| `GraphNode`, `GraphEdge`, `CodeGraphStatus`, `IndexProgress`, `GraphViewPage`, `NODE_KINDS`, `EDGE_KINDS` (S-44) | `code-graph.ts`             |
 | IPC channel names                                                                | `contracts/ipc-channels.ts` |
 | Bridge interface                                                                 | `contracts/devia-bridge.ts` |
 
@@ -197,6 +200,38 @@ Write no comments by default. Only document non-obvious _why_: hidden constraint
 
 ---
 
+## Git workflow (binding for every human and every agent)
+
+| Branch | Role | How code gets in |
+| --- | --- | --- |
+| `main` | Release delivery branch. Only finished batches of fixes/features. | **Only** by a PR `dev` → `main`. Never a direct commit, never a feature branch straight into it. |
+| `dev` | Consolidation branch for finished features and fixes. | **Only** by PR (`feature/*`, `fix/*`, `docs/*`, … → `dev`). Never a direct commit. |
+| `feature/*`, `fix/*`, `docs/*`, … | Where ALL development happens, feature or fix alike. | Always created from the current `dev`, and merged back into `dev` by PR. |
+
+- **Never develop in a checkout where Devia is running.** The maintainer's checkout (`/Users/dherrero/repos/devia-app`) stays on `dev`, clean and compilable: it is the copy they build and run the app from. Work in a feature branch checked out in its own worktree (a sibling directory such as `devia-app-<feature>`), created by the user or by a Devia pane — an agent never creates, moves or removes worktrees or branches of the user's checkout on its own initiative.
+- **Never leave work in progress uncommitted in a tree the app builds from.** `tsconfig.main.json` compiles everything under `src/main`: an untracked, half-written file or a dirty `queries.ts` breaks `npm run build` and therefore the whole app. Partial work lives on a feature branch in its worktree, committed in coherent steps.
+- Commits are local until the user says to push. An agent never pushes, never opens or merges a PR and never touches `main`/`dev` without an explicit request.
+- Commit messages follow Conventional Commits (`release.yml` bumps the version from them).
+- Branch names: `feature/<slug>` (new functionality), `fix/<slug>`, `refactor/<slug>`, `docs/<slug>`, `chore/<slug>` (tooling, deps, scripts); the older `feat/<slug>` form is also accepted.
+- Never bypass hooks (`--no-verify`, `--no-gpg-sign`) without explicit user authorization.
+
+### Devia must keep working after every change (definition of done)
+
+A task is not done until, in the worktree of its branch, all of this passes with the real output read:
+
+```bash
+npm run typecheck   # both tsconfigs
+npm run build       # main (CJS) + renderer (compiles the Angular templates, which typecheck does not)
+npm test            # main + renderer + libs suites
+npm run lint
+```
+
+- Anything that ships in the packaged app (new runtime dependency, wasm/asset, worker or MCP entry file) additionally needs `npm run pack:dir` and a launch of the unpacked app once before its PR; assets are copied to `dist` by `scripts/copy-assets.cjs`.
+- Before a PR to `dev`: rebase or merge the latest `dev` into the branch, repeat the gate above, and start the app (`npm run dev` after `npm run build`) to confirm it opens and the touched feature works. Say plainly what was and was not verified.
+- If a change cannot be finished in one sitting, it stays on its branch; `dev` and `main` must never be left in a state that does not build.
+
+---
+
 ## Testing
 
 ```bash
@@ -217,7 +252,7 @@ npm run typecheck      # tsc --noEmit on both tsconfigs (does NOT compile Angula
 
 ## Build & run
 
-A single npm project at the repository root (Node `>=26.13.0` (Node 26 LTS), see `.nvmrc`). There is no monorepo tooling: every script below is plain `tsc` / `ng` / `vitest` / `electron-builder`. `package.json` is both the project manifest and the electron-builder config (`build` field); only `electron-updater` and `node-pty` are `dependencies` (what gets packaged) — everything the Angular build bundles is a `devDependency` on purpose.
+A single npm project at the repository root (Node `>=26.13.0` (Node 26 LTS), see `.nvmrc`). There is no monorepo tooling: every script below is plain `tsc` / `ng` / `vitest` / `electron-builder`. `package.json` is both the project manifest and the electron-builder config (`build` field); only what the main process needs at runtime (`electron-updater`, `node-pty`, `web-tree-sitter`, `zod`, `@agentclientprotocol/sdk`) is in `dependencies` (what gets packaged) — everything the Angular build bundles is a `devDependency` on purpose.
 
 ```bash
 npm install
@@ -240,7 +275,7 @@ npm run audit:runtime  # npm audit gate for packaged dependencies
 
 **Native modules**: `node-pty` is a runtime `dependency` so electron-builder packages it. The `postinstall` hook (`scripts/rebuild-native.cjs`) rebuilds it for the Electron ABI in use.
 
-**Packaging** (gotchas): electron-builder reads the `build` field of the root `package.json`; paths in it (`build/…`, `src/renderer/assets/images/Devia.PNG`) are relative to the repository root. `build.electronVersion` is pinned explicitly — **keep it in sync with the `electron` devDependency** when bumping Electron. **Do not rename the package** (`"name": "devia-app"`): Electron derives `app.name` and the userData folder (localStorage, Chromium state) from it, and a new name would orphan every installed user's data. The packaged `app.asar` contains only `dist/main`, `dist/renderer` and `package.json` (~12 MB); if it suddenly grows to tens of MB, something that should be a `devDependency` ended up in `dependencies`.
+**Packaging** (gotchas): electron-builder reads the `build` field of the root `package.json`; paths in it (`build/…`, `src/renderer/assets/images/Devia.PNG`) are relative to the repository root. `build.electronVersion` is pinned explicitly — **keep it in sync with the `electron` devDependency** when bumping Electron. **Do not rename the package** (`"name": "devia-app"`): Electron derives `app.name` and the userData folder (localStorage, Chromium state) from it, and a new name would orphan every installed user's data. The packaged `app.asar` contains only `dist/main`, `dist/renderer` and `package.json` (~27 MB since S-44: the seven tree-sitter grammars add ~5 MB of wasm and `web-tree-sitter` the rest); if it suddenly grows well beyond that, something that should be a `devDependency` ended up in `dependencies`.
 
 **macOS signing & notarization** (Developer ID — distribution outside the App Store): the `build.mac` block enables `hardenedRuntime` + `gatekeeperAssess: false` + `notarize: true`, with `build/entitlements.mac.plist` used for both `entitlements` and `entitlementsInherit`. The entitlements declare the Hardened Runtime exceptions Devia needs because it spawns child CLIs (node-pty/child_process) and the `devia-memory` MCP server via `ELECTRON_RUN_AS_NODE=1`: `allow-jit`, `allow-unsigned-executable-memory`, `disable-library-validation`, `allow-dyld-environment-variables`. Removing any of those breaks agent/terminal/MCP spawning in the signed build. Signing identity (`Developer ID Application`) is auto-detected from the login keychain. Notarization credentials come from env vars at `npm run pack:mac` time — `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID` (app-specific password) or `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER` (App Store Connect API key). With no credentials present electron-builder still signs but **skips notarization silently** (so local non-release packaging does not hard-fail).
 
@@ -275,6 +310,15 @@ notice on `available`, and a "restart to install" action toast on `downloaded`
 auto-update only works for the AppImage target** — `.deb` users update manually
 (a failed check is swallowed and surfaced as an `error` status, never a crash).
 
+**CI** (`.github/workflows/`). `ci-dev.yml` (PRs/push to `dev`: typecheck, lint,
+unit tests) and `ci.yml` (PRs/push to `main`: plus coverage, build and runtime
+audit) run each check as a parallel job. `dev`'s branch protection requires the
+check named `Dev · Typecheck · Lint · Test`, which is the `gate` job of
+`ci-dev.yml` (it aggregates the other jobs) — keep that job name, or update the
+rule, if you rename it. `paths-ignore` (`**.md`, `docs/**`) is applied to every
+trigger except `pull_request` on `dev`, so docs-only PRs still report the
+required check.
+
 **Release pipeline** (`.github/workflows/`). `release.yml` bumps the version from
 Conventional Commits and tags. `desktop-release.yml` runs after it via
 `workflow_run`: a `gate` job skips the build when that version already has
@@ -291,26 +335,6 @@ the app verifies is `latest*.yml`, not this file).
 notarization trio `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`.
 Without the mac secrets the macOS job still builds but ships unsigned/unnotarized.
 `DEVIA_SAAS_URL` is optional: unset, the upgrade deep link does nothing.
-
----
-
-## Git workflow
-
-GitHub Flow. Branch naming:
-
-- `feat/<slug>` — new functionality
-- `fix/<slug>` — bug fix
-- `refactor/<slug>` — non-behavioral change
-- `docs/<slug>` — documentation only
-- `chore/<slug>` — tooling, deps, scripts
-
-Hard rules:
-
-1. **Never commit to `main` directly.** Check current branch before any edit; create a branch if on main.
-2. **Never commit without explicit user confirmation** that the change works correctly.
-3. **Never open a PR without explicit user request.**
-4. **Push immediately after every commit** — the user reviews remotely; unpushed commits are invisible.
-5. **Never bypass hooks** (`--no-verify`, `--no-gpg-sign`) without explicit user authorization.
 
 ---
 
@@ -448,7 +472,7 @@ Supported agents and their stream formats:
 
 Non-CLI providers (API, MCP, local-model, planned) are registered for UI visibility but cannot be selected as the active agent — `SelectAgentUseCase` rejects them.
 
-User-configured MCP servers (from the manager) and Devia's bundled servers (`devia-memory` gated on `memory.enabled`, `devia-kanban`, `devia-ui`) reach each agent through its mapper — see "Agent layers" above. The bundled-server builders (`MemoryMcpInjector` / `KanbanMcpInjector` / `UiMcpInjector`, names historical) only build `McpServerConfig`. Native-config delivery writes all of Devia's servers in ONE write per run (`NativeConfigMcpDelivery`, `prune: false`); the MCP-manager catalog sync (`prune: true`) never prunes `BUNDLED_SERVER_IDS` unless listed in `removedIds` — together these stop the old bug where each injector deleted the server the previous one wrote. Every delivery retires the dead S-24 `devia-ask` entry (only entries with the `__devia_managed` marker — a hand-added one is respected). Gemini CLI 0.46 rejects that marker key (it then loads NO server), so Gemini's target sets `jsonOmitMarker`: Devia writes no marker there, owns the reserved bundled ids plus `removedIds`, and strips markers an older version left behind (S-38 T-416; the legacy golden differs from pre-S-30 only there). Qwen (a Gemini fork) is unverified. An agent that cannot load MCP while the user configured servers gets a status notice (UC-FIX-005).
+User-configured MCP servers (from the manager) and Devia's bundled servers (`devia-memory` gated on `memory.enabled`, `devia-kanban`, `devia-code-graph` gated on a graph existing for the run's EFFECTIVE cwd — the session worktree when isolated, no fallback to the base graph — and on the project's `agentAccess` switch, decided once at run start; `devia-ui`) reach each agent through its mapper — see "Agent layers" above. The bundled-server builders (`MemoryMcpInjector` / `KanbanMcpInjector` / `CodeGraphMcpInjector` / `UiMcpInjector`, names historical) only build `McpServerConfig`. Native-config delivery writes all of Devia's servers in ONE write per run (`NativeConfigMcpDelivery`, `prune: false`); the MCP-manager catalog sync (`prune: true`) never prunes `BUNDLED_SERVER_IDS` unless listed in `removedIds` — together these stop the old bug where each injector deleted the server the previous one wrote. Every delivery retires the dead S-24 `devia-ask` entry (only entries with the `__devia_managed` marker — a hand-added one is respected). Gemini CLI 0.46 rejects that marker key (it then loads NO server), so Gemini's target sets `jsonOmitMarker`: Devia writes no marker there, owns the reserved bundled ids plus `removedIds`, and strips markers an older version left behind (S-38 T-416; the legacy golden differs from pre-S-30 only there). Qwen (a Gemini fork) is unverified. An agent that cannot load MCP while the user configured servers gets a status notice (UC-FIX-005).
 
 **Auto-continue after the usage limit (Claude Code).** Settings → Execution → Claude has an "Auto-continue sessions" switch (`config.autoContinueSessions[agentId]`, default off). Claude's decoder turns a `rate_limit_event` with `status: 'rejected'` into an `AgentEvent` `rate_limit` (`resetsAt` in epoch **ms**; the wire value is seconds; `allowed` is silent, `allowed_warning` → `warning`) and classifies the run's error `result` as `transient`. `RunInstructionUseCase` remembers a rejection and calls `handlers.onRateLimited` right before `onProcessEnd`; `claude.ipc.ts` then asks `AutoResumeScheduler` (`claude-runner/application/`) to continue the session at `resetsAt` + 30 s by calling `submitInstruction` with the SAME mode/origin/runKey/sessionId and a fixed "Continue where you left off." prompt (native resume carries the context). Rules that each exist for a reason: deadlines are polled against the wall clock (15 s) and re-checked on `powerMonitor('resume')`, because a `setTimeout` does not advance while the machine sleeps; waits up to 8 days are scheduled, so the weekly window is resumed too (the banner shows the date when it is not today; the app must stay open meanwhile); at most 3 resumes in a row that hit the limit again (`noteCleanRun` resets the streak); the queue is NOT dispatched while a resume is pending (parked items would hit the same limit); a user message, Stop, session reset, agent switch or switching the option off cancels it (checked again when it fires). The renderer shows `ds-auto-resume-banner` (above the queue panel) from `AppStateService.autoResumes`, fed by `autoresume:scheduled` / `autoresume:cancelled`, with a Cancel button (IPC `autoresume:cancel`). Memory only: a pending resume does not survive closing Devia. **Detection** (shapes recorded from real sessions, Claude Code 2.1.302): a hit limit is a synthetic assistant message (`model: "<synthetic>"`, text "You've hit your session limit · resets 11:30am (Europe/Madrid)", `error: "rate_limit"`, `apiError: "usage_limit_reached"`, window under `apiErrorParams.rate_limit_info = { status: "rejected", resetsAt (seconds), rateLimitType: "five_hour" }`); the decoder also accepts a standalone `rate_limit_event` and, as a last resort, the error `result` text (`limit-text.ts` parses "resets 11:30am (Europe/Madrid)" into a timestamp). The decoder reports it once per run. **Unverified:** those shapes come from the session transcripts on disk; the exact stdout stream lines in `-p` mode have no recorded fixture yet, which is why every one of the three sources is handled.
 
@@ -682,6 +706,62 @@ parser).
 - **Follow-up (S-20 backlog).** Gemini / OpenCode (replay) and Cursor / Copilot
   (under investigation) are not covered yet — each needs its own reader + parser
   added to the registry.
+
+## Code Graph (S-44)
+
+Devia indexes the user's project into a code graph of its own (0 tokens, all local): 5 languages — TypeScript/JavaScript (`.ts .tsx .mts .cts .js .jsx .mjs .cjs`), Python, Java, Go, Dart (Flutter). Agents get it as the `devia-code-graph` MCP server; the user sees it in the `/graph` route (rail icon after the Kanban). Indexing only ever starts from the user's button. Parts of the engine are adapted from codegraph (MIT); see `NOTICE` (every adapted file starts with `Adapted from codegraph (MIT) — see NOTICE`, kept in sync by `tools/notice-code-graph.test.ts`).
+
+**Layout** (`src/main/features/code-graph/`):
+
+| Path | Role |
+| --- | --- |
+| `engine/` | Pure engine, **no Electron imports** — the main process, the index worker and the MCP process all load it. |
+| `engine/db/` | `schema.sql` (copied to `dist` by `scripts/copy-assets.cjs`), `connection.ts` (`openGraphDb`: WAL, `busy_timeout=5000`, FKs), `migrations.ts` (`SCHEMA_VERSION` = number of steps, each idempotent), `queries.ts` (`GraphQueries`, all SQL), `writer-lock.ts` |
+| `engine/discovery/` | File walk (`lstat`, symlinks never followed, `.gitignore` root + nested + default ignores, > 1 MB / minified skipped with a reason), test-file conventions |
+| `engine/extraction/` | `grammars.ts` (lazy wasm load, `wasm/` beside the compiled file, falling back to the `src` copy for `watch:main`), `registry.ts` (one extractor per language), `extractor.ts` (`ExtractionBuilder`, scopes, refs), `languages/<lang>.ts` + `<lang>-types.ts` (receiver type facts), `generated-detection.ts`, `node-id.ts` (deterministic ids) |
+| `engine/resolution/` | `resolver.ts` (`resolveReferences`), `import-resolver.ts` + `path-aliases.ts` (TS), `languages/{python,java,go,dart}.ts` (`LanguageResolver`s), `go-implements.ts` (structural `implements`), `name-matcher.ts`, `type-inference.ts` |
+| `engine/indexer/` | `orchestrator.ts` (`indexProject`, `EXTRACTION_VERSION`), `index-worker.ts` + `index-runner.ts` (worker_thread), `post-index.ts` (resolution + communities + hubs before the swap), `sync.ts` + `change-detection.ts` (incremental), `resolution-config.ts` |
+| `engine/graph/` | `traversal.ts` (callers/callees/impact/path), `symbol-lookup.ts`, `explore.ts` + `explore-budget.ts`, `node-detail.ts`, `affected.ts`, `communities.ts` (communities + hubs, persisted as metadata), `source-reader.ts` |
+| `engine/search/` | FTS5 on `name`, docstring/signature as a lower tier, substring fallback |
+| `application/` | `code-graph.use-case.ts` (status/index/cancel/reset/update/watch/toggles), `graph-view.use-case.ts` (paginated view queries), `worktree-graph.ts` + `seed-copy-worker.ts` |
+| `infrastructure/` | `code-graph-store.ts` (data dir + `project.json`), `file-watcher.ts`, `staleness.ts`, `git-head.ts`, `code-graph-protocol.ts` (prompt block) |
+| `ipc/code-graph.ipc.ts` | `code-graph:*` channels (status, index, cancel, reset, set-agent-access, set-auto-update, update, watch/unwatch, overview, expand, node-detail, search; push events `progress` and `status-changed`) |
+| `mcp-server/` | `server.ts` (stdio JSON-RPC by hand, like `devia-memory`), `graph-tools.ts`, `format.ts`, `server-instructions.ts`, `code-graph-mcp-injector.ts` |
+
+Renderer: `src/renderer/app/features/code-graph/` — `CodeGraphStateService` (status/progress), `GraphViewStore` (expansions, LRU cap, reveal, filters), `GraphRenderer` port over Cytoscape.js + `cytoscape-fcose` (lazy chunk; swap the library behind the port, never in the store), components `empty-state`, `index-progress`, `graph-toolbar`, `graph-canvas`, `graph-search`, `graph-filters`, `node-detail`. i18n under `codeGraph.*` in all 11 locales (`tools/i18n-code-graph-orphans.test.ts` fails on unused keys; plurals use the app-wide `key`/`key_plural` two-form convention, so ru/ar get two forms only).
+
+**Data.** `<deviaDir>/code-graph/<projectKey(abs)>/` holds `graph.db` and `project.json` (`ProjectDoc`: `createdAt`, `autoUpdate` (default `DEFAULT_AUTO_UPDATE = true`), `agentAccess` (absent = on, only `false` is stored), `builtAtCommit`, `indexedAt`). Nothing is ever written into the user's repo. Paths in the DB are root-relative with `/`, so a copied graph is valid in a worktree. Tables: `nodes` (+ optional visibility/async/static/abstract/decorators/metadata), `edges` (identity `UNIQUE(source,target,kind,IFNULL(line,-1),IFNULL(col,-1))`, `ON DELETE CASCADE`), `files` (hash, mtime, `is_test`, `generated`, errors), `unresolved_refs` (`RefStatus` `pending` | `failed` | `bound`), `resolution_deps`, `project_metadata` (`root`, `indexed_at`, `extraction_version`, resolution-config hashes, `communities`, `hubs`), `nodes_fts` (FTS5 external content + triggers), `schema_versions`. A full index writes `graph.db.building` and renames it over `graph.db` only when it finished (retries on Windows `EBUSY`, else `INDEX_SWAP_BUSY`); a half-built graph is never visible. **Every reader opens a READONLY handle per request and closes it before returning** — never hold one between requests (Windows would block the swap).
+
+**Single writer.** `writer.lock` in the data dir (`acquireWriterLock(dir, 'indexer' | 'sync')`): JSON `{pid, owner, since, token}` created atomically (temp file + `link`); a lock whose pid is dead, or whose `since` AND mtime are both older than 30 min, is stolen, one stealer at a time under `writer.lock.steal`; a full index refreshes the lock's mtime every 60 s (`heartbeatMs`), so a live long index never looks stale. A sync removes orphan `graph.db.building*` files only when the lock was free or its holder's pid is dead (`previousHolder`), never after stealing from a live holder. During a full index the MCP never syncs (`isFullIndexRunning`): it answers from the current graph with the "index in progress" note. The lock only prevents redundant runs; `busy_timeout` still serialises writes, so nobody ever sees `SQLITE_BUSY`.
+
+**Index, sync and freshness.** `index()` runs discover → parse → resolve → finalize in a worker thread with progress, cancel and the atomic swap; error codes `INDEX_BUSY`, `INDEX_WORKER_CRASHED`, `INDEX_SWAP_BUSY`. `syncProject` re-extracts added/modified (mtime AND hash)/deleted files plus their dependents and resolves only those; it must equal a full reindex (`sync-parity.test.ts` is the acceptance test: when it fails, the bug is in sync). It returns `fullIndexRequired: true` without writing when `EXTRACTION_VERSION`, the root or a resolution config (`tsconfig*`/`jsconfig*` closure, `go.mod`, `pubspec.yaml`) changed — **bump `EXTRACTION_VERSION` in `orchestrator.ts` whenever an extractor changes what it stores**, so old graphs re-index instead of drifting. Communities and hubs are hints recomputed only by a full index. The watcher (`fs.watch` recursive, per-directory fallback capped at 2000 dirs ⇒ `watchDegraded`) runs only for the project open in `/graph` (max 5 watched); with `autoUpdate` it syncs by itself, and HEAD is polled every 20 s for `staleReason: 'commit'`.
+
+**MCP contract.** `server.js` (`dist/main/main/features/code-graph/mcp-server/server.js`) runs as `process.execPath` with `ELECTRON_RUN_AS_NODE=1`, args `--devia-dir <deviaDir> --project <abs>` (+ `DEVIA_ACTIVE_AGENT_ID`); `initialize` returns `SERVER_INFO {name: 'devia-code-graph'}` and `SERVER_INSTRUCTIONS` (≤ 120 words, the ONLY long tool guide). Tools: `graph_explore {query}` (primary: a bag of exact symbol names → their source + the call path between them), `graph_search {query, kinds?, limit?}`, `graph_node {symbol}`, `graph_callers`/`graph_callees {symbol, depth? ≤ 3}`, `graph_impact {symbol, depth? ≤ 4}`, `graph_affected {files[] ≤ 200}`, `graph_files {path?, pattern?}`, `graph_status {}`. Symbols accept `name`, `Class.method` or `file.ts#name`. Golden rules:
+
+1. `isError` ONLY for `PATH_REFUSED` (a path escaping the project) and real failures. No graph, symbol not found, file not indexed, access off, index running ⇒ a success-shaped answer that says what to do.
+2. Before answering, a sync with a 2 s soft deadline and a hard 5 s ceiling (`SYNC_CEILING_MS`): past it the answer comes from the current graph with the "catching up" note while the shared sync continues.
+3. Descriptions say the tools replace grep/find for structure and that `graph_explore` goes first. Output never tells the agent to Read or grep.
+4. Every answer is capped at `MAX_OUTPUT_CHARS` = 24 000 chars, **except `graph_explore`**, which uses its file-count budget (`getExploreOutputBudget`: 18k chars under 500 files, 28k–38k above) — deliberate, it is the one call meant to replace several reads. Argument caps in `ARG_LIMITS` (query 1000, symbol 500, path 1024, glob pattern 256, linear-time glob matcher).
+
+**Gating and delivery.** `codeGraphMcpServer(projectAbs)` returns a config only when that checkout has `graph.db` AND `agentAccess !== false`; decided when the run starts (a toggle applies to the next run). It reaches every agent by the same path as `devia-memory` (Claude `--mcp-config` + `mcp__devia-code-graph` grant, native configs, Pi, OpenCode, ACP); a run WITHOUT it removes a stale entry Devia wrote earlier in native config files (`native-config-mcp.ts`), and Gemini's plan-mode allow rule exists only when the run carries the server. The prompt block (`codeGraphProtocol`, ~47 words, names the tools only) is gated on THAT run's delivery (`codeGraphServer !== undefined && delivery.mcpServerIds.includes(CODE_GRAPH_SERVER_ID)`): `<devia-turn-context>` for Claude, system prompt for the others. The server id is copied into the runner, `agents/shared/native-config-mcp.ts` and `cli-adapters/.../gemini.ts` (features never import each other); `src/main/features/code-graph-server-id.test.ts` pins every copy to the injector's id.
+
+**Agent usage and node spacing (S-48).** The MCP server logs each `tools/call` (tool, `DEVIA_ACTIVE_AGENT_ID`, time) as one JSON line in `<dataDir>/tool-usage.jsonl` (`infrastructure/tool-usage-store.ts`; append-only so several agent processes never lose calls, rolls over at 1 MB, never throws, never touches `graph.db`). `code-graph:usage` returns the `ToolUsageSummary`; the toolbar shows a chip (total, per-tool tooltip, a warning when the graph is on but nobody used it). In the renderer, `resolveCollisions` (`utils/graph-layout.ts`, grid-based, deterministic) runs after the global fcose layout and folds into every burst's targets, so nodes (size + label box + `BURST_GAP`) never overlap.
+
+**Worktrees.** Graphs are per checkout. An isolated pane's worktree gets its own graph at `code-graph/<projectKey(worktreePath)>`, seeded from the base with `VACUUM INTO` in a short-lived worker (root rewritten, doc copied) and then synced in the background; it is dropped when the worktree is removed. The run uses its EFFECTIVE cwd: a worktree without a graph gets no server (never the base's graph). A worktree created during a run is seeded asynchronously, so that first run does not see it.
+
+**Known limitations (accepted, post-merge backlog).** Receiver typing follows initializer/declared types only: Python `global` reassignment of a module variable is not tracked; a class declared inside a function does not hide an imported class of the same name (TS); type parameters of generic arrow/function expressions and Python `match/case` captures are not treated as locals, so a contrived name clash can yield a wrong `calls` edge. `tools/code-graph/oracle.test.ts` asserts recall only (not extra edges) and is skipped without `CODEGRAPH_ORACLE_BIN`.
+
+**Scale limits.** Target 50k nodes per DB (bench: a generated 10k-file / 70k-node repo indexes in ~31 s, peak RSS ~390 MB). View: ≤ 500 children per expansion + "show more", ≤ 2000 `visibleIds` per request, ≤ 5000 edges per page (`edgesTruncated`), `VISIBLE_ELEMENT_CAP` = 8000 nodes+edges on screen (oldest expansions collapse, with a notice); the server sends aggregate edges only. Budgets (S-44): full index ≤ 90 s, 1-file sync ≤ 500 ms, `graph_explore` ≤ 1 s, overview ≤ 300 ms, expand ≤ 200 ms, worker RSS ≤ 1.5 GB. Engine perf tests measure with `bestOf` + `perfBudget` (`engine/graph/test-graph.ts`); on a loaded machine re-run a failing perf/multi-process test alone before judging it.
+
+**`ELECTRON_RUN_AS_NODE` + wasm gotcha.** The index worker, the seed worker and the MCP process all run under Electron-as-Node: `node:sqlite` (FTS5 + WAL) and `web-tree-sitter` work there and straight from `app.asar` (the wasm are read with `fs.readFile`, which Electron's asar patch serves), so there is no `asarUnpack` — verified by the T-478 spike and the packaged smoke of T-514. Two traps: (1) `tsc` copies no assets, so `scripts/copy-assets.cjs` (in `build:main`) copies `wasm/*.wasm` and `db/*.sql` to `dist`; `watch:main`/`dev` skip it, which is why `resolveWasmDir` falls back to the `src` copy. (2) Never `import.meta` in `src/main` (CommonJS); the worker entries are resolved from `__dirname`. Each `Tree` must be `delete()`d: wasm memory is not garbage collected.
+
+**Receiver type inference (T-515).** `recv.m()` resolves when `recv`'s type is known: extractors record type facts (`<lang>-types.ts`: declared types of fields/locals/params, initializer `new X()`, declared return types, generic parameters and bounds `tb:<T>`), `type-inference.ts` evaluates them with generic substitution; Java separates method and field namespaces, Python unifies `self.x` across methods and infers a return type when every `return` agrees. What a file's resolution read elsewhere is recorded in `resolution_deps` so a sync re-resolves the files that depend on a change; resolved import bindings stay as `bound` refs so a partial resolution can rebuild them. **Silence beats a wrong edge:** an untyped receiver, an ambiguous name or more than one candidate gives NO edge (the ref stays `failed`, retried when a file defining the name changes) — codegraph's "only method with that name" guess is deliberately not copied. Known gaps: Dart `show`/`hide` are not applied (a hidden name can still bind when it is the only candidate in the import closure), ambient `.d.ts` globals, computed receivers `a().b()`.
+
+**Oracle and bench.** `tools/code-graph/oracle.mjs` compares our graph with codegraph's on the fixtures in `tools/code-graph/fixtures/<lang>/` (recall of symbols, calls, imports; fails under 95/90/90 %): build codegraph outside this repo, then `CODEGRAPH_ORACLE_BIN=/path/to/codegraph/dist/bin/codegraph.js node tools/code-graph/oracle.mjs --lang ts|python|java|go|dart|all [--verbose]`; `tools/code-graph/oracle.test.ts` runs it in `test:main` only when that variable is set (floors at 100 % after documented normalisations). `node tools/code-graph/bench.mjs <project> [--json]` (or `--generate <dir> [--files 10000]` for a synthetic repo) measures index, sync, explore/impact, overview/expand, DB size and RSS against the budgets on a temp copy, never under `~/.devia-app`.
+
+**Add a language.** (1) Vendor its grammar wasm in `engine/extraction/wasm/` and list it (+ its upstream revision) in `NOTICE`; map its extensions in `grammars.ts` and add it to `CODE_GRAPH_LANGUAGES` in `src/shared/domain/code-graph.ts`. (2) Write `engine/extraction/languages/<lang>.ts` following `typescript.ts` (the template: `ExtractionBuilder`, `scopeAt/enterScope/addRef`, everything emitted as `unresolved` refs) plus `<lang>-types.ts` for receiver facts. (3) One `registerExtractor(...)` line in `registry.ts`. (4) A `LanguageResolver` in `engine/resolution/languages/<lang>.ts` (imports → files) registered in `language-resolvers.ts`. (5) Test-file conventions in `discovery/test-detection.ts`. (6) Fixture tests, a row in `receiver-types.test.ts` and in `sync-parity.test.ts` (sync == reindex), an oracle fixture in `tools/code-graph/fixtures/<lang>/`, and bump `EXTRACTION_VERSION`. Then the i18n language label and `README` lists.
+
+---
 
 ## Language rules
 

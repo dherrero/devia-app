@@ -50,6 +50,8 @@ describe('ElectronApiService.onMcpListChanged', () => {
       onQuestionAsk: noop,
       onUiToolRequest: noop,
       onDiffSnapshot: noop,
+      onCodeGraphProgress: noop,
+      onCodeGraphStatusChanged: noop,
       mcp: { onListChanged },
     };
     TestBed.resetTestingModule();
@@ -71,5 +73,95 @@ describe('ElectronApiService.onMcpListChanged', () => {
 
     cleanup();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ElectronApiService code graph wrappers', () => {
+  const originalDevia = (window as unknown as { devia?: unknown }).devia;
+  const unsubscribe = vi.fn();
+  const bridge = {
+    platform: 'linux',
+    isWSL: false,
+    codeGraphStatus: vi.fn(async () => ({ state: 'none' })),
+    codeGraphIndex: vi.fn(async () => ({ state: 'ready' })),
+    codeGraphCancel: vi.fn(async () => undefined),
+    codeGraphReset: vi.fn(async () => undefined),
+    codeGraphSetAgentAccess: vi.fn(async () => undefined),
+    codeGraphSetAutoUpdate: vi.fn(async () => undefined),
+    codeGraphUpdate: vi.fn(async () => ({ state: 'ready' })),
+    codeGraphWatch: vi.fn(async () => undefined),
+    codeGraphUnwatch: vi.fn(async () => undefined),
+    codeGraphOverview: vi.fn(async () => ({ nodes: [], edges: [], total: 0, hasMore: false })),
+    codeGraphExpand: vi.fn(async () => ({ nodes: [], edges: [], total: 0, hasMore: false })),
+    codeGraphNodeDetail: vi.fn(async () => undefined),
+    codeGraphSearch: vi.fn(async () => []),
+    codeGraphUsage: vi.fn(async () => ({ total: 0, byTool: {}, byAgent: {}, lastAt: null })),
+    onCodeGraphProgress: vi.fn(() => unsubscribe),
+    onCodeGraphStatusChanged: vi.fn(() => unsubscribe),
+  };
+
+  beforeEach(() => {
+    (window as unknown as { devia?: unknown }).devia = new Proxy(bridge, {
+      get: (target, prop) => (prop in target ? target[prop as keyof typeof target] : () => undefined),
+    });
+    TestBed.resetTestingModule();
+  });
+
+  afterEach(() => {
+    (window as unknown as { devia?: unknown }).devia = originalDevia;
+  });
+
+  it('forwards the project key and flags to the bridge', async () => {
+    const service = TestBed.inject(ElectronApiService);
+
+    await service.codeGraphStatus('a/b');
+    await service.codeGraphIndex('a/b');
+    await service.codeGraphCancel('a/b');
+    await service.codeGraphReset('a/b');
+    await service.codeGraphSetAgentAccess('a/b', false);
+    await service.codeGraphSetAutoUpdate('a/b', true);
+    await service.codeGraphUpdate('a/b');
+    await service.codeGraphWatch('a/b');
+    await service.codeGraphUnwatch('a/b');
+
+    expect(bridge.codeGraphStatus).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphIndex).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphCancel).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphReset).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphSetAgentAccess).toHaveBeenCalledWith('a/b', false);
+    expect(bridge.codeGraphSetAutoUpdate).toHaveBeenCalledWith('a/b', true);
+    expect(bridge.codeGraphUpdate).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphWatch).toHaveBeenCalledWith('a/b');
+    expect(bridge.codeGraphUnwatch).toHaveBeenCalledWith('a/b');
+  });
+
+  it('forwards the graph view reads to the bridge', async () => {
+    const service = TestBed.inject(ElectronApiService);
+
+    await expect(service.codeGraphOverview('a/b')).resolves.toEqual({ nodes: [], edges: [], total: 0, hasMore: false });
+    await service.codeGraphOverview('a/b', { offset: 500 });
+    await service.codeGraphExpand('a/b', 'dir:src', { offset: 500, visibleIds: ['dir:src'] });
+    await service.codeGraphNodeDetail('a/b', 'dir:src');
+    await expect(service.codeGraphSearch('a/b', 'helper')).resolves.toEqual([]);
+
+    expect(bridge.codeGraphOverview).toHaveBeenNthCalledWith(1, 'a/b', undefined);
+    expect(bridge.codeGraphOverview).toHaveBeenNthCalledWith(2, 'a/b', { offset: 500 });
+    expect(bridge.codeGraphExpand).toHaveBeenCalledWith('a/b', 'dir:src', { offset: 500, visibleIds: ['dir:src'] });
+    expect(bridge.codeGraphNodeDetail).toHaveBeenCalledWith('a/b', 'dir:src');
+    expect(bridge.codeGraphSearch).toHaveBeenCalledWith('a/b', 'helper');
+  });
+
+  it('returns the unsubscribe of both event subscriptions', () => {
+    const service = TestBed.inject(ElectronApiService);
+    const cb = vi.fn();
+
+    const offProgress = service.onCodeGraphProgress(cb);
+    const offStatus = service.onCodeGraphStatusChanged(cb);
+
+    expect(bridge.onCodeGraphProgress).toHaveBeenCalledWith(cb);
+    expect(bridge.onCodeGraphStatusChanged).toHaveBeenCalledWith(cb);
+    offProgress();
+    offStatus();
+    expect(unsubscribe).toHaveBeenCalledTimes(2);
   });
 });

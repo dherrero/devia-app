@@ -83,6 +83,13 @@ export interface ClaudeRunnerDeps {
    */
   memoryMcpServer?: (projectAbs: string, agentId?: string) => import('../../../shared/domain/mcp').McpServerConfig;
   /**
+   * S-44: Devia's bundled `devia-code-graph` MCP server for the run's effective
+   * cwd, or null when that checkout has no graph or agent access is off.
+   */
+  codeGraphMcpServer?: (projectAbs: string, agentId?: string) => import('../../../shared/domain/mcp').McpServerConfig | null;
+  /** T-508: brief prompt guide for the graph tools, null when no server was registered. */
+  codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
+  /**
    * S-25: the bundled `devia-ui` server, which carries every interface tool.
    * Keyed by the PER-RUN rendezvous directory, not by project. How it reaches
    * each agent is that agent's mapper's job (S-30).
@@ -98,6 +105,8 @@ export interface ClaudeRunnerDeps {
   starterKits?: import('../../shared/ports').StarterKitsPort;
   /** S-25 F2.6: pushes a `devia_notify` message to the chat relay, when one is up. */
   notifyRemote?: (text: string) => void;
+  /** S-45: saved-config changes (auto-continue switch). */
+  configChanges?: import('../../shared/config-change-bus').ConfigChangeBus;
   /** S-25 F2.4: per-project "always allow" grants for `devia_confirm`. */
   isConfirmationGranted?: (projectAbs: string, action: string) => boolean;
   grantConfirmation?: (projectAbs: string, action: string, agentId: string) => void;
@@ -181,6 +190,8 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     ...(deps.mcpServers !== undefined && { mcpServers: deps.mcpServers }),
     ...(deps.kanbanMcpServer !== undefined && { kanbanMcpServer: deps.kanbanMcpServer }),
     ...(deps.memoryMcpServer !== undefined && { memoryMcpServer: deps.memoryMcpServer }),
+    ...(deps.codeGraphMcpServer !== undefined && { codeGraphMcpServer: deps.codeGraphMcpServer }),
+    ...(deps.codeGraphProtocol !== undefined && { codeGraphProtocol: deps.codeGraphProtocol }),
     ...(deps.uiMcpServer !== undefined && { uiMcpServer: deps.uiMcpServer }),
     ...(deps.harnessCatalog !== undefined && { harnessCatalog: deps.harnessCatalog }),
     ...(deps.starterKits !== undefined && { starterKits: deps.starterKits }),
@@ -223,6 +234,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
         ...(deps.runGateway !== undefined && { runGateway: deps.runGateway }),
         ...(deps.onSessionReset !== undefined && { onSessionReset: deps.onSessionReset }),
         ...(deps.notifyRemote !== undefined && { notifyRemote: deps.notifyRemote }),
+        ...(deps.configChanges !== undefined && { configChanges: deps.configChanges }),
       });
     },
     onBeforeQuit() {

@@ -1,5 +1,6 @@
 import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
+import { ASK_USER_MANDATE_TAG } from '../../../../shared/domain/ask-user-mandate';
 import { missingUiCapabilities } from '../../../../shared/domain/ui-tools-policy';
 
 /**
@@ -12,13 +13,28 @@ import { missingUiCapabilities } from '../../../../shared/domain/ui-tools-policy
  */
 
 /**
+ * S-46: the rule is not a suggestion. It is written to be unmistakable (XML tag,
+ * capitals, bold) and it carries its own revocation, so a Claude session that
+ * moves to Telegram does not keep obeying it from an older turn. The block only
+ * exists for runs that were delivered `ask_user`, which a remote run never is.
+ */
+const ASK_USER_MANDATE = [
+  `<${ASK_USER_MANDATE_TAG} priority="mandatory" enforcement="strict">`,
+  '**THIS RULE IS MANDATORY AND NOT OPTIONAL. IT OVERRIDES ANY SKILL, HABIT OR INSTRUCTION THAT SAYS TO ASK IN PLAIN TEXT.**',
+  '- **YOU MUST CALL `devia_ask_user` FOR EVERY QUESTION YOU HAVE FOR THE USER**: choices, approvals, yes/no, "shall I proceed?", "which approach?", "do you want X?" — AND ALSO OPEN-ENDED QUESTIONS. For an open-ended one, propose 2 to 4 likely answers as options: the card always has a "write your own answer" button.',
+  '- **NEVER END A TURN WITH A QUESTION, A LIST OF OPTIONS OR "A OR B?" WRITTEN AS PLAIN TEXT. THAT IS A VIOLATION.**',
+  '- **SELF-CHECK BEFORE EVERY REPLY: IF YOUR MESSAGE ENDS IN "?" OR OFFERS OPTIONS, STOP AND CALL `devia_ask_user` INSTEAD.** Pass everything you need in ONE call (`questions`, each with `options`, and `multiSelect` when several answers are valid). It blocks until the user picks, so wait for the answer instead of assuming one.',
+  '- **THIS RULE APPLIES ONLY WHILE THIS RUN OFFERS `devia_ask_user` AND THE USER IS ON THE DEVIA DESKTOP APP. IF A LATER DEVIA BLOCK SAYS THE CHANNEL IS TELEGRAM OR THE TOOL IS NOT AVAILABLE, THIS RULE IS VOID.**',
+  `</${ASK_USER_MANDATE_TAG}>`,
+].join('\n');
+
+/**
  * One line per tool: WHEN to reach for it, not how. The JSON schema already
  * describes the how, and repeating it here pays for the same tokens twice in
  * the cached prompt prefix.
  */
 const TOOL_LINES: Record<UiToolName, string> = {
-  ask_user:
-    'You MAY use `devia_ask_user` to let the user pick between a few discrete options: pass one or more `questions`, each with its `options` (label plus an optional description), and `multiSelect` when several answers are valid. It blocks until the user picks, so wait for the answer instead of assuming one. Use it for any choice or approval instead of asking by text. For open-ended clarifications, just ask inline in your normal text response.',
+  ask_user: ASK_USER_MANDATE,
   todo: 'Use `devia_todo` to publish and keep updating your step list on any task with several steps, sending the COMPLETE list each time. It returns immediately and never asks anything.',
   plan_approve:
     'When your plan is ready and saved on the kanban, call `devia_plan_approve` instead of starting to edit files, listing its `steps` (reference the kanban ids), and wait: the user either keeps planning with a comment you must act on (update the board, then call it again), or accepts it — asking before each action, or without asking.',
@@ -74,8 +90,13 @@ const FALLBACK_FOOTER = [
 
 /** Announcement of the tools this run actually got. Null when it got none. */
 export function buildUiToolsHint(advertised: readonly UiToolName[]): string | null {
-  const lines = advertised.map((name) => TOOL_LINES[name]).filter(Boolean);
-  return lines.length > 0 ? lines.join(' ') : null;
+  // The mandate is a block of its own (S-46); the other tools stay one paragraph.
+  const lines = advertised.filter((name) => name !== 'ask_user').map((name) => TOOL_LINES[name]).filter(Boolean);
+  const parts = [
+    ...(advertised.includes('ask_user') ? [ASK_USER_MANDATE] : []),
+    ...(lines.length > 0 ? [lines.join(' ')] : []),
+  ];
+  return parts.length > 0 ? parts.join('\n\n') : null;
 }
 
 /** What the fallback needs to know beyond the delivered set. */

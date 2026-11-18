@@ -49,11 +49,11 @@ That's the whole message.
 
 ## The Conversation
 
-Each message ends with one question: a single sentence with no list of example answers hanging off it. Use plain language, pitched just a little above where the user is. Match their vocabulary; never use process jargon. You never need to quote this skill to them.
+Each message ends with one question, and **ALWAYS asked with the `devia_ask_user` card whenever the card is offered**: choices, approvals, yes/no and also open questions (offer two to four likely answers as options; the card always has a "write your own answer" button). Never end a message with a question or a list of options in plain text. The question itself is a single sentence with no list of example answers hanging off it. Use plain language, pitched just a little above where the user is. Match their vocabulary; never use process jargon. You never need to quote this skill to them.
 
 Be clear and concise. Lead with what matters. When you report what you found, give them the most important findings and offer the rest.
 
-**Get them describing.** Open questions come first, in plain conversation. Their own words carry intent that your options can't. Use a `devia_ask_user` card only for a real choice between a few options, and only when they're stuck. When they say "just guess" or "what do you think?", propose something concrete.
+**Get them describing.** Open questions come first. Their own words carry intent that your options can't, so the card's "write your own answer" button is the main answer, and the options you offer are only a starting point. Every question, open or closed, goes through the `devia_ask_user` card when it is offered. When they say "just guess" or "what do you think?", propose something concrete.
 
 **How it gets made.** Every project rests on choices about medium, tools, materials and resources: the platform, language and libraries for an app. Find out early which of those choices they want to make, which they're handing to you, and what they already have to work with. Someone with strong views will want to talk it through. Someone counting on you needs sensible defaults, said in plain words. When there's existing work, build on what it already uses. Any choice you make goes in the design as your call, never as something they agreed to.
 
@@ -91,7 +91,7 @@ Once you understand what they want and they've picked an approach, say how big t
 | A small change | a short one: what you already covered together, written down |
 | A project | the full written design (below) |
 
-Short or full, the spec has an **Approaches** part: the two or three ways you considered building it, what each trades off, which one they picked, and why. They pick in the conversation, before you write the spec.
+Short or full, the spec has an **Approaches** part: the two or three ways you considered building it, what each trades off, which one they picked, and why. They pick with the `devia_ask_user` card, in the conversation, before you write the spec.
 
 If it grows mid-task, stop, say so, and step up a size. If this is really several independent projects, say so, agree on an order, and brainstorm them one at a time (one spec each).
 
@@ -118,7 +118,7 @@ For a small change, the short spec covers the same points in a line or two each 
 
 Bring the "theirs" pile in one message, most important first. Update the draft with their answers, then hand it over with a short list of the calls you made so they can check those while reading. That's the only round of questions the check produces. Without a subagent tool, read the spec as that builder yourself.
 
-**Approval.** Show them the draft (or its summary) and ask with `devia_ask_user`: approve, or ask for changes. If cards aren't offered, ask in plain text and end your turn. When they approve, call `kanban_create_spec` once with the approved text, save the decisions that will outlive this conversation with `mem_save` (type `decision`: what was decided and why), then load `writing-plans`.
+**Approval.** Show them the draft (or its summary) and ask with `devia_ask_user`: approve, or ask for changes. If cards aren't offered (only then), ask in plain text and end your turn. When they approve, call `kanban_create_spec` once with the approved text, save the decisions that will outlive this conversation with `mem_save` (type `decision`: what was decided and why), then load `writing-plans`.
 
 <HARD-GATE>
 Nothing gets built until the user approves the design: the short one for a small change, the full one for a project. Building includes writing product code, scaffolding, installing dependencies, creating projects, and loading an implementation skill. Reading and exploring are fine.
@@ -132,7 +132,8 @@ After the design is approved and recorded, the next step is the plan: load `writ
 
 | Thought | Reality |
 |---------|---------|
-| "I'll offer a menu of what they might want" | Options steer. Ask them to describe it first. |
+| "I'll offer a menu of what they might want" | Options steer. Ask them to describe it first: your options are a starting point and the card's "write your own answer" button comes first. |
+| "It's a conversation, so I'll just ask in text" | Every question goes through `devia_ask_user` when the card is offered. Plain text only when it is not. |
 | "I'll fill in sensible defaults" | Good. Say them out loud. A default they never heard is one they couldn't reject. |
 | "I've answered their questions, so I'll write the spec" | Lay out the approaches first, in a message of their own. |
 | "I should explain the process first" | Ask your question. The process shows itself. |

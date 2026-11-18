@@ -188,6 +188,7 @@ describe('mapPiRpcEvent', () => {
     mapPiRpcEvent({ type: 'tool_execution_start', toolCallId: 'c1', toolName: 'mcp__devia_ui__devia_todo', args: {} }, (e) => events.push(e), ctx);
     expect(events[0]).toMatchObject({ name: 'mcp__devia-ui__devia_todo' });
     expect(normalizePiToolName('mcp__devia_kanban__kanban_list')).toBe('mcp__devia-kanban__kanban_list');
+    expect(normalizePiToolName('mcp__devia_code_graph__graph_search')).toBe('mcp__devia-code-graph__graph_search');
     expect(normalizePiToolName('mcp__github__search')).toBe('mcp__github__search');
     expect(normalizePiToolName('bash')).toBe('bash');
   });

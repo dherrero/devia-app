@@ -1,0 +1,820 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+
+import {
+  GRAPH_EXPAND_LIMIT, type GraphOverviewNode, type GraphViewEdge, type GraphViewPage,
+} from '../../../../../shared/domain/code-graph';
+import { ElectronApiService } from '../../../core/services/electron-api.service';
+import { pluralKey } from '../utils/plural';
+
+/** Hard cap of nodes on screen (spec T-510). */
+export const VISIBLE_NODE_CAP = 5000;
+/** Hard cap of nodes + edges on screen: the spike T-479 measured ~97 fps at 8.8k elements. */
+export const VISIBLE_ELEMENT_CAP = 8000;
+/** The most `visibleIds` an expand request may carry (contract T-503). */
+export const VISIBLE_IDS_LIMIT = 2000;
+
+const COLLAPSED_NOTICE = 'codeGraph.canvas.collapsed_notice';
+const NOT_FOUND_NOTICE = 'codeGraph.reveal.not_found';
+const FILTERED_NOTICE = 'codeGraph.reveal.filtered';
+/** Pages of one level a reveal may load to reach its ancestor (500 nodes each). */
+const REVEAL_MAX_PAGES = 20;
+
+/** Placeholder for the rest of a paged level; activating it calls `showMore(parentId, offset)`. */
+export interface MoreNode {
+  id: string;
+  kind: 'more';
+  /** Absent for the root level. */
+  parentId?: string;
+  offset: number;
+  remaining: number;
+}
+
+export type ViewNode = GraphOverviewNode | MoreNode;
+export type ViewNodeKind = GraphOverviewNode['kind'];
+export type ViewEdgeKind = GraphViewEdge['kind'];
+
+/**
+ * What the view hides (S-44 T-511). `nodeKinds`/`edgeKinds` list what stays
+ * visible (absent: every kind). Hiding never drops anything from the model.
+ */
+export interface GraphViewFilters {
+  nodeKinds?: readonly ViewNodeKind[];
+  edgeKinds?: readonly ViewEdgeKind[];
+  showTests: boolean;
+  showGenerated: boolean;
+}
+
+export const DEFAULT_FILTERS: GraphViewFilters = { showTests: true, showGenerated: true };
+
+export function isNodeFiltered(node: ViewNode, filters: GraphViewFilters): boolean {
+  if (isMoreNode(node)) return false;
+  if (!filters.showTests && node.isTest === true) return true;
+  if (!filters.showGenerated && node.generated === true) return true;
+  return filters.nodeKinds !== undefined && !filters.nodeKinds.includes(node.kind);
+}
+
+export function isEdgeKindFiltered(kind: ViewEdgeKind, filters: GraphViewFilters): boolean {
+  return filters.edgeKinds !== undefined && !filters.edgeKinds.includes(kind);
+}
+
+export interface GraphViewNotice {
+  key: string;
+  params: Record<string, number>;
+}
+
+/** Deltas for a renderer, emitted synchronously after each state change. */
+export type GraphViewChange =
+  | { type: 'reset'; nodes: readonly ViewNode[]; edges: readonly GraphViewEdge[] }
+  /** The graph changed on disk and the view was rebuilt with the same expansions: keep the camera and positions. */
+  | { type: 'reload'; nodes: readonly ViewNode[]; edges: readonly GraphViewEdge[] }
+  | {
+    type: 'explode';
+    parentId: string;
+    parent: GraphOverviewNode;
+    nodes: readonly ViewNode[];
+    edges: readonly GraphViewEdge[];
+  }
+  | {
+    type: 'collapse';
+    id: string;
+    node: GraphOverviewNode;
+    removedIds: readonly string[];
+    restoredEdges: readonly GraphViewEdge[];
+  }
+  | {
+    type: 'append';
+    parentId: string | null;
+    removedId: string;
+    nodes: readonly ViewNode[];
+    edges: readonly GraphViewEdge[];
+  }
+  /** A reveal landed: centre the camera on the node. */
+  | { type: 'focus'; id: string };
+
+export function isMoreNode(node: ViewNode): node is MoreNode {
+  return node.kind === 'more';
+}
+
+export function moreNodeId(parentId: string | null, offset: number): string {
+  return `more:${parentId ?? ''}:${offset}`;
+}
+
+export function edgeId(edge: GraphViewEdge): string {
+  return `${edge.source}\u0000${edge.target}\u0000${edge.kind}`;
+}
+
+interface StoredEdge {
+  edge: GraphViewEdge;
+  seq: number;
+}
+
+/** What a reload restores; kept until it finishes so overlapping reloads never start from a half-built view. */
+interface ReloadTarget {
+  expansions: string[];
+  selected: string | null;
+}
+
+interface Expansion {
+  node: GraphOverviewNode;
+  /** Direct children on screen (more nodes included); nested expansions hang off their own record. */
+  children: Set<string>;
+  /** The parent's edges at explode time, with their sequence numbers, to restore them verbatim. */
+  savedEdges: StoredEdge[];
+  lastUsed: number;
+}
+
+/**
+ * View model of the code graph canvas (S-44 T-510): which nodes and aggregated
+ * edges are on screen while the user explodes directories into files and files
+ * into symbols.
+ *
+ * Explode replaces the parent by its children (the parent leaves the screen).
+ * Collapse strategy: each expansion keeps the parent node and the edges it had
+ * when it exploded (with their sequence numbers). Collapsing removes the whole
+ * subtree (nested expansions included) and every edge touching it, then
+ *  1. restores the saved parent edges whose other end is still on screen,
+ *     verbatim and in their original order, and
+ *  2. folds the removed edges that crossed from the subtree to a node that was
+ *     NOT on screen at explode time (a node revealed later, e.g. by exploding a
+ *     neighbour) back onto the parent, summing weights as `aggregate` edges.
+ * Collapsing in reverse order is therefore exact; an out-of-order collapse
+ * yields the same nodes and the server's aggregation (sums of the folded
+ * edges) unless an edge page was truncated.
+ *
+ * Async results are dropped when the project changed (generation token) or the
+ * node they belong to left the screen meanwhile.
+ *
+ * A reload (the graph changed on disk) is built off screen: the published
+ * signals keep the previous view until the overview and every re-expansion are
+ * in, then one `reload` change replaces it.
+ */
+@Injectable()
+export class GraphViewStore {
+  private readonly api = inject(ElectronApiService);
+
+  private readonly _nodes = signal<readonly ViewNode[]>([]);
+  private readonly _edges = signal<readonly GraphViewEdge[]>([]);
+  private readonly _selectedId = signal<string | null>(null);
+  private readonly _expanded = signal<ReadonlySet<string>>(new Set());
+  private readonly _visibleCount = signal(0);
+  private readonly _loading = signal(false);
+  private readonly _error = signal<string | null>(null);
+  private readonly _notice = signal<GraphViewNotice | null>(null);
+  private readonly _edgesTruncated = signal(false);
+  private readonly _empty = signal(false);
+  private readonly _reloading = signal(false);
+  private readonly _filters = signal<GraphViewFilters>(DEFAULT_FILTERS);
+  private readonly _projectKey = signal<string | null>(null);
+  private readonly _revision = signal<string | number | undefined>(undefined);
+
+  readonly nodes = this._nodes.asReadonly();
+  readonly edges = this._edges.asReadonly();
+  readonly selectedId = this._selectedId.asReadonly();
+  readonly expanded = this._expanded.asReadonly();
+  readonly visibleCount = this._visibleCount.asReadonly();
+  readonly loading = this._loading.asReadonly();
+  readonly error = this._error.asReadonly();
+  readonly notice = this._notice.asReadonly();
+  readonly edgesTruncated = this._edgesTruncated.asReadonly();
+  readonly empty = this._empty.asReadonly();
+  readonly reloading = this._reloading.asReadonly();
+  readonly filters = this._filters.asReadonly();
+  /** The project the view shows (null before the first load and after reset). */
+  readonly projectKey = this._projectKey.asReadonly();
+  readonly shownRevision = this._revision.asReadonly();
+  readonly visibleNodes = computed(() => {
+    const filters = this._filters();
+    return this._nodes().filter((node) => !isNodeFiltered(node, filters));
+  });
+  readonly visibleEdges = computed(() => {
+    const filters = this._filters();
+    const shown = new Set(this.visibleNodes().map((node) => node.id));
+    return this._edges().filter(
+      (edge) => !isEdgeKindFiltered(edge.kind, filters) && shown.has(edge.source) && shown.has(edge.target),
+    );
+  });
+  /** Nodes plus edges on screen that the filters hide. */
+  readonly hiddenCount = computed(
+    () => this._nodes().length - this.visibleNodes().length + this._edges().length - this.visibleEdges().length,
+  );
+
+  private project: string | null = null;
+  /** The graph revision last requested through show() (opaque: changes when the graph on disk changed). */
+  private revision: string | number | undefined = undefined;
+  private generation = 0;
+  private seq = 0;
+  private clock = 0;
+  private nodeMap = new Map<string, ViewNode>();
+  private edgeMap = new Map<string, StoredEdge>();
+  private expansions = new Map<string, Expansion>();
+  /** Child id → the expanded node it came from. */
+  private parentOf = new Map<string, string>();
+  private inflight = new Map<string, Promise<void>>();
+  private pendingLoad: Promise<void> | null = null;
+  private activeReload: Promise<void> | null = null;
+  private target: ReloadTarget | null = null;
+  private listeners = new Set<(change: GraphViewChange) => void>();
+  private revealSeq = 0;
+
+  onChange(cb: (change: GraphViewChange) => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  /**
+   * Shows `project` as of `revision`: a no-op when it is already shown (or
+   * loading), a reload that keeps the view when only the revision changed, a
+   * fresh load otherwise. A failed load is retried.
+   */
+  show(project: string, revision?: string | number): Promise<void> {
+    if (this.project === project && this.revision === revision && this._error() === null) {
+      return this.pendingLoad ?? Promise.resolve();
+    }
+    const keepView = this.project === project && (this.nodeMap.size > 0 || this.target !== null);
+    const run = keepView ? this.reload(project) : this.loadOverview(project);
+    this.revision = revision;
+    this._revision.set(revision);
+    const pending = run.finally(() => {
+      if (this.pendingLoad === pending) this.pendingLoad = null;
+    });
+    this.pendingLoad = pending;
+    return pending;
+  }
+
+  async loadOverview(project: string): Promise<void> {
+    this.clear();
+    this.project = project;
+    this._projectKey.set(project);
+    const token = this.generation;
+    this._loading.set(true);
+    try {
+      const page = await this.api.codeGraphOverview(project);
+      if (token !== this.generation) return;
+      this.applyOverview(page);
+      this._empty.set(page.nodes.length === 0);
+      this._edgesTruncated.set(page.edgesTruncated === true);
+      this.publish();
+      this.emit({ type: 'reset', nodes: this._nodes(), edges: this._edges() });
+    } catch (err) {
+      if (token === this.generation) this._error.set(messageOf(err));
+    } finally {
+      if (token === this.generation) this._loading.set(false);
+    }
+  }
+
+  expand(id: string): Promise<void> {
+    const target = this._reloading() ? this.target : null;
+    if (target) {
+      if (!target.expansions.includes(id)) target.expansions.push(id);
+      return Promise.resolve();
+    }
+    const existing = this.expansions.get(id);
+    if (existing) {
+      this.touch(id);
+      return Promise.resolve();
+    }
+    return this.once(id, () => this.doExpand(id));
+  }
+
+  showMore(parentId: string | null, offset: number): Promise<void> {
+    const moreId = moreNodeId(parentId, offset);
+    return this.once(moreId, () => this.doShowMore(parentId, offset, moreId));
+  }
+
+  collapse(id: string): void {
+    const target = this._reloading() ? this.target : null;
+    if (target) {
+      target.expansions = target.expansions.filter((x) => x !== id);
+      return;
+    }
+    if (!this.collapseInternal(id)) return;
+    this.publish();
+  }
+
+  select(id: string | null): void {
+    this._selectedId.set(id);
+    if (this.target && this._reloading()) this.target.selected = id;
+    if (id !== null) this.touchOwnerOf(id);
+  }
+
+  /**
+   * Brings `id` on screen, selects it and asks the renderer to centre it.
+   * `ancestors` (outermost first, as search results and details carry them)
+   * saves a detail request. Each missing level is exploded in order, loading
+   * further pages of a level when the next ancestor is not in the first one;
+   * nothing on screen is re-laid out and the element cap still applies (the
+   * chain being revealed is never collapsed to make room). A newer reveal, a
+   * reset or another project cancels this one; an unknown node ends in a notice.
+   */
+  async revealNode(id: string, ancestors?: readonly string[]): Promise<void> {
+    const seq = ++this.revealSeq;
+    // A load (show) or a reload (show, or Retry) may be running: land after it.
+    for (let wait = this.pendingLoad ?? this.activeReload; wait; ) {
+      await wait;
+      if (seq !== this.revealSeq) return;
+      const next = this.pendingLoad ?? this.activeReload;
+      wait = next === wait ? null : next;
+    }
+    const project = this.project;
+    if (project === null || this._reloading()) return;
+    const token = this.generation;
+    const live = () => seq === this.revealSeq && token === this.generation;
+    if (this.nodeMap.has(id) || this.expansions.has(id)) {
+      this.landReveal(id);
+      return;
+    }
+    let chain = ancestors;
+    if (chain === undefined) {
+      try {
+        const detail = await this.api.codeGraphNodeDetail(project, id);
+        if (!live()) return;
+        if (!detail) {
+          this._notice.set({ key: NOT_FOUND_NOTICE, params: {} });
+          return;
+        }
+        chain = detail.ancestors;
+      } catch (err) {
+        if (live()) this._error.set(messageOf(err));
+        return;
+      }
+    }
+    let parent: string | null = null;
+    const opened: string[] = [];
+    for (const ancestor of chain) {
+      if (this.expansions.has(ancestor)) {
+        this.touch(ancestor);
+      } else {
+        if (!this.nodeMap.has(ancestor)) await this.pageUntil(parent, ancestor, live);
+        if (!live()) return;
+        if (!this.nodeMap.has(ancestor)) break;
+        await this.expand(ancestor);
+        if (!live()) return;
+        if (!this.expansions.has(ancestor)) break;
+        opened.push(ancestor);
+      }
+      parent = ancestor;
+    }
+    if (!this.nodeMap.has(id)) await this.pageUntil(parent, id, live);
+    if (!live()) return;
+    if (this.nodeMap.has(id)) {
+      this.landReveal(id);
+      return;
+    }
+    // The node vanished: close again what this reveal opened (innermost first).
+    for (const ancestor of opened.reverse()) this.collapse(ancestor);
+    this._notice.set({ key: NOT_FOUND_NOTICE, params: {} });
+  }
+
+  /** Loads the next pages of `parentId`'s level (null: the root) until `id` is on screen or the level ends. */
+  private async pageUntil(parentId: string | null, id: string, live: () => boolean): Promise<void> {
+    for (let i = 0; i < REVEAL_MAX_PAGES && !this.nodeMap.has(id); i++) {
+      const more = this.moreNodeOf(parentId);
+      if (!more) return;
+      await this.showMore(parentId, more.offset);
+      if (!live()) return;
+    }
+  }
+
+  private moreNodeOf(parentId: string | null): MoreNode | null {
+    for (const node of this.nodeMap.values()) {
+      if (isMoreNode(node) && (node.parentId ?? null) === parentId) return node;
+    }
+    return null;
+  }
+
+  private landReveal(id: string): void {
+    this.select(id);
+    const expansion = this.expansions.get(id);
+    const onScreen = expansion ? [...expansion.children].find((child) => this.nodeMap.has(child)) : id;
+    const node = this.nodeMap.get(id);
+    if (node && isNodeFiltered(node, this._filters())) this._notice.set({ key: FILTERED_NOTICE, params: {} });
+    if (onScreen !== undefined) this.emit({ type: 'focus', id: onScreen });
+  }
+
+  /** Changes what the view hides. Nothing is reloaded or dropped; the filters outlive reloads and project switches. */
+  setFilters(filters: GraphViewFilters): void {
+    const next: GraphViewFilters = { showTests: filters.showTests, showGenerated: filters.showGenerated };
+    if (filters.nodeKinds !== undefined) next.nodeKinds = [...filters.nodeKinds];
+    if (filters.edgeKinds !== undefined) next.edgeKinds = [...filters.edgeKinds];
+    this._filters.set(next);
+  }
+
+  /**
+   * Reloads after the graph changed on disk (reindex/update), re-opening the
+   * expansions whose nodes still exist (parents before children: map order)
+   * and keeping the selection when its node survived. A reload that starts
+   * while another runs restores the same target, never the half-built state.
+   */
+  reload(project: string): Promise<void> {
+    const run = this.doReload(project).finally(() => {
+      if (this.activeReload === run) this.activeReload = null;
+    });
+    this.activeReload = run;
+    return run;
+  }
+
+  private async doReload(project: string): Promise<void> {
+    const target = this.target ?? { expansions: [...this.expansions.keys()], selected: this._selectedId() };
+    this.target = target;
+    this._reloading.set(true);
+    this.restart(project);
+    const token = this.generation;
+    try {
+      const page = await this.api.codeGraphOverview(project);
+      if (token !== this.generation) return;
+      this.applyOverview(page);
+      for (let i = 0; i < target.expansions.length; i++) {
+        const id = target.expansions[i];
+        if (id !== undefined && this.nodeMap.has(id) && !this.expansions.has(id)) {
+          await this.once(id, () => this.doExpand(id));
+        }
+        if (token !== this.generation) return;
+      }
+      this.target = null;
+      this._reloading.set(false);
+      this._empty.set(page.nodes.length === 0);
+      this._edgesTruncated.set(page.edgesTruncated === true || this._edgesTruncated());
+      const selected = target.selected !== null && this.nodeMap.has(target.selected) ? target.selected : null;
+      this._selectedId.set(selected);
+      if (selected !== null) this.touchOwnerOf(selected);
+      this.publish();
+      this.emit({ type: 'reload', nodes: this._nodes(), edges: this._edges() });
+    } catch (err) {
+      if (token !== this.generation) return;
+      this._reloading.set(false);
+      this._selectedId.set(null);
+      this.publish();
+      this._error.set(messageOf(err));
+      this.emit({ type: 'reset', nodes: this._nodes(), edges: this._edges() });
+    }
+  }
+
+  /** The expanded node a visible node came from; null for root entries. */
+  ownerOf(id: string): string | null {
+    return this.parentOf.get(id) ?? null;
+  }
+
+  /** The node an expansion replaced (it is off screen while expanded). */
+  expandedNode(id: string): GraphOverviewNode | null {
+    return this.expansions.get(id)?.node ?? null;
+  }
+
+  reset(): void {
+    this.revision = undefined;
+    this._revision.set(undefined);
+    this.pendingLoad = null;
+    this.activeReload = null;
+    this.target = null;
+    this._reloading.set(false);
+    this.clear();
+    this.emit({ type: 'reset', nodes: [], edges: [] });
+  }
+
+  dismissNotice(): void {
+    this._notice.set(null);
+  }
+
+  dismissError(): void {
+    this._error.set(null);
+  }
+
+  private clear(): void {
+    this.target = null;
+    this._reloading.set(false);
+    this.restart(null);
+    this._selectedId.set(null);
+    this._loading.set(false);
+    this._edgesTruncated.set(false);
+    this._empty.set(false);
+    this.publish();
+  }
+
+  /** Drops the internal model (and every request in flight) without touching what is published. */
+  private restart(project: string | null): void {
+    this.generation++;
+    this.project = project;
+    this._projectKey.set(project);
+    this.nodeMap = new Map();
+    this.edgeMap = new Map();
+    this.expansions = new Map();
+    this.parentOf = new Map();
+    this.inflight = new Map();
+    this._error.set(null);
+    this._notice.set(null);
+  }
+
+  private applyOverview(page: GraphViewPage): void {
+    const nodes: ViewNode[] = [...page.nodes];
+    const more = this.moreFor(null, page.nodes.length, page);
+    if (more) nodes.push(more);
+    for (const node of nodes) this.nodeMap.set(node.id, node);
+    for (const edge of page.edges) this.addEdge(edge);
+  }
+
+  private once(key: string, run: () => Promise<void>): Promise<void> {
+    const pending = this.inflight.get(key);
+    if (pending) return pending;
+    const inflight = this.inflight;
+    const promise = run().finally(() => {
+      if (inflight.get(key) === promise) inflight.delete(key);
+    });
+    inflight.set(key, promise);
+    return promise;
+  }
+
+  private async doExpand(id: string): Promise<void> {
+    const project = this.project;
+    const node = this.nodeMap.get(id);
+    if (project === null || !node || isMoreNode(node) || node.childCount <= 0) return;
+    const token = this.generation;
+    const protect = this.ancestorChain(id);
+    this.makeRoom(pageSize(node.childCount) - 1, protect);
+    try {
+      const page = await this.api.codeGraphExpand(project, id, { visibleIds: this.relevantVisibleIds(id) });
+      if (token !== this.generation || !this.nodeMap.has(id) || this.expansions.has(id)) return;
+      if (page.nodes.length === 0) return;
+      this.explode(node, page);
+      this.makeRoom(0, protect);
+      this.publish();
+    } catch (err) {
+      if (token === this.generation) this._error.set(messageOf(err));
+    }
+  }
+
+  private async doShowMore(parentId: string | null, offset: number, moreId: string): Promise<void> {
+    const project = this.project;
+    const more = this.nodeMap.get(moreId);
+    if (project === null || !more || !isMoreNode(more)) return;
+    const token = this.generation;
+    const protect = parentId === null ? new Set<string>() : this.ancestorChain(parentId);
+    this.makeRoom(pageSize(more.remaining) - 1, protect);
+    try {
+      const page = parentId === null
+        ? await this.api.codeGraphOverview(project, { offset })
+        : await this.api.codeGraphExpand(project, parentId, { offset, visibleIds: this.relevantVisibleIds(null) });
+      if (token !== this.generation || !this.nodeMap.has(moreId)) return;
+      const expansion = parentId === null ? undefined : this.expansions.get(parentId);
+      if (parentId !== null && !expansion) return;
+
+      const added: ViewNode[] = page.nodes.filter((n) => !this.nodeMap.has(n.id));
+      const next = this.moreFor(parentId, offset + page.nodes.length, page);
+      if (next) added.push(next);
+      this.replaceInPlace(new Set([moreId]), added);
+      if (expansion && parentId !== null) {
+        expansion.children.delete(moreId);
+        for (const child of added) {
+          expansion.children.add(child.id);
+          this.parentOf.set(child.id, parentId);
+        }
+        this.touch(parentId);
+      }
+      this.parentOf.delete(moreId);
+      const edges = this.addEdges(page.edges);
+      if (page.edgesTruncated) this._edgesTruncated.set(true);
+      this.emit({ type: 'append', parentId, removedId: moreId, nodes: added, edges });
+      this.makeRoom(0, protect);
+      this.publish();
+    } catch (err) {
+      if (token === this.generation) this._error.set(messageOf(err));
+    }
+  }
+
+  private explode(parent: GraphOverviewNode, page: GraphViewPage): void {
+    const savedEdges: StoredEdge[] = [];
+    for (const [key, stored] of this.edgeMap) {
+      if (stored.edge.source === parent.id || stored.edge.target === parent.id) {
+        savedEdges.push(stored);
+        this.edgeMap.delete(key);
+      }
+    }
+    const children: ViewNode[] = page.nodes.filter((n) => !this.nodeMap.has(n.id) && n.id !== parent.id);
+    const more = this.moreFor(parent.id, page.nodes.length, page);
+    if (more) children.push(more);
+    this.replaceInPlace(new Set([parent.id]), children);
+    for (const child of children) this.parentOf.set(child.id, parent.id);
+    this.expansions.set(parent.id, {
+      node: parent,
+      children: new Set(children.map((c) => c.id)),
+      savedEdges,
+      lastUsed: 0,
+    });
+    this.touch(parent.id);
+    const edges = this.addEdges(page.edges);
+    if (page.edgesTruncated) this._edgesTruncated.set(true);
+    this.emit({ type: 'explode', parentId: parent.id, parent, nodes: children, edges });
+  }
+
+  private collapseInternal(id: string): boolean {
+    const expansion = this.expansions.get(id);
+    if (!expansion) return false;
+
+    const subtree = new Set<string>();
+    const stack = [id];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (current === undefined) break;
+      const exp = this.expansions.get(current);
+      if (!exp) continue;
+      this.expansions.delete(current);
+      for (const child of exp.children) {
+        subtree.add(child);
+        stack.push(child);
+      }
+    }
+
+    const crossing: GraphViewEdge[] = [];
+    for (const [key, stored] of this.edgeMap) {
+      const inSource = subtree.has(stored.edge.source);
+      const inTarget = subtree.has(stored.edge.target);
+      if (!inSource && !inTarget) continue;
+      this.edgeMap.delete(key);
+      if (inSource !== inTarget) crossing.push(stored.edge);
+    }
+
+    this.replaceInPlace(subtree, [expansion.node]);
+    for (const child of subtree) this.parentOf.delete(child);
+
+    const restored: GraphViewEdge[] = [];
+    const restoredEnds = new Set<string>();
+    for (const stored of expansion.savedEdges) {
+      const other = stored.edge.source === id ? stored.edge.target : stored.edge.source;
+      if (!this.nodeMap.has(other)) continue;
+      restoredEnds.add(other);
+      const key = edgeId(stored.edge);
+      if (this.edgeMap.has(key)) continue;
+      this.edgeMap.set(key, stored);
+      restored.push(stored.edge);
+    }
+
+    const folded = new Map<string, GraphViewEdge>();
+    for (const edge of crossing) {
+      const source = subtree.has(edge.source) ? id : edge.source;
+      const target = subtree.has(edge.target) ? id : edge.target;
+      const outside = source === id ? target : source;
+      if (restoredEnds.has(outside) || !this.nodeMap.has(outside)) continue;
+      const key = `${source}\u0000${target}`;
+      const acc = folded.get(key);
+      if (acc) acc.weight += edge.weight;
+      else folded.set(key, { source, target, kind: 'aggregate', weight: edge.weight });
+    }
+    for (const edge of folded.values()) {
+      if (this.addEdge(edge)) restored.push(edge);
+    }
+
+    const selected = this._selectedId();
+    if (selected !== null && subtree.has(selected)) this._selectedId.set(id);
+
+    this.emit({ type: 'collapse', id, node: expansion.node, removedIds: [...subtree], restoredEdges: restored });
+    return true;
+  }
+
+  /**
+   * Collapses the least recently used expansions (never `protect`) until the
+   * view plus `incoming` nodes fits both caps. Edges of a pending page are
+   * unknown, so the check runs again once it has landed.
+   */
+  private makeRoom(incoming: number, protect: ReadonlySet<string>): void {
+    const excess = () => Math.max(
+      this.nodeMap.size + incoming - VISIBLE_NODE_CAP,
+      this.nodeMap.size + this.edgeMap.size + incoming - VISIBLE_ELEMENT_CAP,
+    );
+    let collapsed = 0;
+    while (excess() > 0) {
+      let victim: string | null = null;
+      let oldest = Infinity;
+      for (const [id, exp] of this.expansions) {
+        if (protect.has(id) || exp.lastUsed >= oldest) continue;
+        oldest = exp.lastUsed;
+        victim = id;
+      }
+      if (victim === null) break;
+      this.collapseInternal(victim);
+      collapsed++;
+    }
+    if (collapsed > 0) {
+      this._notice.set({ key: pluralKey(COLLAPSED_NOTICE, collapsed), params: { count: collapsed, max: VISIBLE_ELEMENT_CAP } });
+      this.publish();
+    }
+  }
+
+  /**
+   * Every visible real node when they fit; otherwise the most relevant ones:
+   * the selection, hubs, root entries, then the children of the most recently
+   * used expansions (the oldest expansions are the first left out).
+   */
+  private relevantVisibleIds(exclude: string | null): string[] {
+    const candidates: GraphOverviewNode[] = [];
+    for (const node of this.nodeMap.values()) {
+      if (!isMoreNode(node) && node.id !== exclude) candidates.push(node);
+    }
+    if (candidates.length <= VISIBLE_IDS_LIMIT) return candidates.map((n) => n.id);
+
+    const selected = this._selectedId();
+    const rank = (node: GraphOverviewNode): number => {
+      if (node.id === selected) return Number.MAX_SAFE_INTEGER;
+      if (node.hub) return Number.MAX_SAFE_INTEGER - 1;
+      const owner = this.parentOf.get(node.id);
+      if (owner === undefined) return Number.MAX_SAFE_INTEGER - 2;
+      return this.expansions.get(owner)?.lastUsed ?? 0;
+    };
+    return candidates
+      .map((node, index) => ({ id: node.id, rank: rank(node), index }))
+      .sort((a, b) => b.rank - a.rank || a.index - b.index)
+      .slice(0, VISIBLE_IDS_LIMIT)
+      .map((c) => c.id);
+  }
+
+  private ancestorChain(id: string): Set<string> {
+    const chain = new Set<string>([id]);
+    let current = this.parentOf.get(id);
+    while (current !== undefined && !chain.has(current)) {
+      chain.add(current);
+      current = this.parentOf.get(current);
+    }
+    return chain;
+  }
+
+  /** Marks an expansion (and the ones above it) as just used, for the LRU. */
+  private touch(id: string): void {
+    const tick = ++this.clock;
+    for (const ancestor of this.ancestorChain(id)) {
+      const exp = this.expansions.get(ancestor);
+      if (exp) exp.lastUsed = tick;
+    }
+  }
+
+  private touchOwnerOf(id: string): void {
+    const owner = this.parentOf.get(id);
+    if (owner !== undefined) this.touch(owner);
+  }
+
+  /** Swaps `remove` for `insert` at the position of the first removed node, keeping the rest in order. */
+  private replaceInPlace(remove: ReadonlySet<string>, insert: readonly ViewNode[]): void {
+    const next = new Map<string, ViewNode>();
+    let inserted = false;
+    for (const [id, node] of this.nodeMap) {
+      if (remove.has(id)) {
+        if (!inserted) {
+          for (const n of insert) next.set(n.id, n);
+          inserted = true;
+        }
+        continue;
+      }
+      next.set(id, node);
+    }
+    if (!inserted) for (const n of insert) next.set(n.id, n);
+    this.nodeMap = next;
+  }
+
+  private addEdges(edges: readonly GraphViewEdge[]): GraphViewEdge[] {
+    const added: GraphViewEdge[] = [];
+    for (const edge of edges) if (this.addEdge(edge)) added.push(edge);
+    return added;
+  }
+
+  private addEdge(edge: GraphViewEdge): boolean {
+    if (edge.source === edge.target) return false;
+    const source = this.nodeMap.get(edge.source);
+    const target = this.nodeMap.get(edge.target);
+    if (!source || !target || isMoreNode(source) || isMoreNode(target)) return false;
+    const key = edgeId(edge);
+    if (this.edgeMap.has(key)) return false;
+    this.edgeMap.set(key, { edge, seq: this.seq++ });
+    return true;
+  }
+
+  private moreFor(parentId: string | null, nextOffset: number, page: GraphViewPage): MoreNode | null {
+    if (!page.hasMore) return null;
+    const more: MoreNode = {
+      id: moreNodeId(parentId, nextOffset),
+      kind: 'more',
+      offset: nextOffset,
+      remaining: Math.max(0, page.total - nextOffset),
+    };
+    if (parentId !== null) more.parentId = parentId;
+    return more;
+  }
+
+  private publish(): void {
+    if (this._reloading()) return;
+    const edges = [...this.edgeMap.values()].sort((a, b) => a.seq - b.seq).map((s) => s.edge);
+    this._nodes.set([...this.nodeMap.values()]);
+    this._edges.set(edges);
+    this._expanded.set(new Set(this.expansions.keys()));
+    this._visibleCount.set(this.nodeMap.size + this.edgeMap.size);
+  }
+
+  private emit(change: GraphViewChange): void {
+    if (this._reloading()) return;
+    for (const listener of [...this.listeners]) listener(change);
+  }
+}
+
+/** Nodes a page for `count` children adds: at most one page plus its "more" node. */
+function pageSize(count: number): number {
+  return count > GRAPH_EXPAND_LIMIT ? GRAPH_EXPAND_LIMIT + 1 : Math.max(0, count);
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}

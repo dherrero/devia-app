@@ -304,6 +304,8 @@ export interface RuntimeAgentDef {
     mode: import('../../../../shared/domain/run-capabilities').RunMode;
     deviaDir: string;
     runId: string;
+    /** Ids of the Devia MCP servers this run carries (`plan.harness.mcp.devia`). */
+    deviaServerIds: readonly string[];
   }) => { args: string[]; cleanup(): void } | null;
 }
 
