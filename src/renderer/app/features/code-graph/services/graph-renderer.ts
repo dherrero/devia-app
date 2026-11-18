@@ -7,7 +7,7 @@ import type {
 
 import type { GraphOverviewNode, GraphViewEdge } from '../../../../../shared/domain/code-graph';
 import {
-  BURST_ANIMATION_MS, BURST_GAP, LayoutQueue, MIN_MOVE_PX, burstSpacing, continueSpiral, fitViewport, globalLayoutOptions, planBurst,
+  BURST_ANIMATION_MS, BURST_GAP, LayoutQueue, MIN_MOVE_PX, burstSpacing, continueSpiral, fitViewport, globalLayoutOptions, planBurst, resolveCollisions, type CollisionBox,
   pullBack, pushAway, type RunningLayout,
 } from '../utils/graph-layout';
 import {
@@ -110,6 +110,9 @@ const FIT_PADDING = 40;
 const VIEWPORT_THROTTLE_MS = 16;
 const MORE_NODE_SIZE = 22;
 const LABEL_FONT = 10;
+/** Label under a node: margin + line height. */
+const LABEL_BLOCK = 3 + LABEL_FONT + 4;
+const LABEL_MAX_WIDTH = 160;
 /** A reload keeps the old layout when at least this share of the new nodes was already on screen. */
 const RELOAD_KEEP_RATIO = 0.3;
 
@@ -301,7 +304,10 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
     if (nodes.length === 0 || positions) return Promise.resolve();
     return this.queue.enqueue('global', () => {
       const running = this.run(cy.elements(), globalLayoutOptions());
-      return { stop: running.stop, done: running.done.then(() => this.fitTo(false)) };
+      return { stop: running.stop, done: running.done.then(() => {
+        this.separate(cy);
+        this.fitTo(false);
+      }) };
     }, { preempt: true });
   }
 
@@ -709,9 +715,39 @@ export class CytoscapeGraphRenderer implements GraphRenderer {
         });
       }
       if (burstId !== null) this.bursts.set(burstId, { center, shift: plan.shift, reach: plan.radius, origin });
+      this.addSeparation(cy, targets);
       this.reveal(cy, center, plan.radius, plan.duration === 0);
       return this.moveTo(cy.nodes().filter((n) => targets.has(n.id())), targets, plan.duration === 0);
     });
+  }
+
+  /** Node plus its label under it, as one box centred on the middle of the pair (centre y shifts down by half the label). */
+  private collisionBoxes(cy: Core, targets?: ReadonlyMap<string, Position>): CollisionBox[] {
+    const boxes: CollisionBox[] = [];
+    cy.nodes().forEach((n) => {
+      const at = targets?.get(n.id()) ?? n.position();
+      const size = Number(n.data('size'));
+      const label = String(n.data('label') ?? '');
+      const width = Math.max(size, Math.min(LABEL_MAX_WIDTH, label.length * LABEL_FONT * 0.6));
+      boxes.push({ id: n.id(), x: at.x, y: at.y + LABEL_BLOCK / 2, width, height: size + LABEL_BLOCK });
+    });
+    return boxes;
+  }
+
+  /** Moves overlapping nodes apart right away (after the global layout). */
+  private separate(cy: Core): void {
+    const moved = resolveCollisions(this.collisionBoxes(cy));
+    if (moved.size === 0) return;
+    cy.batch(() => {
+      for (const [id, p] of moved) cy.getElementById(id).position({ x: p.x, y: p.y - LABEL_BLOCK / 2 });
+    });
+  }
+
+  /** Adds to `targets` the corrections that keep every node apart once the burst has landed. */
+  private addSeparation(cy: Core, targets: Map<string, Position>): void {
+    for (const [id, p] of resolveCollisions(this.collisionBoxes(cy, targets))) {
+      targets.set(id, { x: p.x, y: p.y - LABEL_BLOCK / 2 });
+    }
   }
 
   /** Brings a burst that would land partly off screen into view, never zooming in. */

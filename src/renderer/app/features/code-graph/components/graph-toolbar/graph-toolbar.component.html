@@ -50,6 +50,20 @@
           {{ 'codeGraph.toolbar.indexed_at' | translate: { time: relativeTime(at) } }}
         </time>
       }
+      @if (graph.usage(); as u) {
+        <span class="cg-toolbar__usage"
+              data-testid="cg-usage"
+              [class.cg-toolbar__usage--none]="u.total === 0 && s.agentAccess"
+              [dvTooltip]="usageTooltip(u)">
+          @if (!s.agentAccess) {
+            {{ 'codeGraph.toolbar.usage_off' | translate }}
+          } @else if (u.total === 0) {
+            {{ 'codeGraph.toolbar.usage_none' | translate }}
+          } @else {
+            {{ 'codeGraph.toolbar.usage_calls' | translate: { count: format(u.total) } }}
+          }
+        </span>
+      }
     </div>
 
     <div class="cg-toolbar__controls">

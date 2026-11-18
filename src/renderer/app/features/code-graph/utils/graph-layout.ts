@@ -262,3 +262,77 @@ export function pullBack(center: Point, p: Point, shift: number, reach: number, 
   if (original < minDistance) return p;
   return alongRay(center, p, d, original);
 }
+
+/** A node and its label as one rectangle centred on (x, y). */
+export interface CollisionBox {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export const COLLISION_MAX_ITERATIONS = 300;
+
+/**
+ * Pushes overlapping boxes apart until each pair keeps `gap` between them (or
+ * `maxIterations` runs out). Pairs are found through a uniform grid, so it is
+ * ~O(n); each pair separates along the axis it penetrates least, half each.
+ * Boxes that coincide are split by id, so the result is deterministic. Returns
+ * only the nodes that moved.
+ */
+export function resolveCollisions(
+  boxes: readonly CollisionBox[],
+  opts: { gap?: number; maxIterations?: number } = {},
+): Map<string, Point> {
+  const gap = opts.gap ?? BURST_GAP;
+  const maxIterations = opts.maxIterations ?? COLLISION_MAX_ITERATIONS;
+  const items = boxes
+    .map((b) => ({ id: b.id, x: b.x, y: b.y, hw: b.width / 2 + gap / 2, hh: b.height / 2 + gap / 2, ox: b.x, oy: b.y }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  if (items.length < 2) return new Map();
+  const cell = Math.max(...items.map((i) => 2 * Math.max(i.hw, i.hh)), 1);
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    const grid = new Map<string, number[]>();
+    items.forEach((item, idx) => {
+      const key = `${Math.floor(item.x / cell)},${Math.floor(item.y / cell)}`;
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(idx);
+      else grid.set(key, [idx]);
+    });
+    let moved = false;
+    items.forEach((a, i) => {
+      const cx = Math.floor(a.x / cell);
+      const cy = Math.floor(a.y / cell);
+      for (let gx = cx - 1; gx <= cx + 1; gx++) {
+        for (let gy = cy - 1; gy <= cy + 1; gy++) {
+          for (const j of grid.get(`${gx},${gy}`) ?? []) {
+            if (j <= i) continue;
+            const b = items[j]!;
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const px = a.hw + b.hw - Math.abs(dx);
+            const py = a.hh + b.hh - Math.abs(dy);
+            if (px <= 0 || py <= 0) continue;
+            moved = true;
+            if (px <= py) {
+              const s = (dx >= 0 ? 1 : -1) * (px / 2 + 0.01);
+              a.x -= s;
+              b.x += s;
+            } else {
+              const s = (dy >= 0 ? 1 : -1) * (py / 2 + 0.01);
+              a.y -= s;
+              b.y += s;
+            }
+          }
+        }
+      }
+    });
+    if (!moved) break;
+  }
+
+  const out = new Map<string, Point>();
+  for (const i of items) if (i.x !== i.ox || i.y !== i.oy) out.set(i.id, { x: i.x, y: i.y });
+  return out;
+}

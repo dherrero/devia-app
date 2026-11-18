@@ -44,6 +44,7 @@ function makeApi() {
     codeGraphExpand: vi.fn<(p: string, id: string) => Promise<GraphViewPage>>(() => Promise.resolve(overview([]))),
     codeGraphNodeDetail: vi.fn(() => Promise.resolve(undefined)),
     codeGraphSearch: vi.fn(() => Promise.resolve([])),
+    codeGraphUsage: vi.fn(() => Promise.resolve({ total: 0, byTool: {}, byAgent: {}, lastAt: null })),
     onCodeGraphProgress: vi.fn((cb: (e: CodeGraphProgressPayload) => void) => {
       progressListeners.add(cb);
       return () => progressListeners.delete(cb);

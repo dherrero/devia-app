@@ -95,6 +95,7 @@ describe('ElectronApiService code graph wrappers', () => {
     codeGraphExpand: vi.fn(async () => ({ nodes: [], edges: [], total: 0, hasMore: false })),
     codeGraphNodeDetail: vi.fn(async () => undefined),
     codeGraphSearch: vi.fn(async () => []),
+    codeGraphUsage: vi.fn(async () => ({ total: 0, byTool: {}, byAgent: {}, lastAt: null })),
     onCodeGraphProgress: vi.fn(() => unsubscribe),
     onCodeGraphStatusChanged: vi.fn(() => unsubscribe),
   };

@@ -16,6 +16,7 @@ import {
   type GraphSymbolDetail,
   type GraphViewEdge,
   type GraphViewPage,
+  type ToolUsageSummary,
 } from '../../../../shared/domain/code-graph';
 import { openGraphDb, type GraphDb } from '../engine/db/connection';
 import { GraphQueries, type ViewChildRow, type ViewEdgeQuery } from '../engine/db/queries';
@@ -23,6 +24,7 @@ import { readCommunities, readHubs, type Hub } from '../engine/graph/communities
 import { getCallees, getCallers, getImpact } from '../engine/graph/traversal';
 import { searchSymbols } from '../engine/search/search';
 import type { CodeGraphStore } from '../infrastructure/code-graph-store';
+import { createToolUsageStore } from '../infrastructure/tool-usage-store';
 
 export interface GraphViewUseCaseDeps {
   store: CodeGraphStore;
@@ -210,6 +212,11 @@ export class GraphViewUseCase {
       if (!node) return undefined;
       return node.kind === 'file' ? this.fileDetail(ctx, node) : this.symbolDetail(ctx, node);
     });
+  }
+
+  /** The agents' calls to the graph tools in this project (S-48), from the usage log beside graph.db. */
+  usage(projectAbs: string): ToolUsageSummary {
+    return createToolUsageStore(this.store.dataDir(projectAbs)).summary();
   }
 
   search(projectAbs: string, query: string): GraphSearchResult[] {

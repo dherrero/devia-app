@@ -11,6 +11,7 @@ import {
   type GraphSearchResult,
   type GraphViewPage,
   type IndexProgress,
+  type ToolUsageSummary,
 } from '../../../../shared/domain/code-graph';
 import type { FeatureContext } from '../../../shared/feature';
 import type { ConfigRepository } from '../../../shared/ports';
@@ -338,5 +339,10 @@ export function registerCodeGraphIpc(ctx: FeatureContext, deps: CodeGraphIpcDeps
       const abs = resolveProject(project);
       return view.search(abs, requireQuery(q));
     }),
+  );
+
+  ctx.ipc.handle(
+    IPC.codeGraphUsage,
+    guarded((_e, project: unknown): ToolUsageSummary => view.usage(resolveProject(project))),
   );
 }

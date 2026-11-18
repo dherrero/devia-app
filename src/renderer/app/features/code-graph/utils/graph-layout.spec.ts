@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  BURST_ANIMATION_MS, BURST_GAP, FIT_MAX_ZOOM, LayoutQueue, fitViewport, globalLayoutOptions, planBurst, pullBack, pushAway,
+  BURST_ANIMATION_MS, BURST_GAP, FIT_MAX_ZOOM, LayoutQueue, resolveCollisions, type CollisionBox, fitViewport, globalLayoutOptions, planBurst, pullBack, pushAway,
   seedChildPositions, type Point, type RunningLayout,
 } from './graph-layout';
 
@@ -234,5 +234,47 @@ describe('LayoutQueue (S-44 T-510)', () => {
     expect(pending).not.toHaveBeenCalled();
     expect(late).not.toHaveBeenCalled();
     expect(q.busy).toBe(false);
+  });
+});
+
+describe('collision resolution (S-48)', () => {
+  const box = (id: string, x: number, y: number, w = 60, h = 80): CollisionBox => ({ id, x, y, width: w, height: h });
+  const apply = (boxes: CollisionBox[]) => {
+    const moved = resolveCollisions(boxes);
+    return boxes.map((b) => ({ ...b, ...(moved.get(b.id) ?? {}) }));
+  };
+  const overlaps = (a: CollisionBox, b: CollisionBox, gap = BURST_GAP) =>
+    Math.abs(a.x - b.x) < (a.width + b.width) / 2 + gap - 0.5 && Math.abs(a.y - b.y) < (a.height + b.height) / 2 + gap - 0.5;
+  const anyOverlap = (bs: CollisionBox[]) => bs.some((a, i) => bs.slice(i + 1).some((b) => overlaps(a, b)));
+
+  it('separates boxes sitting on the same point, deterministically', () => {
+    const input = [box('a', 0, 0), box('b', 0, 0)];
+    const first = apply(input);
+    expect(anyOverlap(first)).toBe(false);
+    expect(apply(input)).toEqual(first);
+  });
+
+  it('separates the stacked tests / resources / vitest.config.ts nodes of the first screen', () => {
+    const out = apply([box('tests', 0, 0, 68, 90), box('resources', 0, 20, 60, 90), box('vitest.config.ts', 0, 45, 120, 70)]);
+    expect(anyOverlap(out)).toBe(false);
+  });
+
+  it('leaves already separated boxes alone', () => {
+    expect(resolveCollisions([box('a', 0, 0), box('b', 500, 0)]).size).toBe(0);
+  });
+
+  it('settles 3000 random boxes quickly and without residual overlaps', () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const boxes = Array.from({ length: 3000 }, (_, i) => box(`n${i}`, rnd() * 9000, rnd() * 9000, 20 + rnd() * 60, 30 + rnd() * 60));
+    const t = Date.now();
+    const out = apply(boxes);
+    expect(Date.now() - t).toBeLessThan(1000);
+    expect(anyOverlap(out)).toBe(false);
+  });
+
+  it('does not fling a simple overlap far away', () => {
+    const out = apply([box('a', 0, 0), box('b', 10, 0)]);
+    for (const o of out) expect(Math.hypot(o.x, o.y)).toBeLessThan(200);
   });
 });

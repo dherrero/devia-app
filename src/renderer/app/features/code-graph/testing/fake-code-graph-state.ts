@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
 
-import type { CodeGraphStatus, IndexProgress } from '../../../../../shared/domain/code-graph';
+import type { CodeGraphStatus, IndexProgress, ToolUsageSummary } from '../../../../../shared/domain/code-graph';
 
 export function graphStatus(over: Partial<CodeGraphStatus> = {}): CodeGraphStatus {
   return {
@@ -26,6 +26,8 @@ export function makeFakeGraphState() {
     error: signal<string | null>(null),
     project: signal<string | null>('proj-a'),
     watchUnavailable: signal(false),
+    usage: signal<ToolUsageSummary | null>(null),
+    refreshUsage: vi.fn(() => Promise.resolve()),
     open: vi.fn<(p: string) => Promise<void>>(() => Promise.resolve()),
     close: vi.fn(() => Promise.resolve()),
     index: vi.fn(() => Promise.resolve()),

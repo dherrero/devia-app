@@ -131,6 +131,21 @@ describe('CytoscapeGraphRenderer headless smoke (S-44 T-510)', () => {
     expect(cy.getElementById(edgeId(e('A', 'B', 3))).data('width')).toBeGreaterThan(cy.getElementById(edgeId(e('B', 'C'))).data('width'));
   });
 
+  it('never leaves nodes overlapping after the first layout (S-48)', async () => {
+    const r = await mounted(['tests', 'resources', 'vitest.config.ts', 'scripts', 'tools', 'eslint.config.mjs'].map((id) => n(id)), []);
+    const nodes = core(r).nodes().toArray();
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i]!;
+        const b = nodes[j]!;
+        const dx = Math.abs(a.position().x - b.position().x);
+        const dy = Math.abs(a.position().y - b.position().y);
+        const half = (Number(a.data('size')) + Number(b.data('size'))) / 2;
+        expect(dx >= half || dy >= half).toBe(true);
+      }
+    }
+  });
+
   it('explodes a node into its children near it and collapses back', async () => {
     const r = await mounted([n('A'), n('B')], [e('A', 'B', 3)]);
     const cy = core(r);

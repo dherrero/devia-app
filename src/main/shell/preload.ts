@@ -293,6 +293,7 @@ const bridge: DeviaBridge = {
   codeGraphExpand:         (project, nodeId, opts) => ipcRenderer.invoke('code-graph:expand', project, nodeId, opts),
   codeGraphNodeDetail:     (project, nodeId)  => ipcRenderer.invoke('code-graph:node-detail', project, nodeId),
   codeGraphSearch:         (project, q)       => ipcRenderer.invoke('code-graph:search', project, q),
+  codeGraphUsage:          (project)          => ipcRenderer.invoke('code-graph:usage', project),
   onCodeGraphProgress:     (cb)               => {
     const handler = (_e: unknown, d: Parameters<typeof cb>[0]) => cb(d);
     ipcRenderer.on('code-graph:progress', handler);
