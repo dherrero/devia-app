@@ -5,7 +5,7 @@ import { TranslateModule } from '@ngx-translate/core';
 import { DvChatStatusBadgeComponent, IconComponent } from '@devia/ui';
 import { summarizeToolCall, type ToolSummaryState } from '../../../../../../../shared/domain/tool-summary';
 import {
-  LucideBrain, LucideLayoutDashboard, LucideLoader, LucideWrench, type LucideIcon,
+  LucideBrain, LucideLayoutDashboard, LucideLoader, LucideNetwork, LucideWrench, type LucideIcon,
 } from '@lucide/angular';
 import { ProjectAssetsService } from '../../../../../core/services/project-assets.service';
 import type { ToolCallRecord } from '../../../../../../../shared/domain/chat';
@@ -73,11 +73,13 @@ export class ToolCallCardComponent {
    *  tool card always shows a leading icon. (REV-AGENT-CORE-014)
    *  Devia's own memory MCP gets a brain icon so its calls read as "memory"
    *  at a glance instead of the generic MCP wrench; the kanban MCP reuses the
-   *  same dashboard icon as the right-rail kanban button. */
+   *  same dashboard icon as the right-rail kanban button, and the code graph
+   *  MCP the network icon of the /graph rail button. */
   readonly toolIconLucide = computed<LucideIcon>(() => {
     const serverId = this.mcpParts()?.serverId;
     if (serverId === 'devia-memory') return LucideBrain;
     if (serverId === 'devia-kanban') return LucideLayoutDashboard;
+    if (serverId === 'devia-code-graph') return LucideNetwork;
     const entry = getToolIcon(this.toolCall().name);
     const icon = entry ? iconNameToLucide(entry.iconName) : null;
     return icon ?? LucideWrench;
