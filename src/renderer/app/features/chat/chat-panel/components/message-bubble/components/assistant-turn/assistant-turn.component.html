@@ -42,7 +42,7 @@
                  selection stay on the agent's side of the transcript. -->
             <ds-question-answered-card [toolCall]="block.toolCall" />
           } @else if (block.kind === 'tool_ref' && block.toolCall) {
-            <ds-tool-call-card [toolCall]="block.toolCall" [active]="isToolInFlight(block.toolCall)" />
+            <ds-tool-call-card [toolCall]="block.toolCall" [children]="childrenOf(block.toolCall)" [active]="isToolInFlight(block.toolCall)" />
           } @else if (block.kind === 'tool_group') {
             <!-- Improvement #2: grouped tool-call <details> -->
             <details class="tool-group" [open]="block.hasInFlight || msg().streaming">
@@ -55,7 +55,7 @@
               </summary>
               <div class="tg-cards">
                 @for (tc of block.toolCalls; track tc.id) {
-                  <ds-tool-call-card [toolCall]="tc" [active]="isToolInFlight(tc)" />
+                  <ds-tool-call-card [toolCall]="tc" [children]="childrenOf(tc)" [active]="isToolInFlight(tc)" />
                 }
               </div>
             </details>
@@ -83,7 +83,7 @@
       @if (legacyToolCalls().length) {
         <div class="tool-uses">
           @for (tc of legacyToolCalls(); track tc.id) {
-            <ds-tool-call-card [toolCall]="tc" [active]="isToolInFlight(tc)" />
+            <ds-tool-call-card [toolCall]="tc" [children]="childrenOf(tc)" [active]="isToolInFlight(tc)" />
           }
         </div>
       } @else if (msg().tools?.length) {

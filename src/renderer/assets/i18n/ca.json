@@ -208,7 +208,10 @@
     "show_full_input": "Mostra tota l'entrada",
     "hide_full_input": "Amaga l'entrada",
     "diff_changes": "Canvis",
-    "review_changes": "Revisa aquests canvis"
+    "review_changes": "Revisa aquests canvis",
+    "subagent_tools": "{{count}} eines",
+    "subagent_tokens": "{{count}} tokens",
+    "subagent_report": "Informe"
   },
   "bubble_progress": {
     "thinking": "Pensant…"

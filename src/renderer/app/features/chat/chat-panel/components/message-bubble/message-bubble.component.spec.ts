@@ -398,6 +398,48 @@ describe('MessageBubbleComponent — pure computeds', () => {
     expect(el.querySelector('details.thinking-block')).not.toBeNull();
   });
 
+  // ── S-49: sub-agent calls nest under their Agent card ───────────────────
+
+  describe('sub-agent calls', () => {
+    const agent: ToolCallRecord = { id: 'a1', name: 'Agent', input: {}, subagent: { status: 'running' } };
+    const childCall: ToolCallRecord = { id: 'c1', name: 'Read', input: { file_path: '/p/a.txt' }, parentId: 'a1' };
+
+    function cards(): { all: number; nested: number } {
+      const el = fixture.nativeElement as HTMLElement;
+      return {
+        all: el.querySelectorAll('ds-tool-call-card').length,
+        nested: el.querySelectorAll('.tc-subagent-children ds-tool-call-card').length,
+      };
+    }
+
+    it('renders the child inside its Agent card, not as a card of its own', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: true,
+        toolCalls: [agent, childCall],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }],
+      }));
+      fixture.detectChanges();
+      expect(cards()).toEqual({ all: 2, nested: 1 });
+    });
+
+    it('does the same for a message without contentBlocks (legacy path)', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({ streaming: false, toolCalls: [agent, childCall] }));
+      fixture.detectChanges();
+      expect(cards()).toEqual({ all: 2, nested: 1 });
+    });
+
+    it('keeps a running sub-agent running while one of its own calls is the live tool', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: true,
+        toolCalls: [agent, childCall],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }],
+      }));
+      fixture.detectChanges();
+      const pill = (fixture.nativeElement as HTMLElement).querySelector('ds-tool-call-card .tc-status-pill');
+      expect(pill?.getAttribute('data-state')).toBe('running');
+    });
+  });
+
   // ── Improvement #1: streaming progress line ────────────────────────────
 
   it('shows .progress-line when streaming=true and there is an in-flight tool call', () => {

@@ -222,10 +222,25 @@ export class AssistantTurnComponent {
   });
 
   /** Legacy flat tool-calls with AskUserQuestion stripped (it renders as a
-   *  question record, never as a tool card). */
+   *  question record, never as a tool card). A sub-agent's calls render inside
+   *  their Agent card, so they are not top-level cards (S-49). */
   readonly legacyToolCalls = computed<ToolCallRecord[]>(() =>
-    (this.msg().toolCalls ?? []).filter((tc) => !isAskUserTool(tc.name)),
+    (this.msg().toolCalls ?? []).filter((tc) => !isAskUserTool(tc.name) && tc.parentId === undefined),
   );
+
+  /** Calls made by each sub-agent, by the id of its Agent/Task call (S-49). */
+  private readonly childrenByParent = computed(() => {
+    const map = new Map<string, ToolCallRecord[]>();
+    for (const tc of this.msg().toolCalls ?? []) {
+      if (tc.parentId === undefined) continue;
+      map.set(tc.parentId, [...(map.get(tc.parentId) ?? []), tc]);
+    }
+    return map;
+  });
+
+  childrenOf(tc: ToolCallRecord): ToolCallRecord[] {
+    return this.childrenByParent().get(tc.id) ?? [];
+  }
 
   /** Answered AskUserQuestion calls for the legacy (no contentBlocks) path. */
   readonly legacyAnsweredQuestions = computed<ToolCallRecord[]>(() =>
