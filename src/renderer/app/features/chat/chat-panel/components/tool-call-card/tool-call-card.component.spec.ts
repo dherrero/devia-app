@@ -16,7 +16,7 @@ import { signal, type Type } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TranslateModule } from '@ngx-translate/core';
-import { LucideNetwork, LucideLayoutDashboard } from '@lucide/angular';
+import { LucideNetwork, LucideLayoutDashboard, LucideBot } from '@lucide/angular';
 import { ToolCallCardComponent } from './tool-call-card.component';
 import { ToolTerminalBlockComponent } from './components/tool-terminal-block/tool-terminal-block.component';
 import { ToolTodoBlockComponent } from './components/tool-todo-block/tool-todo-block.component';
@@ -608,6 +608,15 @@ describe('ToolCallCardComponent — sub-agent card (S-49)', () => {
     fixture.componentRef.setInput('toolCall', agent({ status: 'completed', description: 'Read a.txt', summary: 'alpha' }));
     fixture.detectChanges();
     expect(fixture.componentInstance.collapsed()).toBe(true);
+  });
+
+  it('uses the robot icon for Agent and Task calls', () => {
+    fixture.componentRef.setInput('toolCall', agent({ status: 'running' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.toolIconLucide()).toBe(LucideBot);
+    fixture.componentRef.setInput('toolCall', makeTc({ id: 't2', name: 'Task' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.toolIconLucide()).toBe(LucideBot);
   });
 
   it('does not fold a card the user opened by hand', () => {
