@@ -428,15 +428,41 @@ describe('MessageBubbleComponent — pure computeds', () => {
       expect(cards()).toEqual({ all: 2, nested: 1 });
     });
 
-    it('keeps a running sub-agent running while one of its own calls is the live tool', () => {
+    const pillStates = () =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('ds-tool-call-card .tc-status-pill'))
+        .map((el) => el.getAttribute('data-state'));
+
+    it('keeps a running sub-agent and its unfinished call running while the message streams', () => {
       fixture.componentRef.setInput('msg', makeAssistant({
         streaming: true,
         toolCalls: [agent, childCall],
         contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }],
       }));
       fixture.detectChanges();
-      const pill = (fixture.nativeElement as HTMLElement).querySelector('ds-tool-call-card .tc-status-pill');
-      expect(pill?.getAttribute('data-state')).toBe('running');
+      expect(pillStates()).toEqual(['running', 'running']);
+    });
+
+    it('keeps two parallel running sub-agents running, not only the last call', () => {
+      const second: ToolCallRecord = { id: 'a2', name: 'Agent', input: {}, subagent: { status: 'running' } };
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: true,
+        toolCalls: [agent, second],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }, { kind: 'tool_ref', toolCallId: 'a2' }],
+      }));
+      fixture.detectChanges();
+      expect(pillStates()).toEqual(['running', 'running']);
+    });
+
+    it('does not spin forever on a finished message whose sub-agent never reported an end', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: false,
+        toolCalls: [agent, childCall],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }],
+      }));
+      fixture.detectChanges();
+      expect(pillStates()).not.toContain('running');
+      const open = (fixture.nativeElement as HTMLElement).querySelector('ds-tool-call-card .tc-card--open');
+      expect(open).toBeNull();
     });
   });
 

@@ -351,7 +351,10 @@ export class AssistantTurnComponent {
   private readonly inFlightToolCall = computed<ToolCallRecord | null>(() => {
     const tcs = this.msg().toolCalls;
     if (!tcs?.length) return null;
-    const last = tcs[tcs.length - 1];
+    // A sub-agent's own calls are not the agent's current step: the Agent call is.
+    const topLevel = tcs.filter((tc) => tc.parentId === undefined);
+    const last = topLevel[topLevel.length - 1];
+    if (!last) return null;
     return (last.result === undefined && !last.isError) ? last : null;
   });
 
@@ -363,6 +366,9 @@ export class AssistantTurnComponent {
    */
   isToolInFlight(tc: ToolCallRecord | null | undefined): boolean {
     if (!tc || this.msg().streaming !== true) return false;
+    // Sub-agents run in parallel and report their own end: one that has not
+    // ended is live while the message streams, even when it is not the last call.
+    if (tc.subagent?.status === 'running') return true;
     return this.inFlightToolCall()?.id === tc.id;
   }
 

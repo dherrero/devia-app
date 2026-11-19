@@ -43,9 +43,12 @@ export class ToolCallCardComponent {
     // A sub-agent card stays open while the sub-agent runs and folds when it ends.
     effect(() => {
       const status = this.toolCall().subagent?.status;
+      const live = this.active();
       if (status === undefined) return;
       untracked(() => {
-        if (!this.userToggled) this.collapsed.set(status !== 'running');
+        // Open only while it really runs: a persisted `running` (run cancelled or
+        // reloaded) must not stay open and spinning.
+        if (!this.userToggled) this.collapsed.set(!(status === 'running' && live));
       });
     });
   }
@@ -113,8 +116,7 @@ export class ToolCallCardComponent {
   /** Contextual status summary (state + i18n key) shared with the Node tests. */
   readonly summary = computed(() => {
     const summary = summarizeToolCall(this.toolCall());
-    // A running sub-agent is live even when one of ITS calls is the in-flight tool.
-    if (summary.state !== 'running' || this.active() || this.toolCall().subagent?.status === 'running') return summary;
+    if (summary.state !== 'running' || this.active()) return summary;
     return { state: 'success' as const, key: 'tool_summary.done' };
   });
 
