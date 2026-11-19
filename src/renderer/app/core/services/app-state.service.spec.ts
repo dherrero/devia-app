@@ -652,6 +652,49 @@ describe('AppStateService — session stats maintenance (S-7 T-81)', () => {
     expect(stream?.contentBlocks).toEqual([{ kind: 'tool_ref', toolCallId: 'tool-ask-1' }]);
     expect(stream?.events?.filter((entry) => entry.kind === 'tool_use')).toHaveLength(1);
   });
+
+  describe('sub-agents (S-49)', () => {
+    function feed(events: object[]): ReturnType<AppStateService['assistantStreams']> extends Map<string, infer M> ? M | undefined : never {
+      service['assistantStreams'].set(new Map([['/tmp/p', makeAssistantMsg({
+        id: 'stream-1', streaming: true, toolCalls: [], contentBlocks: [],
+      })]]));
+      for (const event of events) {
+        service['consumeAgentEvent']({ project: '/tmp/p', line: JSON.stringify(event) } as never);
+      }
+      return service['assistantStreams']().get('/tmp/p') as never;
+    }
+
+    it('nests a child call under its parent and keeps it out of contentBlocks', () => {
+      const stream = feed([
+        { type: 'tool_use', id: 'agent1', name: 'Agent', input: {} },
+        { type: 'tool_use', id: 'child1', name: 'Read', input: {}, parentToolUseId: 'agent1' },
+      ]);
+      expect(stream?.toolCalls?.find((c) => c.id === 'child1')?.parentId).toBe('agent1');
+      expect(stream?.contentBlocks).toEqual([{ kind: 'tool_ref', toolCallId: 'agent1' }]);
+    });
+
+    it('falls back to a top-level call when the parent is unknown', () => {
+      const stream = feed([{ type: 'tool_use', id: 'child1', name: 'Read', input: {}, parentToolUseId: 'ghost' }]);
+      expect(stream?.toolCalls?.[0]?.parentId).toBeUndefined();
+      expect(stream?.contentBlocks).toEqual([{ kind: 'tool_ref', toolCallId: 'child1' }]);
+    });
+
+    it('keeps two parallel sub-agents apart and merges their status', () => {
+      const stream = feed([
+        { type: 'tool_use', id: 'a1', name: 'Agent', input: {} },
+        { type: 'tool_use', id: 'a2', name: 'Agent', input: {} },
+        { type: 'tool_use', id: 'c2', name: 'Read', input: {}, parentToolUseId: 'a2' },
+        { type: 'tool_use', id: 'c1', name: 'Read', input: {}, parentToolUseId: 'a1' },
+        { type: 'subagent', toolUseId: 'a1', status: 'running', description: 'one' },
+        { type: 'subagent', toolUseId: 'a1', status: 'completed', summary: 'done' },
+      ]);
+      const byId = (id: string) => stream?.toolCalls?.find((c) => c.id === id);
+      expect(byId('c1')?.parentId).toBe('a1');
+      expect(byId('c2')?.parentId).toBe('a2');
+      expect(byId('a1')?.subagent).toEqual({ status: 'completed', description: 'one', summary: 'done' });
+      expect(byId('a2')?.subagent).toBeUndefined();
+    });
+  });
 });
 
 // ── Footer reads the active-session snapshot at rest (S-7 T-82) ──────────────

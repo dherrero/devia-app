@@ -258,3 +258,39 @@ describe('round-trip: live stream → events[] → rebuild matches', () => {
     expect(rebuilt.usage).toEqual({ inputTokens: 50, outputTokens: 20 });
   });
 });
+
+describe('subagents (S-49)', () => {
+  const live: AgentEvent[] = [
+    { type: 'tool_use', id: 'agent1', name: 'Agent', input: { description: 'Read a.txt' } },
+    { type: 'subagent', toolUseId: 'agent1', status: 'running', description: 'Read a.txt', subagentType: 'general-purpose' },
+    { type: 'tool_use', id: 'child1', name: 'Read', input: { file_path: 'a.txt' }, parentToolUseId: 'agent1' },
+    { type: 'tool_result', toolUseId: 'child1', content: 'alpha', isError: false },
+    { type: 'subagent', toolUseId: 'agent1', status: 'running', toolUses: 1, totalTokens: 16032 },
+    { type: 'subagent', toolUseId: 'agent1', status: 'completed', summary: 'alpha', durationMs: 7822 },
+    { type: 'tool_result', toolUseId: 'agent1', content: 'alpha', isError: false },
+  ];
+
+  it('rebuilds a child tool call with parentId and keeps it out of contentBlocks', () => {
+    const rebuilt = rebuildFromEvents(feed(live));
+    expect(rebuilt.toolCalls.find((c) => c.id === 'child1')?.parentId).toBe('agent1');
+    expect(rebuilt.toolCalls.find((c) => c.id === 'agent1')?.parentId).toBeUndefined();
+    expect(rebuilt.contentBlocks).toEqual([{ kind: 'tool_ref', toolCallId: 'agent1' }]);
+  });
+
+  it('merges subagent status events into the parent tool call', () => {
+    const agent = rebuildFromEvents(feed(live)).toolCalls.find((c) => c.id === 'agent1');
+    expect(agent?.subagent).toEqual({
+      status: 'completed',
+      description: 'Read a.txt',
+      subagentType: 'general-purpose',
+      toolUses: 1,
+      totalTokens: 16032,
+      summary: 'alpha',
+      durationMs: 7822,
+    });
+  });
+
+  it('accepts the subagent kind in a persisted log', () => {
+    expect(isValidEventLog(feed(live))).toBe(true);
+  });
+});

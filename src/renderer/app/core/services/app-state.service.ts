@@ -25,6 +25,7 @@ import { planRecordText, type PlanRecord, type TodoItem } from '../../../../shar
 import {
   appendAgentEvent,
   isValidEventLog,
+  mergeSubagent,
   rebuildFromEvents,
 } from '../../../../shared/domain/persisted-agent-event';
 import { deriveBillingMode } from '../../../../shared/domain/billing';
@@ -1854,7 +1855,14 @@ export class AppStateService implements OnDestroy {
         if (!updated.tools?.includes(event.name)) {
           updated.tools = [...(updated.tools ?? []), event.name];
         }
-        if (!(updated.contentBlocks ?? []).some((block) => block.kind === 'tool_ref' && block.toolCallId === event.id)) {
+        // A sub-agent's call nests under its parent call: it is not a block of its own.
+        // An unknown parent (event arrived out of order) falls back to top level.
+        const parentId =
+          event.parentToolUseId !== undefined &&
+          (updated.toolCalls ?? []).some((call) => call.id === event.parentToolUseId)
+            ? event.parentToolUseId
+            : undefined;
+        if (parentId === undefined && !(updated.contentBlocks ?? []).some((block) => block.kind === 'tool_ref' && block.toolCallId === event.id)) {
           updated.contentBlocks = [
             ...(updated.contentBlocks ?? []),
             { kind: 'tool_ref', toolCallId: event.id } satisfies ContentBlock,
@@ -1866,7 +1874,10 @@ export class AppStateService implements OnDestroy {
           if (idx === -1) {
             updated.toolCalls = [
               ...calls,
-              { id: event.id, name: event.name, input: event.input } satisfies ToolCallRecord,
+              {
+                id: event.id, name: event.name, input: event.input,
+                ...(parentId !== undefined && { parentId }),
+              } satisfies ToolCallRecord,
             ];
           } else {
             const patched = [...calls];
@@ -1916,6 +1927,19 @@ export class AppStateService implements OnDestroy {
         if (idx !== -1) {
           const patched = [...calls];
           patched[idx] = { ...patched[idx], result: event.content, isError: event.isError };
+          updated.toolCalls = patched;
+          changed = true;
+        }
+        break;
+      }
+
+      case 'subagent': {
+        // S-49: fold the sub-agent's status into its parent `Agent`/`Task` call.
+        const calls = updated.toolCalls ?? [];
+        const idx = calls.findIndex((c) => c.id === event.toolUseId);
+        if (idx !== -1) {
+          const patched = [...calls];
+          patched[idx] = { ...patched[idx], subagent: mergeSubagent(patched[idx].subagent, event) };
           updated.toolCalls = patched;
           changed = true;
         }
