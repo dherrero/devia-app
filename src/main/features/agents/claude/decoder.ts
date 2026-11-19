@@ -1,4 +1,5 @@
 import type { AgentEventSink, StreamParser } from '../../cli-adapters/domain/stream-parser';
+import type { SubagentStatus } from '../../../../shared/domain/agent-event';
 import { LineBuffer } from '../../cli-adapters/infrastructure/parsers/line-buffer';
 import type {
   ContentBlockDeltaEvent,
@@ -72,6 +73,31 @@ function pickContextWindow(
 }
 
 
+/** Claude's task status → the canonical sub-agent status (unknown values are ignored). */
+function subagentStatus(value: unknown): SubagentStatus | undefined {
+  switch (value) {
+    case 'running': case 'in_progress': case 'pending': return 'running';
+    case 'completed': case 'done': case 'success': return 'completed';
+    case 'failed': case 'error': return 'failed';
+    case 'killed': case 'stopped': case 'cancelled': return 'stopped';
+    default: return undefined;
+  }
+}
+
+/** Drop the undefined fields (the event types forbid explicit `undefined`). */
+function compact<T extends object>(o: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as { [K in keyof T]?: Exclude<T[K], undefined> };
+}
+
+/** A tool_result `content` is a string or an array of text blocks. */
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((b) => (b && typeof b === 'object' && typeof (b as { text?: unknown }).text === 'string' ? (b as { text: string }).text : ''))
+    .join('');
+}
+
 // ── Parser ────────────────────────────────────────────────────────────────────
 
 export function createClaudeStreamParser(sink: AgentEventSink): StreamParser {
@@ -83,6 +109,10 @@ export function createClaudeStreamParser(sink: AgentEventSink): StreamParser {
   const toolUseName = new Map<number, string>();
   const toolInputBuf = new Map<number, string>();
   const emittedToolUseIds = new Set<string>();
+
+  // S-49: sub-agent bookkeeping. `task_updated` carries only the task id, so
+  // remember which tool_use launched which sub-agent task.
+  const subagentToolByTask = new Map<string, string>();
 
   // Track which text we have already streamed via content_block_delta so we
   // can skip the duplicated full text in the Claude Code `assistant` wrapper.
@@ -121,6 +151,69 @@ export function createClaudeStreamParser(sink: AgentEventSink): StreamParser {
     });
   }
 
+  function handleSubagentLine(raw: StreamJsonLine, parentToolUseId: string): void {
+    const message = raw['message'] as { content?: unknown } | undefined;
+    const content = Array.isArray(message?.content) ? message.content : [];
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue;
+      const b = block as { type?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: unknown; is_error?: boolean };
+      if (raw.type === 'assistant' && b.type === 'tool_use' && typeof b.id === 'string' && b.name) {
+        if (emittedToolUseIds.has(b.id)) continue;
+        emittedToolUseIds.add(b.id);
+        sink({ type: 'tool_use', id: b.id, name: b.name, input: b.input ?? {}, parentToolUseId });
+      } else if (raw.type === 'user' && b.type === 'tool_result' && typeof b.tool_use_id === 'string') {
+        sink({ type: 'tool_result', toolUseId: b.tool_use_id, content: toolResultText(b.content), isError: b.is_error === true });
+      }
+    }
+  }
+
+  /** `system/task_*` lines of a sub-agent run. Returns true when the line was one. */
+  function handleSubagentSystem(raw: Record<string, unknown>): boolean {
+    const subtype = raw['subtype'];
+    const taskId = typeof raw['task_id'] === 'string' ? raw['task_id'] : undefined;
+    if (taskId === undefined || (subtype !== 'task_started' && subtype !== 'task_progress' && subtype !== 'task_updated' && subtype !== 'task_notification')) {
+      return false;
+    }
+    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
+    const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+
+    if (subtype === 'task_started') {
+      const toolUseId = str(raw['tool_use_id']);
+      // Background shells and other task kinds also emit task_*: only sub-agents
+      // (they name a subagent_type) become a card.
+      if (toolUseId === undefined || str(raw['subagent_type']) === undefined) return true;
+      subagentToolByTask.set(taskId, toolUseId);
+      sink({
+        type: 'subagent', toolUseId, status: 'running',
+        ...compact({ description: str(raw['description']), subagentType: str(raw['subagent_type']) }),
+      });
+      return true;
+    }
+
+    const toolUseId = subagentToolByTask.get(taskId);
+    if (toolUseId === undefined) return true;
+    const usage = raw['usage'] && typeof raw['usage'] === 'object' ? (raw['usage'] as Record<string, unknown>) : undefined;
+    const stats = compact({
+      toolUses: num(usage?.['tool_uses']),
+      totalTokens: num(usage?.['total_tokens']),
+      durationMs: num(usage?.['duration_ms']),
+    });
+
+    if (subtype === 'task_progress') {
+      sink({ type: 'subagent', toolUseId, status: 'running', ...stats });
+    } else if (subtype === 'task_updated') {
+      const patch = raw['patch'] as { status?: unknown } | undefined;
+      const status = subagentStatus(patch?.status);
+      if (status !== undefined) sink({ type: 'subagent', toolUseId, status });
+    } else {
+      sink({
+        type: 'subagent', toolUseId, status: subagentStatus(raw['status']) ?? 'completed', ...stats,
+        ...compact({ summary: str(raw['summary']) }),
+      });
+    }
+    return true;
+  }
+
   function handleLine(line: string): void {
     let raw: StreamJsonLine;
     try {
@@ -129,6 +222,17 @@ export function createClaudeStreamParser(sink: AgentEventSink): StreamParser {
       sink({ type: 'raw', line });
       return;
     }
+
+    // S-49: a sub-agent's own lines (complete `assistant`/`user` messages) carry
+    // the id of the parent's Agent/Task tool_use. Only its tool calls and their
+    // results surface — nested under that parent. Its text and thinking never
+    // reach the main thread, and nothing here touches the main stream's state.
+    const parentToolUseId = typeof raw['parent_tool_use_id'] === 'string' ? raw['parent_tool_use_id'] : undefined;
+    if (parentToolUseId !== undefined && (raw.type === 'assistant' || raw.type === 'user' || raw.type === 'stream_event')) {
+      handleSubagentLine(raw, parentToolUseId);
+      return;
+    }
+    if (raw.type === 'system' && handleSubagentSystem(raw as Record<string, unknown>)) return;
 
     // Claude Code wraps Anthropic SDK events inside `{ type: 'stream_event',
     // event: { ... real SDK event ... }, session_id, parent_tool_use_id, uuid }`

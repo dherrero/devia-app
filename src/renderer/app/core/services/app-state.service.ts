@@ -1849,7 +1849,7 @@ export class AppStateService implements OnDestroy {
         break;
       }
 
-      case 'tool_use':
+      case 'tool_use': {
         // TS-CLI-07: append a new ToolCallRecord; legacy tools[] kept for
         // the existing template until TS-CLI-08 migrates the bubble.
         if (!updated.tools?.includes(event.name)) {
@@ -1887,6 +1887,7 @@ export class AppStateService implements OnDestroy {
         }
         changed = true;
         break;
+      }
 
       case 'error':
         // Surface error inline in the stream so the user sees it.
