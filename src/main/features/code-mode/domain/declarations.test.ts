@@ -44,9 +44,10 @@ describe('generateDeclarations', () => {
     expect(out).toContain("kind: 'a' | 'b'");
   });
 
-  it('returns Promise<unknown> when there is no output schema', () => {
+  it('returns Promise<any> when there is no output schema, so the script can use the result', () => {
     const out = generateDeclarations([tool({ server: 's', name: 't' })]);
-    expect(out).toContain('Promise<unknown>');
+    expect(out).toContain('Promise<any>');
+    expect(out).not.toContain('Promise<unknown>');
   });
 
   it('types the result when an output schema exists', () => {

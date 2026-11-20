@@ -69,7 +69,7 @@ function objectToTs(schema: Record<string, unknown>, depth: number): string {
  * The ambient declaration the script is type-checked against, and the text
  * `get_types` returns to the agent:
  *
- *     declare const tools: { tiendas: { listar(args: { region: string }): Promise<unknown>; }; };
+ *     declare const tools: { tiendas: { listar(args: { region: string }): Promise<any>; }; };
  */
 export function generateDeclarations(tools: readonly CatalogTool[]): string {
   const byServer = new Map<string, CatalogTool[]>();
@@ -83,7 +83,10 @@ export function generateDeclarations(tools: readonly CatalogTool[]): string {
     lines.push(`  ${toIdentifier(server)}: {`);
     for (const t of list) {
       if (t.description) lines.push(`    /** ${t.description.replace(/\*\//g, '* /').replace(/\s+/g, ' ').trim()} */`);
-      const result = t.outputSchema === undefined ? 'unknown' : schemaToTs(t.outputSchema);
+      // Most MCP servers declare no outputSchema. `unknown` would make every such
+      // result unusable without a cast, so the shape is `any`: the agent learns it
+      // by returning a small sample from a first script.
+      const result = t.outputSchema === undefined ? 'any' : schemaToTs(t.outputSchema);
       lines.push(`    ${toIdentifier(t.name)}(args: ${schemaToTs(t.inputSchema)}): Promise<${result}>;`);
     }
     lines.push('  };');
