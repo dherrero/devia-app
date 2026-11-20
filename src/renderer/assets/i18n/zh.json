@@ -211,7 +211,22 @@
     "review_changes": "审查这些更改",
     "subagent_tools": "{{count}} 个工具",
     "subagent_tokens": "{{count}} 个 token",
-    "subagent_report": "报告"
+    "subagent_report": "报告",
+    "script_title": "脚本",
+    "script_line": "{{servers}} · {{calls}} 次调用 · {{seconds}} 秒",
+    "script_line_running": "{{servers}} · 已调用 {{calls}} 次",
+    "script_line_no": "第 {{line}} 行",
+    "script_returned": "返回值",
+    "script_calls": "调用",
+    "script_code": "代码",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} 个令牌的数据没有进入上下文（估算）",
+    "script_denied_note": "{{count}} 次调用被拒绝：脚本只能读取",
+    "script_error_type": "类型错误：没有调用任何工具",
+    "script_error_runtime": "脚本执行失败",
+    "script_error_denied": "已拒绝：脚本只能读取",
+    "script_error_other": "错误",
+    "script_no_calls": "没有工具调用"
   },
   "bubble_progress": {
     "thinking": "思考中…"

@@ -211,7 +211,22 @@
     "review_changes": "Diese Änderungen prüfen",
     "subagent_tools": "{{count}} Werkzeuge",
     "subagent_tokens": "{{count}} Tokens",
-    "subagent_report": "Bericht"
+    "subagent_report": "Bericht",
+    "script_title": "Skript",
+    "script_line": "{{servers}} · {{calls}} Aufrufe · {{seconds}} s",
+    "script_line_running": "{{servers}} · bisher {{calls}} Aufrufe",
+    "script_line_no": "Zeile {{line}}",
+    "script_returned": "Zurückgegeben",
+    "script_calls": "Aufrufe",
+    "script_code": "Code",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} Tokens an Daten blieben außerhalb des Kontexts (Schätzung)",
+    "script_denied_note": "{{count}} Aufruf(e) abgelehnt: Skripte können nur lesen",
+    "script_error_type": "Typfehler: kein Tool wurde aufgerufen",
+    "script_error_runtime": "Das Skript ist fehlgeschlagen",
+    "script_error_denied": "Abgelehnt: Skripte können nur lesen",
+    "script_error_other": "Fehler",
+    "script_no_calls": "Keine Tool-Aufrufe"
   },
   "bubble_progress": {
     "thinking": "Denke…"

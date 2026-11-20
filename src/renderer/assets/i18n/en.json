@@ -260,7 +260,22 @@
     "review_changes": "Review these changes",
     "subagent_tools": "{{count}} tools",
     "subagent_tokens": "{{count}} tokens",
-    "subagent_report": "Report"
+    "subagent_report": "Report",
+    "script_title": "Script",
+    "script_line": "{{servers}} · {{calls}} calls · {{seconds}} s",
+    "script_line_running": "{{servers}} · {{calls}} calls so far",
+    "script_line_no": "line {{line}}",
+    "script_returned": "Returned",
+    "script_calls": "Calls",
+    "script_code": "Code",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} tokens of data stayed out of the context (estimate)",
+    "script_denied_note": "{{count}} call(s) denied: scripts can only read",
+    "script_error_type": "Type error: no tool was called",
+    "script_error_runtime": "The script failed",
+    "script_error_denied": "Denied: scripts can only read",
+    "script_error_other": "Error",
+    "script_no_calls": "No tool calls"
   },
   "bubble_progress": {
     "thinking": "Thinking…"

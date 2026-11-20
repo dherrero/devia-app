@@ -211,7 +211,22 @@
     "review_changes": "Revisa aquests canvis",
     "subagent_tools": "{{count}} eines",
     "subagent_tokens": "{{count}} tokens",
-    "subagent_report": "Informe"
+    "subagent_report": "Informe",
+    "script_title": "Script",
+    "script_line": "{{servers}} · {{calls}} crides · {{seconds}} s",
+    "script_line_running": "{{servers}} · {{calls}} crides fins ara",
+    "script_line_no": "línia {{line}}",
+    "script_returned": "Retornat",
+    "script_calls": "Crides",
+    "script_code": "Codi",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} tokens de dades no han entrat al context (estimació)",
+    "script_denied_note": "{{count}} crida/es denegada/des: els scripts només poden llegir",
+    "script_error_type": "Error de tipus: no s'ha cridat cap eina",
+    "script_error_runtime": "L'script ha fallat",
+    "script_error_denied": "Denegat: els scripts només poden llegir",
+    "script_error_other": "Error",
+    "script_no_calls": "Sense crides a eines"
   },
   "bubble_progress": {
     "thinking": "Pensant…"

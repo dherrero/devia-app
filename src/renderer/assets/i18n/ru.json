@@ -211,7 +211,22 @@
     "review_changes": "Просмотреть изменения",
     "subagent_tools": "инструментов: {{count}}",
     "subagent_tokens": "токенов: {{count}}",
-    "subagent_report": "Отчёт"
+    "subagent_report": "Отчёт",
+    "script_title": "Скрипт",
+    "script_line": "{{servers}} · вызовов: {{calls}} · {{seconds}} с",
+    "script_line_running": "{{servers}} · пока вызовов: {{calls}}",
+    "script_line_no": "строка {{line}}",
+    "script_returned": "Результат",
+    "script_calls": "Вызовы",
+    "script_code": "Код",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} токенов данных не попали в контекст (оценка)",
+    "script_denied_note": "Отклонено вызовов: {{count}}. Скрипты могут только читать",
+    "script_error_type": "Ошибка типов: ни один инструмент не вызывался",
+    "script_error_runtime": "Скрипт завершился с ошибкой",
+    "script_error_denied": "Отклонено: скрипты могут только читать",
+    "script_error_other": "Ошибка",
+    "script_no_calls": "Нет вызовов инструментов"
   },
   "bubble_progress": {
     "thinking": "Думаю…"

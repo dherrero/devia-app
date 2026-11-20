@@ -211,7 +211,22 @@
     "review_changes": "Rever estas alterações",
     "subagent_tools": "{{count}} ferramentas",
     "subagent_tokens": "{{count}} tokens",
-    "subagent_report": "Relatório"
+    "subagent_report": "Relatório",
+    "script_title": "Script",
+    "script_line": "{{servers}} · {{calls}} chamadas · {{seconds}} s",
+    "script_line_running": "{{servers}} · {{calls}} chamadas até agora",
+    "script_line_no": "linha {{line}}",
+    "script_returned": "Devolvido",
+    "script_calls": "Chamadas",
+    "script_code": "Código",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} tokens de dados ficaram fora do contexto (estimativa)",
+    "script_denied_note": "{{count}} chamada(s) negada(s): os scripts só podem ler",
+    "script_error_type": "Erro de tipos: nenhuma ferramenta foi chamada",
+    "script_error_runtime": "O script falhou",
+    "script_error_denied": "Negado: os scripts só podem ler",
+    "script_error_other": "Erro",
+    "script_no_calls": "Sem chamadas a ferramentas"
   },
   "bubble_progress": {
     "thinking": "A pensar…"

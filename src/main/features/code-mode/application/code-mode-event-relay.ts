@@ -4,6 +4,7 @@ import * as path from 'node:path';
 
 import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import { CODE_MODE_DENIED_PREFIX, type CodeModeEvent } from '../../../../shared/domain/code-mode';
+import { isRunScriptTool } from '../../../../shared/domain/code-mode-summary';
 
 /**
  * Turns what the `devia-code-mode` gateway publishes into nested tool calls in the
@@ -20,9 +21,6 @@ import { CODE_MODE_DENIED_PREFIX, type CodeModeEvent } from '../../../../shared/
 const POLL_MS = 150;
 /** How long a script may wait for its `run_script` tool call before being paired by order. */
 const PAIR_BY_ORDER_AFTER_MS = 1500;
-
-/** `mcp__devia-code-mode__run_script`, `mcp__devia_code_mode__run_script`, `devia-code-mode.run_script`, `run_script`. */
-const RUN_SCRIPT_NAME = /(?:code[-_]mode.*run_script|^run_script)$/;
 
 const codeHash = (code: string): string => crypto.createHash('sha256').update(code).digest('hex').slice(0, 16);
 
@@ -71,7 +69,7 @@ export class CodeModeEventRelay {
 
   /** Feed every event the agent emits: the `run_script` tool calls are what the scripts hang from. */
   observeAgentEvent(event: AgentEvent): void {
-    if (event.type !== 'tool_use' || !RUN_SCRIPT_NAME.test(event.name)) return;
+    if (event.type !== 'tool_use' || !isRunScriptTool(event.name)) return;
     const input = event.input;
     const code = typeof input === 'object' && input !== null ? (input as { code?: unknown }).code : undefined;
     if (typeof code !== 'string') return;

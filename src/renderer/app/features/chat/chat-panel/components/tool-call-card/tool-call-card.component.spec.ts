@@ -15,8 +15,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { signal, type Type } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TranslateModule } from '@ngx-translate/core';
-import { LucideNetwork, LucideLayoutDashboard, LucideBot } from '@lucide/angular';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { LucideNetwork, LucideLayoutDashboard, LucideBot, LucideCodeXml } from '@lucide/angular';
 import { ToolCallCardComponent } from './tool-call-card.component';
 import { ToolTerminalBlockComponent } from './components/tool-terminal-block/tool-terminal-block.component';
 import { ToolTodoBlockComponent } from './components/tool-todo-block/tool-todo-block.component';
@@ -653,3 +653,116 @@ describe('ToolCallCardComponent — sub-agent card (S-49)', () => {
   });
 });
 
+
+describe('ToolCallCardComponent — run_script card (S-50)', () => {
+  let fixture: ComponentFixture<ToolCallCardComponent>;
+  const RUN = 'mcp__devia-code-mode__run_script';
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [ToolCallCardComponent, TranslateModule.forRoot()],
+      providers: [
+        { provide: ElectronApiService, useValue: mockApi },
+        { provide: AppStateService, useValue: mockState },
+        { provide: ProjectAssetsService, useValue: mockAssets },
+      ],
+    }).compileComponents();
+    const translate = TestBed.inject(TranslateService);
+    translate.setTranslation('en', {
+      tool_card: {
+        script_title: 'Script',
+        script_line: '{{servers}} · {{calls}} calls · {{seconds}} s',
+        script_line_running: '{{servers}} · {{calls}} calls so far',
+        script_returned: 'Returned',
+        script_calls: 'Calls',
+        script_code: 'Code',
+        script_savings: '≈{{tokens}} tokens of data stayed out of the context (estimate)',
+        script_denied_note: '{{count}} denied',
+        script_error_type: 'Type error: no tool was called',
+        script_error_runtime: 'Script error',
+        script_error_denied: 'Denied',
+        script_error_other: 'Error',
+        script_no_calls: 'No tool calls',
+      },
+    });
+    translate.use('en');
+    fixture = TestBed.createComponent(ToolCallCardComponent);
+  });
+
+  const script = (over: Partial<ToolCallRecord> = {}): ToolCallRecord =>
+    makeTc({ id: 's1', name: RUN, input: { code: 'return 1;', description: 'Cross stores and sales' }, ...over });
+  const call = (over: Partial<ToolCallRecord> = {}): ToolCallRecord =>
+    makeTc({ id: 'c1', name: 'tiendas.listar', input: { region: 'norte' }, parentId: 's1', ...over });
+  const okResult = (stats: Record<string, number> = {}): string =>
+    JSON.stringify({ value: { top: 3 }, stats: { calls: 2, denied: 0, durationMs: 2300, bytesFetched: 400_000, bytesReturned: 2_000, ...stats } });
+  const el = (): HTMLElement => fixture.nativeElement as HTMLElement;
+  const mount = (tc: ToolCallRecord, children: ToolCallRecord[] = [], active = true): void => {
+    fixture.componentRef.setInput('toolCall', tc);
+    fixture.componentRef.setInput('children', children);
+    fixture.componentRef.setInput('active', active);
+    fixture.detectChanges();
+  };
+
+  it('uses the code icon and a title of its own, with no MCP chip', () => {
+    mount(script());
+    expect(fixture.componentInstance.toolIconLucide()).toBe(LucideCodeXml);
+    expect(el().querySelector('.tc-name')?.textContent).toContain('Script');
+    expect(el().querySelector('.tc-mcp-chip')).toBeNull();
+  });
+
+  it('is open while the script runs and folds when it ends', () => {
+    mount(script(), [call()]);
+    expect(fixture.componentInstance.collapsed()).toBe(false);
+    mount(script({ result: okResult() }), [call({ result: '120 bytes' })]);
+    expect(fixture.componentInstance.collapsed()).toBe(true);
+  });
+
+  it('puts servers, calls and time in the one-line header once it ended', () => {
+    mount(script({ result: okResult() }), [call({ result: '1 bytes' }), call({ id: 'c2', name: 'ventas.consultar', result: '2 bytes' })]);
+    expect(el().querySelector('.tc-arg')?.textContent).toContain('tiendas, ventas · 2 calls · 2.3 s');
+  });
+
+  it('shows the calls so far while it runs', () => {
+    mount(script(), [call()]);
+    expect(el().querySelector('.tc-arg')?.textContent).toContain('tiendas · 1 calls so far');
+  });
+
+  it('shows what it returned, the nested calls and the code', () => {
+    mount(script({ result: okResult() }), [call({ result: '120 bytes' }), call({ id: 'c2', name: 'ventas.consultar', result: '8 bytes' })]);
+    expect(el().querySelector('.tc-script .tc-script-pre')?.textContent).toContain('"top": 3');
+    expect(el().querySelectorAll('.tc-script-call')).toHaveLength(2);
+    expect(el().querySelector('details.tc-script-code pre')?.textContent).toBe('return 1;');
+    expect(el().textContent).toContain('Cross stores and sales');
+  });
+
+  it('marks a denied call apart from a failed one', () => {
+    mount(script({ result: okResult({ denied: 1 }) }), [
+      call({ id: 'a', isError: true, result: '[denied] not read-only' }),
+      call({ id: 'b', isError: true, result: 'mcp down' }),
+    ]);
+    const states = Array.from(el().querySelectorAll('.tc-script-call')).map((li) => li.getAttribute('data-state'));
+    expect(states).toEqual(['denied', 'error']);
+  });
+
+  it('says which of the three kinds of failure it was', () => {
+    const kind = (tc: ToolCallRecord): string | null => {
+      mount(tc);
+      return el().querySelector('.tc-script-note')?.getAttribute('data-kind') ?? null;
+    };
+    expect(kind(script({ id: 's2', isError: true, result: 'The script does not type-check. No tool was called.\n1:8 Cannot find name x' }))).toBe('type_error');
+    expect(kind(script({ id: 's3', isError: true, result: 'Script failed [runtime] (line 2): boom' }))).toBe('runtime_error');
+    expect(kind(script({ id: 's4', isError: true, result: 'Script failed [runtime]: ToolDeniedError: nope' }))).toBe('denied');
+  });
+
+  it('shows the token saving only when it is worth saying', () => {
+    mount(script({ result: okResult() }));
+    expect(el().textContent).toContain('≈99.5k tokens of data stayed out of the context');
+    mount(script({ id: 's5', result: okResult({ bytesFetched: 800, bytesReturned: 400 }) }));
+    expect(el().textContent).not.toContain('stayed out of the context');
+  });
+
+  it('leaves every other tool card alone', () => {
+    mount(makeTc({ id: 'x', name: 'Read', input: { file_path: '/p/a.txt' }, result: 'alpha' }));
+    expect(el().querySelector('.tc-script')).toBeNull();
+  });
+});

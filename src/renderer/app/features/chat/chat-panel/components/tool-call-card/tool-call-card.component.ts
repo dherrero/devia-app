@@ -1,11 +1,12 @@
 import {
   ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked,
 } from '@angular/core';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { DvChatStatusBadgeComponent, IconComponent } from '@devia/ui';
 import { summarizeToolCall, type ToolSummaryState } from '../../../../../../../shared/domain/tool-summary';
+import { isRunScriptTool, summarizeScript } from '../../../../../../../shared/domain/code-mode-summary';
 import {
-  LucideBrain, LucideLayoutDashboard, LucideLoader, LucideNetwork, LucideWrench, type LucideIcon,
+  LucideBrain, LucideCodeXml, LucideLayoutDashboard, LucideLoader, LucideNetwork, LucideWrench, type LucideIcon,
 } from '@lucide/angular';
 import { ProjectAssetsService } from '../../../../../core/services/project-assets.service';
 import type { ToolCallRecord } from '../../../../../../../shared/domain/chat';
@@ -31,6 +32,7 @@ import { ToolDiffSectionComponent } from './components/tool-diff-section/tool-di
 })
 export class ToolCallCardComponent {
   private readonly assets = inject(ProjectAssetsService);
+  private readonly translate = inject(TranslateService);
   readonly toolCall = input.required<ToolCallRecord>();
   readonly active = input(true);
   /** Calls a sub-agent made under this one (set only on an Agent/Task call). */
@@ -40,9 +42,10 @@ export class ToolCallCardComponent {
   private userToggled = false;
 
   constructor() {
-    // A sub-agent card stays open while the sub-agent runs and folds when it ends.
+    // A sub-agent (or a `run_script`) card stays open while it runs and folds when it ends.
     effect(() => {
-      const status = this.toolCall().subagent?.status;
+      const script = this.script();
+      const status = this.toolCall().subagent?.status ?? (script === null ? undefined : script.status === 'running' ? 'running' : 'done');
       const live = this.active();
       if (status === undefined) return;
       untracked(() => {
@@ -59,6 +62,29 @@ export class ToolCallCardComponent {
   }
 
   readonly subagent = computed(() => this.toolCall().subagent ?? null);
+
+  /** S-50: a `run_script` call of the code-mode gateway, with the calls the script made. */
+  readonly script = computed(() =>
+    isRunScriptTool(this.toolCall().name) ? summarizeScript(this.toolCall(), this.children()) : null,
+  );
+
+  /** `≈99.5k` once the saving is worth saying; null otherwise (small or unknown). */
+  readonly scriptSavings = computed<string | null>(() => {
+    const tokens = this.script()?.tokensSavedEstimate ?? null;
+    if (tokens === null || tokens < 500) return null;
+    return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
+  });
+
+  /** Suffix of the `tool_card.script_error_*` key for a failed script. */
+  readonly scriptErrorKey = computed<'type' | 'runtime' | 'denied' | 'other' | null>(() => {
+    switch (this.script()?.status) {
+      case 'type_error': return 'type';
+      case 'runtime_error': return 'runtime';
+      case 'denied': return 'denied';
+      case 'error': return 'other';
+      default: return null;
+    }
+  });
 
   /** `3 tools · 18,598 tokens`-style facts, already localised by the template. */
   readonly subagentToolsCount = computed(() => this.subagent()?.toolUses ?? null);
@@ -83,7 +109,7 @@ export class ToolCallCardComponent {
    *  (e.g. server was removed between turn and re-render). */
   readonly mcpServerLabel = computed<string | null>(() => {
     const parts = this.mcpParts();
-    if (!parts) return null;
+    if (!parts || this.script() !== null) return null; // the script card says it all itself
     const known = this.assets.mcpServers().find((s) => s.id === parts.serverId);
     return known?.name ?? parts.serverId;
   });
@@ -91,6 +117,7 @@ export class ToolCallCardComponent {
   /** Semantic, translated card title. The raw provider tool name remains
    *  available through the title attribute for diagnostics. */
   readonly displayTitle = computed(() => {
+    if (this.script() !== null) return { key: 'tool_card.script_title', params: undefined };
     const info = this.toolDisplay();
     return { key: info.titleKey, params: info.titleParams };
   });
@@ -104,6 +131,7 @@ export class ToolCallCardComponent {
    *  same dashboard icon as the right-rail kanban button, and the code graph
    *  MCP the network icon of the /graph rail button. */
   readonly toolIconLucide = computed<LucideIcon>(() => {
+    if (this.script() !== null) return LucideCodeXml;
     const serverId = this.mcpParts()?.serverId;
     if (serverId === 'devia-memory') return LucideBrain;
     if (serverId === 'devia-kanban') return LucideLayoutDashboard;
@@ -150,6 +178,14 @@ export class ToolCallCardComponent {
   /** One-line argument shown in the collapsed header: the file path, or the
    *  command for shell tools. Truncated so it never wraps the chip. */
   readonly headerArg = computed<string | null>(() => {
+    const script = this.script();
+    if (script !== null) {
+      if (script.status === 'type_error' || script.callCount === 0 && script.status !== 'running') return null;
+      const servers = script.servers.join(', ');
+      return script.durationMs === null
+        ? this.translate.instant('tool_card.script_line_running', { servers, calls: script.callCount })
+        : this.translate.instant('tool_card.script_line', { servers, calls: script.callCount, seconds: (script.durationMs / 1000).toFixed(1) });
+    }
     const fp = this.filePathArg();
     if (fp) return oneLine(fp, 80);
     const tc = this.toolCall();
@@ -161,6 +197,8 @@ export class ToolCallCardComponent {
   });
 
   readonly headerArgTitle = computed<string | null>(() => {
+    const described = this.script()?.description;
+    if (described) return described;
     const tc = this.toolCall();
     if (tc.name !== 'Bash' && tc.name !== 'Execute') return null;
     const cmd = (tc.input as { command?: unknown } | null)?.command;
