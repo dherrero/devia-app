@@ -6,6 +6,15 @@
  */
 export type CodeModeEvent =
   | {
+      type: 'script_started';
+      scriptId: string;
+      /** First 16 hex chars of the SHA-256 of the script text: lets the relay match
+       *  this script to the agent's `run_script` tool call exactly, even when two
+       *  scripts run at once. */
+      codeHash: string;
+      at: number;
+    }
+  | {
       type: 'call_started';
       scriptId: string;
       callId: string;

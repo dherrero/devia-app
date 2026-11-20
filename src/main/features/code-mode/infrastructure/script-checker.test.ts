@@ -67,6 +67,11 @@ describe('checkScript', () => {
     expect(r.ok).toBe(true);
   });
 
+  it('lets a catch clause read the error without a cast', () => {
+    const r = checkScript("try { await tools.ventas.consultar({ id: 'a' }); } catch (e) { return e.name + e.message; }", DECLS);
+    expect(r.ok).toBe(true);
+  });
+
   it('allows console.log', () => {
     expect(checkScript("console.log('x', 1);\nreturn 1;", DECLS).ok).toBe(true);
   });

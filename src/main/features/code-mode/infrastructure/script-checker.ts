@@ -34,6 +34,8 @@ const OPTIONS: ts.CompilerOptions = {
   // Results of servers without an outputSchema are `any`; an implicit-any
   // callback parameter should not be a reason to reject an otherwise fine script.
   noImplicitAny: false,
+  // `catch (e) { e.message }` is how every script handles a failed tool call.
+  useUnknownInCatchVariables: false,
   skipLibCheck: true,
 };
 
