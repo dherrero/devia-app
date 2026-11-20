@@ -624,7 +624,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Удалить сервер MCP",
-      "remove_confirm_message": "Удалить сервер «{{name}}»? Это действие нельзя отменить."
+      "remove_confirm_message": "Удалить сервер «{{name}}»? Это действие нельзя отменить.",
+      "exposure_label": "Доступность инструментов",
+      "exposure_direct": "Напрямую",
+      "exposure_codemode": "Через code mode",
+      "exposure_hint": "В режиме code mode агент не видит инструменты этого сервера. Он обращается к ним через скрипт, а в чат возвращается только результат. Скрипты могут только читать.",
+      "exposure_saved": "Доступность обновлена."
     }
   },
   "common": {

@@ -9,6 +9,7 @@ import type { McpServerRegistry } from '../domain/registry';
 import type { InstallMcpUseCase } from '../application/install-mcp.use-case';
 import type { RemoveMcpUseCase } from '../application/remove-mcp.use-case';
 import type { ProbeMcpUseCase } from '../application/probe-mcp.use-case';
+import type { SetMcpExposureUseCase } from '../application/set-mcp-exposure.use-case';
 
 /**
  * IPC adapter for MCP management (#272/273/274).
@@ -18,6 +19,7 @@ export interface McpIpcDeps {
   install: InstallMcpUseCase;
   remove: RemoveMcpUseCase;
   probe: ProbeMcpUseCase;
+  setExposure: SetMcpExposureUseCase;
 }
 
 interface McpInstallIpcRequest {
@@ -64,6 +66,16 @@ export function registerMcpManagementIpc(ctx: FeatureContext, deps: McpIpcDeps):
 
   ctx.ipc.handle(IPC.mcpRemove, (_e, id: string, projectPath?: string) => {
     const result = deps.remove.execute(id, projectPath);
+    ctx.send('mcp:list-changed', { servers: deps.registry.list() });
+    return result;
+  });
+
+  // S-50: switch a server between direct and code mode (re-syncs the agents' native files).
+  ctx.ipc.handle(IPC.mcpSetExposure, (_e, id: string, exposure: 'direct' | 'codemode', projectPath?: string) => {
+    if (typeof id !== 'string' || (exposure !== 'direct' && exposure !== 'codemode')) {
+      return { ok: false, affectedFiles: [], error: 'Invalid request' };
+    }
+    const result = deps.setExposure.execute(id, exposure, projectPath);
     ctx.send('mcp:list-changed', { servers: deps.registry.list() });
     return result;
   });

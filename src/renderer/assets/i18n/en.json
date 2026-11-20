@@ -873,7 +873,12 @@
       "scope_global": "Global (user)",
       "scope_project": "This project only",
       "remove_confirm_title": "Remove MCP server",
-      "remove_confirm_message": "Remove the server “{{name}}”? This action cannot be undone."
+      "remove_confirm_message": "Remove the server “{{name}}”? This action cannot be undone.",
+      "exposure_label": "Tool exposure",
+      "exposure_direct": "Direct",
+      "exposure_codemode": "Via code mode",
+      "exposure_hint": "In code mode the agent does not see this server's tools. It reaches them through a script, and only the script's result comes back to the chat. Scripts can only read.",
+      "exposure_saved": "Exposure updated."
     }
   },
   "common": {

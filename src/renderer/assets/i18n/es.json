@@ -873,7 +873,12 @@
       "scope_global": "Global (usuario)",
       "scope_project": "Solo en este proyecto",
       "remove_confirm_title": "Eliminar servidor MCP",
-      "remove_confirm_message": "¿Eliminar el servidor «{{name}}»? Esta acción no se puede deshacer."
+      "remove_confirm_message": "¿Eliminar el servidor «{{name}}»? Esta acción no se puede deshacer.",
+      "exposure_label": "Exposición de las tools",
+      "exposure_direct": "Directa",
+      "exposure_codemode": "Vía code mode",
+      "exposure_hint": "En code mode el agente no ve las tools de este servidor. Llega a ellas con un script y al chat solo vuelve el resultado. Los scripts solo pueden leer.",
+      "exposure_saved": "Exposición actualizada."
     }
   },
   "common": {

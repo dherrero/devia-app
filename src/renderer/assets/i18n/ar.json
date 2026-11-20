@@ -628,7 +628,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "حذف خادم MCP",
-      "remove_confirm_message": "حذف الخادم «{{name}}»؟ لا يمكن التراجع عن هذا الإجراء."
+      "remove_confirm_message": "حذف الخادم «{{name}}»؟ لا يمكن التراجع عن هذا الإجراء.",
+      "exposure_label": "إتاحة الأدوات",
+      "exposure_direct": "مباشرة",
+      "exposure_codemode": "عبر وضع الكود",
+      "exposure_hint": "في وضع الكود لا يرى الوكيل أدوات هذا الخادم، بل يصل إليها عبر سكربت ولا يعود إلى المحادثة إلا النتيجة. السكربتات تقرأ فقط.",
+      "exposure_saved": "تم تحديث الإتاحة."
     }
   },
   "common": {

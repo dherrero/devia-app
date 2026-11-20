@@ -127,6 +127,21 @@ export class McpModalComponent {
     }
   }
 
+  /** S-50: direct ⇄ code mode. The main process re-syncs the agents' files. */
+  async setExposure(server: McpServerView, exposure: 'direct' | 'codemode'): Promise<void> {
+    const result = await this.api.mcpSetExposure(
+      server.id,
+      exposure,
+      server.scope === 'project' ? this.data.projectPath : undefined,
+    );
+    if (result.ok) {
+      this.toast.show(this.translate.instant('mcp.modal.exposure_saved'), { kind: 'success' });
+    } else {
+      this.toast.show(result.error ?? 'Error', { kind: 'error' });
+    }
+    await this.refresh();
+  }
+
   openCatalogInstall(entry: McpCatalogEntry): void {
     const requiredEnvKeys = entry.requiredEnvKeys ?? [];
     this.form.set({

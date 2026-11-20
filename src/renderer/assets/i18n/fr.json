@@ -628,7 +628,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Supprimer le serveur MCP",
-      "remove_confirm_message": "Supprimer le serveur « {{name}} » ? Cette action est irréversible."
+      "remove_confirm_message": "Supprimer le serveur « {{name}} » ? Cette action est irréversible.",
+      "exposure_label": "Exposition des outils",
+      "exposure_direct": "Directe",
+      "exposure_codemode": "Via le mode code",
+      "exposure_hint": "En mode code, l'agent ne voit pas les outils de ce serveur. Il y accède par un script et seul le résultat revient dans le chat. Les scripts ne peuvent que lire.",
+      "exposure_saved": "Exposition mise à jour."
     }
   },
   "common": {

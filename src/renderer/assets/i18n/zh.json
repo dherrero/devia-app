@@ -624,7 +624,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "删除 MCP 服务器",
-      "remove_confirm_message": "确定删除服务器“{{name}}”吗?此操作无法撤销。"
+      "remove_confirm_message": "确定删除服务器“{{name}}”吗?此操作无法撤销。",
+      "exposure_label": "工具暴露方式",
+      "exposure_direct": "直接",
+      "exposure_codemode": "通过代码模式",
+      "exposure_hint": "在代码模式下，智能体看不到此服务器的工具，而是通过脚本调用它们，只有脚本结果会回到聊天中。脚本只能读取。",
+      "exposure_saved": "暴露方式已更新。"
     }
   },
   "common": {

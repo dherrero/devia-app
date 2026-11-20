@@ -624,7 +624,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Elimina server MCP",
-      "remove_confirm_message": "Eliminare il server «{{name}}»? Questa azione non può essere annullata."
+      "remove_confirm_message": "Eliminare il server «{{name}}»? Questa azione non può essere annullata.",
+      "exposure_label": "Esposizione degli strumenti",
+      "exposure_direct": "Diretta",
+      "exposure_codemode": "Tramite code mode",
+      "exposure_hint": "In code mode l'agente non vede gli strumenti di questo server. Li raggiunge con uno script e nella chat torna solo il risultato. Gli script possono solo leggere.",
+      "exposure_saved": "Esposizione aggiornata."
     }
   },
   "common": {

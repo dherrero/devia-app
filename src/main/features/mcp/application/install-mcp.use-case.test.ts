@@ -229,3 +229,78 @@ describe('RemoveMcpUseCase end-to-end', () => {
     expect(after.mcpServers.alpha).toBeUndefined();
   });
 });
+
+describe('InstallMcpUseCase — servers behind the code-mode gateway (S-50)', () => {
+  let fx: ReturnType<typeof setup>;
+  beforeEach(() => { fx = setup(); });
+  afterEach(() => fx.cleanup());
+
+  const server = (id: string, over: Partial<Parameters<InstallMcpUseCase['execute']>[0]> = {}) => ({
+    id,
+    name: id,
+    command: 'npx',
+    args: ['-y', `@example/${id}`],
+    agents: ['gemini', 'claude', 'codex'] as ('gemini' | 'claude' | 'codex')[],
+    scope: 'global' as const,
+    source: 'npm' as const,
+    ...over,
+  });
+  const read = (...p: string[]): string => {
+    const file = path.join(fx.home, ...p);
+    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  };
+  const nativeFiles = (): { gemini: string; claude: string; codex: string } => ({
+    gemini: read('.gemini', 'settings.json'),
+    claude: read('.claude.json'),
+    codex: read('.codex', 'config.toml'),
+  });
+
+  it('keeps a code-mode server out of the native config of every agent that takes the gateway', () => {
+    expect(fx.install.execute(server('plain')).ok).toBe(true);
+    expect(fx.install.execute(server('tiendas', { exposure: 'codemode' })).ok).toBe(true);
+
+    const files = nativeFiles();
+    for (const [agent, text] of Object.entries(files)) {
+      expect(text, agent).toContain('plain');
+      expect(text, agent).not.toContain('tiendas');
+    }
+    // It is still in the catalog, flagged, so the run can put it behind the gateway.
+    const sot = JSON.parse(fs.readFileSync(path.join(fx.deviaDir, 'mcp-servers.json'), 'utf8')) as { servers: { id: string; exposure?: string }[] };
+    expect(sot.servers.find((s) => s.id === 'tiendas')?.exposure).toBe('codemode');
+  });
+
+  it('removes the native entry when a server that was direct becomes code mode, and writes it back when it returns', () => {
+    fx.install.execute(server('tiendas'));
+    for (const text of Object.values(nativeFiles())) expect(text).toContain('tiendas');
+
+    fx.install.execute(server('tiendas', { exposure: 'codemode' }));
+    for (const [agent, text] of Object.entries(nativeFiles())) expect(text, agent).not.toContain('tiendas');
+
+    fx.install.execute(server('tiendas', { exposure: 'direct' }));
+    for (const [agent, text] of Object.entries(nativeFiles())) expect(text, agent).toContain('tiendas');
+  });
+
+  it('leaves hand-edited entries of the same agent file alone', () => {
+    fs.mkdirSync(path.join(fx.home, '.gemini'), { recursive: true });
+    fs.writeFileSync(path.join(fx.home, '.gemini', 'settings.json'), JSON.stringify({ mcpServers: { mine: { command: 'x', args: [] } }, theme: 'dark' }));
+    fx.install.execute(server('tiendas'));
+    fx.install.execute(server('tiendas', { exposure: 'codemode' }));
+    const gemini = JSON.parse(read('.gemini', 'settings.json')) as { mcpServers: Record<string, unknown>; theme: string };
+    expect(Object.keys(gemini.mcpServers)).toEqual(['mine']);
+    expect(gemini.theme).toBe('dark');
+  });
+
+  it('does not touch the native config of an agent that has its own code mode (pi)', () => {
+    fx.install.execute(server('tiendas', { agents: ['pi'], exposure: 'codemode' }));
+    const pi = read('.pi', 'agent', 'mcp.json');
+    expect(pi).toContain('tiendas');
+    expect(pi).toContain('codemode');
+  });
+
+  it('keeps the exposure when the server is re-installed without saying one', () => {
+    fx.install.execute(server('tiendas', { exposure: 'codemode' }));
+    fx.install.execute(server('tiendas'));
+    expect(fx.registry.get('tiendas')?.exposure).toBe('codemode');
+    for (const [agent, text] of Object.entries(nativeFiles())) expect(text, agent).not.toContain('tiendas');
+  });
+});

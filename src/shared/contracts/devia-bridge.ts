@@ -595,6 +595,10 @@ export interface DeviaBridge {
     /** Spawn the server with an `initialize` request to check it
      *  actually starts. Caps at 5 s. */
     probe(id: string): Promise<McpProbeResult>;
+    /** S-50: switch a server between "direct" (the agent sees its tools) and
+     *  "codemode" (reachable only through `devia-code-mode` scripts). Re-syncs the
+     *  agents' native files, since a code-mode server is not written to them. */
+    setExposure(id: string, exposure: 'direct' | 'codemode', projectPath?: string): Promise<McpInstallResult>;
   };
 
   /**

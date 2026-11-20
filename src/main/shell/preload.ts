@@ -221,6 +221,7 @@ const bridge: DeviaBridge = {
     remove:         (id, projectPath)      => ipcRenderer.invoke('mcp:remove', id, projectPath),
     sync:           (scope, projectPath)   => ipcRenderer.invoke('mcp:sync', scope, projectPath),
     probe:          (id)                   => ipcRenderer.invoke('mcp:probe', id),
+    setExposure:    (id, exposure, projectPath) => ipcRenderer.invoke('mcp:set-exposure', id, exposure, projectPath),
     onListChanged:  (cb)                   => {
       const handler = (_e: unknown, d: { servers: Parameters<typeof cb>[0] }) =>
         cb(d.servers);

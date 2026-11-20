@@ -628,7 +628,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Eliminar servidor MCP",
-      "remove_confirm_message": "Vols eliminar el servidor «{{name}}»? Esta acció no es pot desfer."
+      "remove_confirm_message": "Vols eliminar el servidor «{{name}}»? Esta acció no es pot desfer.",
+      "exposure_label": "Exposició de les eines",
+      "exposure_direct": "Directa",
+      "exposure_codemode": "Via code mode",
+      "exposure_hint": "En code mode l'agent no veu les eines d'aquest servidor. Hi arriba amb un script i al xat només torna el resultat. Els scripts només poden llegir.",
+      "exposure_saved": "Exposició actualitzada."
     }
   },
   "common": {

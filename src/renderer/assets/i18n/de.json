@@ -628,7 +628,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "MCP-Server entfernen",
-      "remove_confirm_message": "Server „{{name}}“ entfernen? Diese Aktion kann nicht rückgängig gemacht werden."
+      "remove_confirm_message": "Server „{{name}}“ entfernen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "exposure_label": "Tool-Bereitstellung",
+      "exposure_direct": "Direkt",
+      "exposure_codemode": "Über Code-Modus",
+      "exposure_hint": "Im Code-Modus sieht der Agent die Tools dieses Servers nicht. Er erreicht sie über ein Skript, und nur dessen Ergebnis kommt in den Chat zurück. Skripte können nur lesen.",
+      "exposure_saved": "Bereitstellung aktualisiert."
     }
   },
   "common": {

@@ -73,6 +73,17 @@
           </div>
 
           <div>
+            <div class="section-lbl">{{ 'mcp.modal.exposure_label' | translate }}</div>
+            <dv-button-toggle-group class="exposure-toggle"
+                                    [items]="exposureItems()"
+                                    [value]="exposureOf(s)"
+                                    (valueChange)="setExposure(s, $event)"
+                                    [ariaLabel]="'mcp.modal.exposure_label' | translate">
+            </dv-button-toggle-group>
+            <p class="detail-desc exposure-hint">{{ 'mcp.modal.exposure_hint' | translate }}</p>
+          </div>
+
+          <div>
             <div class="section-lbl">{{ 'mcp.modal.probe' | translate }}</div>
             <div class="probe-row">
               <dv-button variant="ghost" size="sm" type="button" (clicked)="probe(s)">

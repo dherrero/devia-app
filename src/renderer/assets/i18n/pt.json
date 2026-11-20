@@ -624,7 +624,12 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Remover servidor MCP",
-      "remove_confirm_message": "Remover o servidor «{{name}}»? Esta ação não pode ser desfeita."
+      "remove_confirm_message": "Remover o servidor «{{name}}»? Esta ação não pode ser desfeita.",
+      "exposure_label": "Exposição das ferramentas",
+      "exposure_direct": "Direta",
+      "exposure_codemode": "Via code mode",
+      "exposure_hint": "Em code mode o agente não vê as ferramentas deste servidor. Chega a elas por um script e só o resultado volta ao chat. Os scripts só podem ler.",
+      "exposure_saved": "Exposição atualizada."
     }
   },
   "common": {

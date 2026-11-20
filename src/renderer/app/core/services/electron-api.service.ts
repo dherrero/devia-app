@@ -270,6 +270,9 @@ export class ElectronApiService {
     return this.api.mcp.sync(scope, projectPath);
   }
   mcpProbe(id: string) { return this.api.mcp.probe(id); }
+  mcpSetExposure(id: string, exposure: 'direct' | 'codemode', projectPath?: string) {
+    return this.api.mcp.setExposure(id, exposure, projectPath);
+  }
   onMcpListChanged(cb: Parameters<typeof this.api.mcp.onListChanged>[0]): () => void {
     return this.api.mcp.onListChanged(cb);
   }
