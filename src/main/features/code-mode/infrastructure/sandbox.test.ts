@@ -36,13 +36,21 @@ describe('runInSandbox', () => {
   });
 
   it('reports memory exhaustion', async () => {
-    const r = await runInSandbox('const a = []; while (true) a.push(new Array(100000).fill(1));', noBridge, {
+    const r = await runInSandbox('const big = new Array(5000000).fill(1); return big.length;', noBridge, {
       ...OPTS,
       memoryBytes: 4 * 1024 * 1024,
       timeoutMs: 5_000,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.kind).toBe('memory');
+  });
+
+  it('keeps running scripts after one ran out of memory (QuickJS may abort while freeing that runtime)', async () => {
+    const oom = await runInSandbox('const big = new Array(5000000).fill(1); return big.length;', noBridge, { ...OPTS, memoryBytes: 4 * 1024 * 1024 });
+    expect(oom.ok).toBe(false);
+    for (let i = 0; i < 3; i++) {
+      await expect(runInSandbox(`return ${i} + 1;`, noBridge, OPTS)).resolves.toEqual({ ok: true, value: i + 1, logs: [] });
+    }
   });
 
   it('calls the bridge with the names and arguments of the script', async () => {

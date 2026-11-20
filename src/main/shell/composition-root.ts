@@ -56,6 +56,7 @@ import { createHarnessCatalog } from '../features/claude-runner/infrastructure/h
 import { buildSddFeature } from '../features/sdd';
 import { buildMemoryFeature } from '../features/memory';
 import { buildCodeGraphFeature, codeGraphProtocol } from '../features/code-graph';
+import { buildCodeModeFeature } from '../features/code-mode';
 import { buildStarterKitsFeature } from '../features/starter-kits';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
@@ -308,6 +309,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // S-44: Code Graph (project knowledge graph). Built before the array so its
   // `codeGraphMcpServer` callback can be handed to the runner like memory's.
   const codeGraphBuilt = buildCodeGraphFeature({ config });
+  // S-50: user MCP servers set to code mode sit behind a per-run gateway.
+  const codeModeBuilt = buildCodeModeFeature({ config });
 
   // S-39: bundled methodology kits (Devia Method). The packaged app carries them
   // in `<resources>/kits` (outside the asar: they hold executable scripts); in
@@ -437,6 +440,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // lets agents use. Delivered by each agent's mapper, like memory.
       codeGraphMcpServer: codeGraphBuilt.codeGraphMcpServer,
       codeGraphProtocol,
+      codeMode: codeModeBuilt.codeMode,
+      codeModeProtocol: codeModeBuilt.codeModeProtocol,
       // S-24: `devia_ask_user` — the question card, now a Devia MCP tool.
       // Keyed by the per-run rendezvous dir, not by project.
       // S-25 F2.6: `devia_notify` reaches the chat relay too. Lazy like

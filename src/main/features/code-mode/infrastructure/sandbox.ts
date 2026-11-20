@@ -1,4 +1,4 @@
-import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle } from 'quickjs-emscripten';
+import { newQuickJSWASMModule, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle } from 'quickjs-emscripten';
 
 /**
  * Runs the agent's script inside QuickJS compiled to WASM (S-50). The script sees
@@ -7,8 +7,8 @@ import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type Qui
  * filesystem because the engine simply does not have them.
  *
  * Cost (measured 2026-11-20, Node 22 on Apple silicon, quickjs-emscripten 0.32):
- * ~5 ms to load the WASM module once per process plus ~6 ms for a first
- * runtime+context, so a fresh runtime per `run_script` is fine.
+ * a few ms to instantiate the WASM module plus ~6 ms for a runtime+context, so a
+ * fresh module and runtime per `run_script` is fine.
  */
 
 export interface SandboxOptions {
@@ -73,7 +73,11 @@ function classify(err: VmError, logs: string[]): SandboxResult {
 }
 
 export async function runInSandbox(js: string, bridge: BridgeFn, opts: SandboxOptions): Promise<SandboxResult> {
-  const QuickJS = await getQuickJS();
+  // A module of its own per run, not the shared `getQuickJS()` singleton: after an
+  // out-of-memory script QuickJS can abort while freeing its runtime
+  // (`Assertion failed: list_empty(&rt->gc_obj_list)`), and an aborted WASM module
+  // is dead for everyone. Isolated this way, only that run is lost.
+  const QuickJS = await newQuickJSWASMModule();
   const runtime = QuickJS.newRuntime();
   runtime.setMemoryLimit(opts.memoryBytes);
   runtime.setMaxStackSize(MAX_STACK_BYTES);
