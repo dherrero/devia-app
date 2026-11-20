@@ -46,3 +46,7 @@ export type CodeModeEvent =
       bytesReturned: number;
       durationMs: number;
     };
+
+/** A `tool_result` for a call the policy refused starts with this, so the card can
+ *  tell "denied" (the system working) from "failed" (the tool erroring). */
+export const CODE_MODE_DENIED_PREFIX = '[denied] ';

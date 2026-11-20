@@ -49,7 +49,7 @@ import {
   wiredUiTools,
 } from '../../../../shared/domain/ui-tools-policy';
 import type { McpServerRegistry } from '../../mcp';
-import { CODE_MODE_SERVER_ID, type CodeModePlan } from '../../code-mode';
+import { CODE_MODE_SERVER_ID, CodeModeEventRelay, codeModeRunDir, removeCodeModeRunDir, type CodeModePlan } from '../../code-mode';
 import type { AgentRunPlan, MapperRegistry } from '../../agents/domain';
 import type { McpServerConfig } from '../../../../shared/domain/mcp';
 import type { MemoryRecall } from '../../../../shared/domain/memory';
@@ -854,6 +854,8 @@ export class RunInstructionUseCase {
     // it: put them back as ordinary servers and resolve the delivery again.
     if (codeModePlan !== null && !delivery.mcpServerIds.includes(CODE_MODE_SERVER_ID)) {
       codeModePlan = null;
+      // Its servers file carries credentials and nothing will ever read it.
+      removeCodeModeRunDir(this.deps.config.deviaDir(), runId);
       basePlan = buildBasePlan();
       delivery = mapper.resolveDelivery(basePlan);
     }
@@ -1066,6 +1068,20 @@ export class RunInstructionUseCase {
     // Agent-agnostic since S-24: whoever got the server publishes its requests
     // to the rendezvous, so polling follows the delivery, not the agent id.
     interaction.start();
+    // S-50: the gateway publishes each script's calls to a per-run events dir; the
+    // relay shows them nested under the agent's `run_script` card.
+    const codeModeRelay =
+      codeModePlan === null
+        ? null
+        : new CodeModeEventRelay({
+            eventsDir: path.join(codeModeRunDir(this.deps.config.deviaDir(), runId), 'events'),
+            emit: (event) => handlers.onClaudeOutput(JSON.stringify(event), runId),
+          });
+    codeModeRelay?.start();
+    const stopCodeMode = (): void => {
+      codeModeRelay?.stop();
+      if (codeModeRelay !== null) removeCodeModeRunDir(this.deps.config.deviaDir(), runId);
+    };
 
     // S-32: the outbox is flushed from the EFFECTIVE cwd (the worktree of an
     // isolated pane) BEFORE `onProcessEnd`, so a relay-bound file is on the
@@ -1110,8 +1126,10 @@ export class RunInstructionUseCase {
 
     const runHandlers: AgentRunHandlers = {
         onOutput: (line) => {
+          let seenByCodeMode: AgentEvent | null = null;
           try {
             const parsed = JSON.parse(line) as AgentEvent;
+            seenByCodeMode = parsed;
 
             // Capture agent-generated session ID the moment it arrives.
             // This is the ONLY place agentSessionId is ever written.
@@ -1192,9 +1210,12 @@ export class RunInstructionUseCase {
             /* non-JSON lines are fine */
           }
           handlers.onClaudeOutput(line, runId);
+          // After the line, never before: a nested call must not reach the chat ahead of its parent.
+          if (seenByCodeMode !== null) codeModeRelay?.observeAgentEvent(seenByCodeMode);
         },
         onDone: (code) => {
           interaction.stop();
+          stopCodeMode();
           cleanupUiDir();
           // Every temp artifact the mapper prepared (MCP config, system prompt file).
           prepared?.cleanup();
@@ -1226,6 +1247,7 @@ export class RunInstructionUseCase {
         },
         onError: (msg, classification, signal, cancelReason, classifiedError) => {
           interaction.stop();
+          stopCodeMode();
           cleanupUiDir();
           prepared?.cleanup();
           this.deps.registry.detachProcess(identity);

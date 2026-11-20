@@ -4,7 +4,8 @@ import { planCodeMode, type CodeModePlan } from './application/plan-code-mode';
 import { codeModeProtocol } from './infrastructure/code-mode-protocol';
 import { CodeModeMcpInjector } from './mcp-server/code-mode-mcp-injector';
 
-export { CODE_MODE_SERVER_ID, codeModeRunDir } from './mcp-server/code-mode-mcp-injector';
+export { CODE_MODE_SERVER_ID, codeModeRunDir, removeCodeModeRunDir } from './mcp-server/code-mode-mcp-injector';
+export { CodeModeEventRelay } from './application/code-mode-event-relay';
 export { codeModeProtocol } from './infrastructure/code-mode-protocol';
 export type { CodeModePlan } from './application/plan-code-mode';
 

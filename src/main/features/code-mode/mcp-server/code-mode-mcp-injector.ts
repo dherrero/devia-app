@@ -26,6 +26,15 @@ export function codeModeRunDir(deviaDir: string, runId: string): string {
   return path.join(deviaDir, 'tmp', 'code-mode', safeSegment(runId));
 }
 
+/** Drops a run's servers file (it carries credentials) and its events. Best effort. */
+export function removeCodeModeRunDir(deviaDir: string, runId: string): void {
+  try {
+    fs.rmSync(codeModeRunDir(deviaDir, runId), { recursive: true, force: true });
+  } catch {
+    // The age sweep catches whatever this misses.
+  }
+}
+
 export interface CodeModeServerArgs {
   /** The user's MCP servers that sit behind the gateway for this run. */
   codeModeServers: readonly McpServerConfig[];

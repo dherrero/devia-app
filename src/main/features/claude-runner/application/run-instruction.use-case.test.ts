@@ -20,6 +20,7 @@ import {
   REMINDER_TAG,
   SYSTEM_PROMPT_WRAPPER_TAG,
 } from '../../../../shared/domain/ask-user-mandate';
+import * as crypto from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -42,7 +43,7 @@ import {
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
 import { UiMcpInjector, type UiServerHarness } from '../../ui-tools';
 import { CodeGraphMcpInjector, codeGraphProtocol } from '../../code-graph';
-import { codeModeProtocol, type CodeModePlan } from '../../code-mode';
+import { buildCodeModeFeature, codeModeProtocol, codeModeRunDir, type CodeModePlan } from '../../code-mode';
 import { planCodeMode } from '../../code-mode/application/plan-code-mode';
 import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import type { StarterKitsPort } from '../../../shared/ports';
@@ -3931,5 +3932,89 @@ describe('RunInstructionUseCase — code mode gateway (S-50)', () => {
     const notDelivered = runWith({ id: 'gemini', name: 'Gemini CLI' }, [codeModeServer('tiendas')], { nativeMcp: nativeDelivery(false) });
     expect(notDelivered.system).not.toContain('run_script');
     expect(ids(notDelivered.plan?.harness.mcp.user)).toEqual(['tiendas']);
+  });
+});
+
+describe('RunInstructionUseCase — code mode events and cleanup (S-50 T-557)', () => {
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-cm-relay-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const deviaDir = (): string => path.join(tmpDir, '.devia-app');
+  const cfg = (): FakeConfig => {
+    const c = new FakeConfig(deviaDir());
+    c.set({ workspaceRoot: tmpDir });
+    return c;
+  };
+  const sha16 = (code: string): string => crypto.createHash('sha256').update(code).digest('hex').slice(0, 16);
+  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+  function start(extras: BuildExtras = {}) {
+    const config = cfg();
+    const feature = buildCodeModeFeature({ config });
+    const h = build(claudeStreamDef, {
+      config,
+      mcpServers: makeMcpRegistry([{ ...enabledServer('tiendas'), exposure: 'codemode' }]),
+      codeMode: feature.codeMode,
+      codeModeProtocol: feature.codeModeProtocol,
+      ...extras,
+    });
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'cross the data', [], handlers, 'apply');
+    const capture = h.runner.last();
+    return { h, handlers, capture, runDir: codeModeRunDir(deviaDir(), capture.req.runId ?? '') };
+  }
+  const lines = (handlers: RunInstructionHandlers): Array<Record<string, unknown>> =>
+    (handlers.onClaudeOutput as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>);
+
+  it('shows a script\'s calls nested under the agent\'s run_script card, after the card itself', async () => {
+    const { handlers, capture, runDir } = start();
+    expect(fs.existsSync(path.join(runDir, 'servers.json'))).toBe(true);
+
+    emitToolUse(capture, 'toolu_9', 'mcp__devia-code-mode__run_script', { code: 'return 1;' });
+    fs.mkdirSync(path.join(runDir, 'events'), { recursive: true });
+    fs.writeFileSync(
+      path.join(runDir, 'events', 's1.jsonl'),
+      [
+        { type: 'script_started', scriptId: 's1', codeHash: sha16('return 1;'), at: 1 },
+        { type: 'call_started', scriptId: 's1', callId: 'c1', server: 'tiendas', tool: 'listar', args: { region: 'n' }, at: 2 },
+        { type: 'call_finished', scriptId: 's1', callId: 'c1', ok: true, bytes: 10, durationMs: 3 },
+      ].map((e) => `${JSON.stringify(e)}\n`).join(''),
+    );
+    await sleep(500);
+
+    const out = lines(handlers);
+    const parentIdx = out.findIndex((e) => e['type'] === 'tool_use' && e['id'] === 'toolu_9');
+    const childIdx = out.findIndex((e) => e['type'] === 'tool_use' && e['id'] === 'c1');
+    expect(parentIdx).toBeGreaterThanOrEqual(0);
+    expect(childIdx).toBeGreaterThan(parentIdx);
+    expect(out[childIdx]).toMatchObject({ name: 'tiendas.listar', parentToolUseId: 'toolu_9' });
+    expect(out.some((e) => e['type'] === 'tool_result' && e['toolUseId'] === 'c1')).toBe(true);
+    capture.handlers.onDone(0);
+  });
+
+  it('removes the servers file (it carries credentials) when the run ends', () => {
+    const { capture, runDir } = start();
+    expect(fs.existsSync(runDir)).toBe(true);
+    capture.handlers.onDone(0);
+    expect(fs.existsSync(runDir)).toBe(false);
+  });
+
+  it('removes it when the run fails too', () => {
+    const { capture, runDir } = start();
+    capture.handlers.onError('boom');
+    expect(fs.existsSync(runDir)).toBe(false);
+  });
+
+  it('removes it at once when the agent will not get the gateway', () => {
+    const { runDir } = start({ enterpriseMcpConfigPresent: () => true });
+    expect(fs.existsSync(runDir)).toBe(false);
+  });
+
+  it('does nothing of this for a run without code-mode servers', () => {
+    const config = cfg();
+    const h = build(claudeStreamDef, { config, mcpServers: makeMcpRegistry([enabledServer('plain')]), codeMode: buildCodeModeFeature({ config }).codeMode });
+    h.uc.execute('proj-a', 'x', [], makeHandlers(), 'apply');
+    expect(fs.existsSync(path.join(deviaDir(), 'tmp', 'code-mode'))).toBe(false);
   });
 });
