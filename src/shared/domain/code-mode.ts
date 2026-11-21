@@ -45,6 +45,12 @@ export type CodeModeEvent =
       /** Bytes the script handed back to the agent. */
       bytesReturned: number;
       durationMs: number;
+      /**
+       * The exact text `run_script` returned to the agent. Not every agent's stream
+       * carries tool results (Claude's main stream does not), and the card needs it
+       * for the value, the time and the failure kind, so it travels here too.
+       */
+      result?: string;
     };
 
 /** A `tool_result` for a call the policy refused starts with this, so the card can

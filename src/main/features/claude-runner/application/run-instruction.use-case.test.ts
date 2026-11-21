@@ -3979,6 +3979,7 @@ describe('RunInstructionUseCase — code mode events and cleanup (S-50 T-557)', 
         { type: 'script_started', scriptId: 's1', codeHash: sha16('return 1;'), at: 1 },
         { type: 'call_started', scriptId: 's1', callId: 'c1', server: 'tiendas', tool: 'listar', args: { region: 'n' }, at: 2 },
         { type: 'call_finished', scriptId: 's1', callId: 'c1', ok: true, bytes: 10, durationMs: 3 },
+        { type: 'script_finished', scriptId: 's1', ok: true, callCount: 1, bytesFetched: 10, bytesReturned: 2, durationMs: 9, result: '{"value":1,"stats":{"calls":1}}' },
       ].map((e) => `${JSON.stringify(e)}\n`).join(''),
     );
     await sleep(500);
@@ -3990,6 +3991,8 @@ describe('RunInstructionUseCase — code mode events and cleanup (S-50 T-557)', 
     expect(childIdx).toBeGreaterThan(parentIdx);
     expect(out[childIdx]).toMatchObject({ name: 'tiendas.listar', parentToolUseId: 'toolu_9' });
     expect(out.some((e) => e['type'] === 'tool_result' && e['toolUseId'] === 'c1')).toBe(true);
+    // The agent's own stream may not carry the run_script result (Claude's does not): the relay does.
+    expect(out.find((e) => e['type'] === 'tool_result' && e['toolUseId'] === 'toolu_9')).toMatchObject({ content: '{"value":1,"stats":{"calls":1}}', isError: false });
     capture.handlers.onDone(0);
   });
 

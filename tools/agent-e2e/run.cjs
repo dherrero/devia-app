@@ -498,6 +498,8 @@ function codeModeBehaviour(result, finalText) {
     usedRunScript: scripts.length > 0,
     runScriptCalls: scripts.length,
     nestedCalls: nested.length,
+    // Claude's main stream carries no tool results, so the card gets this one from the gateway.
+    scriptResultShown: scripts.some((c) => result.events.some((e) => e.type === 'tool_result' && e.toolUseId === c.id && /"stats"/.test(e.content ?? ''))),
     sawDirectServerTools: names.some((n) => /^mcp__(tiendas|ventas)__/.test(n)),
     answeredRight: finalText.includes(CODEMODE_EXPECTED.store) && finalText.includes(CODEMODE_EXPECTED.total),
     ...(process.env.E2E_DEBUG && { debug: { tools: names, text: finalText.slice(0, 500) } }),

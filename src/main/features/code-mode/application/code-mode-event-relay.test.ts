@@ -81,6 +81,32 @@ describe('CodeModeEventRelay', () => {
     expect(out.map((e) => e.type)).toEqual(['tool_use']);
   });
 
+  const scriptFinished = (scriptId: string, over: Partial<Extract<CodeModeEvent, { type: 'script_finished' }>> = {}): CodeModeEvent => ({
+    type: 'script_finished', scriptId, ok: true, callCount: 1, bytesFetched: 10, bytesReturned: 5, durationMs: 40, result: '{"value":1,"stats":{}}', ...over,
+  });
+
+  it('gives the run_script card its own result when the script ends, after its nested calls', () => {
+    relay.observeAgentEvent(agentCall('toolu_1', 'S1'));
+    write('s1', started('s1', 'S1'), callStarted('s1', 'c1'), callFinished('s1', 'c1'), scriptFinished('s1'));
+    relay.flush();
+    expect(out.map((e) => e.type)).toEqual(['tool_use', 'tool_result', 'tool_result']);
+    expect(out[2]).toEqual({ type: 'tool_result', toolUseId: 'toolu_1', content: '{"value":1,"stats":{}}', isError: false });
+  });
+
+  it('marks the script result as an error when it failed', () => {
+    relay.observeAgentEvent(agentCall('toolu_1', 'S1'));
+    write('s1', started('s1', 'S1'), scriptFinished('s1', { ok: false, callCount: 0, result: 'The script does not type-check. No tool was called.' }));
+    relay.flush();
+    expect(out).toEqual([{ type: 'tool_result', toolUseId: 'toolu_1', content: 'The script does not type-check. No tool was called.', isError: true }]);
+  });
+
+  it('says nothing about the script result when an older gateway did not publish it', () => {
+    relay.observeAgentEvent(agentCall('toolu_1', 'S1'));
+    write('s1', started('s1', 'S1'), scriptFinished('s1', { result: undefined as unknown as string }));
+    relay.flush();
+    expect(out).toEqual([]);
+  });
+
   it('marks a denied call as an error the card can tell apart from a failure', () => {
     relay.observeAgentEvent(agentCall('toolu_1', 'S1'));
     write('s1', started('s1', 'S1'), callStarted('s1', 'c1', 'borrar'), callFinished('s1', 'c1', { ok: false, denied: true, bytes: 0, error: 'not read-only' }));

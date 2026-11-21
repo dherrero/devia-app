@@ -58,6 +58,7 @@
     "runScriptCalls": 1,
     "nestedCalls": 4,
     "sawDirectServerTools": false,
-    "answeredRight": true
+    "answeredRight": true,
+    "scriptResultShown": true
   }
 }

@@ -198,17 +198,26 @@ export class CodeModeGateway {
     if (code.trim() === '') return fail('`code` is required: the body of the script.');
     const catalog = await this.catalog();
 
+    const startedAt = Date.now();
+    const scriptId = `sc-${startedAt.toString(36)}-${++this.scripts}`;
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex').slice(0, 16);
+
     const checked = checkScript(code, generateDeclarations(catalog));
     if (!checked.ok) {
       const lines = checked.diagnostics.slice(0, 10).map((d) => `${d.line}:${d.column} ${d.message}`);
-      return fail(
+      const failure = fail(
         `The script does not type-check. No tool was called.\n${lines.join('\n')}\n` +
           'Fix it and send it again (get_types shows the exact signatures).',
       );
+      // No call was made, but the card still has to learn how this script ended.
+      this.publish(scriptId, { type: 'script_started', scriptId, codeHash, at: startedAt });
+      this.publish(scriptId, {
+        type: 'script_finished', scriptId, ok: false, callCount: 0, bytesFetched: 0, bytesReturned: 0,
+        durationMs: Date.now() - startedAt, result: failure.text,
+      });
+      return failure;
     }
 
-    const startedAt = Date.now();
-    const scriptId = `sc-${startedAt.toString(36)}-${++this.scripts}`;
     let calls = 0;
     let denied = 0;
     let bytesFetched = 0;
@@ -220,29 +229,32 @@ export class CodeModeGateway {
       }
       this.publish(scriptId, event);
     };
-    emit({ type: 'script_started', scriptId, codeHash: crypto.createHash('sha256').update(code).digest('hex').slice(0, 16), at: startedAt });
+    emit({ type: 'script_started', scriptId, codeHash, at: startedAt });
 
     const bridge = createBridge({ pool: this.deps.pool, catalog, policy: this.deps.policy, emit, scriptId });
     const result = await runInSandbox(checked.js, bridge, this.deps.limits);
     const durationMs = Date.now() - startedAt;
     const returned = result.ok ? Buffer.byteLength(JSON.stringify(result.value) ?? 'null', 'utf8') : 0;
-    emit({ type: 'script_finished', scriptId, ok: result.ok, callCount: calls, bytesFetched, bytesReturned: returned, durationMs });
 
     const stats = { calls, denied, durationMs, bytesFetched, bytesReturned: returned };
     const warnings = this.unavailableNote().trim();
+    let outcome: ToolResult;
     if (!result.ok) {
       const where = result.line !== undefined ? ` (line ${result.line})` : '';
       const logs = result.logs.length > 0 ? `\nconsole.log output:\n${result.logs.join('\n')}` : '';
-      return fail(`Script failed [${result.kind}]${where}: ${result.message}${logs}\nstats: ${JSON.stringify(stats)}${warnings ? `\n${warnings}` : ''}`);
+      outcome = fail(`Script failed [${result.kind}]${where}: ${result.message}${logs}\nstats: ${JSON.stringify(stats)}${warnings ? `\n${warnings}` : ''}`);
+    } else {
+      outcome = ok(
+        JSON.stringify({
+          value: result.value,
+          ...(result.logs.length > 0 && { logs: result.logs }),
+          stats,
+          ...(warnings && { warnings }),
+        }),
+      );
     }
-    return ok(
-      JSON.stringify({
-        value: result.value,
-        ...(result.logs.length > 0 && { logs: result.logs }),
-        stats,
-        ...(warnings && { warnings }),
-      }),
-    );
+    emit({ type: 'script_finished', scriptId, ok: result.ok, callCount: calls, bytesFetched, bytesReturned: returned, durationMs, result: outcome.text });
+    return outcome;
   }
 
   /** Events must never break a script: a full disk only costs the live timeline. */

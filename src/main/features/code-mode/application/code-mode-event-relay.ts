@@ -185,8 +185,11 @@ export class CodeModeEventRelay {
           ? `${event.bytes} bytes`
           : event.error ?? 'failed';
       this.opts.emit({ type: 'tool_result', toolUseId: event.callId, content, isError: !event.ok });
+    } else if (event.type === 'script_finished' && event.result !== undefined) {
+      // The run_script call's own result. The agent's stream may not carry it (Claude's
+      // main stream drops tool results); for agents that do, it is the same text and the
+      // reducer simply writes it twice.
+      this.opts.emit({ type: 'tool_result', toolUseId: parentToolUseId, content: event.result, isError: !event.ok });
     }
-    // `script_finished` is not shown as an event: its figures are in the JSON the
-    // `run_script` call itself returns, which is what the card reads.
   }
 }

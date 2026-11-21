@@ -106,8 +106,15 @@ describe('CodeModeGateway', () => {
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/no tool was called/i);
     expect(r.text).toMatch(/1:\d+/);
-    const files = fs.readdirSync(dir);
-    expect(files).toEqual([]); // nothing ran, so nothing was published
+    // No tool ran, but the card still needs to know how it ended: only the script's own
+    // start and finish are published, and the finish carries the text the agent got.
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
+    expect(files).toHaveLength(1);
+    const events = fs.readFileSync(path.join(dir, files[0] as string), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as CodeModeEvent);
+    expect(events.map((e) => e.type)).toEqual(['script_started', 'script_finished']);
+    const last = events[1];
+    expect(last).toMatchObject({ type: 'script_finished', ok: false, callCount: 0 });
+    expect(last?.type === 'script_finished' && last.result).toBe(r.text);
   });
 
   it('a denied write is catchable, distinguishable and still counted in the stats', async () => {
@@ -161,6 +168,9 @@ describe('CodeModeGateway', () => {
     expect(started?.type === 'script_started' && started.codeHash).toMatch(/^[0-9a-f]{16}$/);
     const finished = events.at(-1);
     expect(finished).toMatchObject({ type: 'script_finished', ok: true, callCount: 1 });
+    // The text the agent received, so the chat can show it even when the agent's own
+    // stream does not carry tool results.
+    expect(JSON.parse((finished as { result: string }).result)).toMatchObject({ value: { server: 'tiendas' }, stats: { calls: 1 } });
     expect(finished?.type === 'script_finished' && finished.bytesFetched).toBeGreaterThan(0);
   });
 
