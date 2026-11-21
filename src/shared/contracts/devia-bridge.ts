@@ -104,6 +104,7 @@ import type {
   McpInstallResult,
   McpProbeResult,
   McpScope,
+  McpServerEditView,
   McpServerView,
   McpSource,
 } from '../domain/mcp';
@@ -567,6 +568,8 @@ export interface DeviaBridge {
   readonly mcp: {
     /** Catalog snapshot (env values redacted). */
     list(): Promise<McpServerView[]>;
+    /** One server with its env values, to fill the edit form (T-562); null when unknown. */
+    get(id: string): Promise<McpServerEditView | null>;
     /** Streaming refresh — fired after every install / remove / sync.
      *  Returns an unsubscribe so transient consumers (modals, per-message
      *  cards) can release the listener and avoid the EventEmitter leak. */
@@ -595,6 +598,10 @@ export interface DeviaBridge {
     /** Spawn the server with an `initialize` request to check it
      *  actually starts. Caps at 5 s. */
     probe(id: string): Promise<McpProbeResult>;
+    /** S-50: switch a server between "direct" (the agent sees its tools) and
+     *  "codemode" (reachable only through `devia-code-mode` scripts). Re-syncs the
+     *  agents' native files, since a code-mode server is not written to them. */
+    setExposure(id: string, exposure: 'direct' | 'codemode', projectPath?: string): Promise<McpInstallResult>;
   };
 
   /**

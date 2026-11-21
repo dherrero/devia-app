@@ -20,6 +20,7 @@ import {
   REMINDER_TAG,
   SYSTEM_PROMPT_WRAPPER_TAG,
 } from '../../../../shared/domain/ask-user-mandate';
+import * as crypto from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -42,6 +43,9 @@ import {
 import type { UiToolName } from '../../../../shared/domain/ui-tools';
 import { UiMcpInjector, type UiServerHarness } from '../../ui-tools';
 import { CodeGraphMcpInjector, codeGraphProtocol } from '../../code-graph';
+import { buildCodeModeFeature, codeModeProtocol, codeModeRunDir, type CodeModePlan } from '../../code-mode';
+import { planCodeMode } from '../../code-mode/application/plan-code-mode';
+import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import type { StarterKitsPort } from '../../../shared/ports';
 import type { HarnessCatalog } from '../domain/ports';
 import type {
@@ -314,6 +318,8 @@ interface BuildExtras {
   memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
   codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
   codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
+  codeMode?: (args: { userServers: readonly McpServerConfig[]; agentId: string; mode: RunMode; runId: RunId }) => CodeModePlan | null;
+  codeModeProtocol?: (args: { serverIds: readonly string[]; delivered: boolean }) => string | null;
   saveMemoryPrompt?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   saveMemoryHandoff?: (projectAbs: string, content: string, sessionId?: string, agentId?: string) => void;
   handoffSummary?: (identity: string, sessionId: string) => string | null;
@@ -371,6 +377,8 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.memoryMcpServer ? { memoryMcpServer: extras.memoryMcpServer } : {}),
     ...(extras.codeGraphMcpServer ? { codeGraphMcpServer: extras.codeGraphMcpServer } : {}),
     ...(extras.codeGraphProtocol ? { codeGraphProtocol: extras.codeGraphProtocol } : {}),
+    ...(extras.codeMode ? { codeMode: extras.codeMode } : {}),
+    ...(extras.codeModeProtocol ? { codeModeProtocol: extras.codeModeProtocol } : {}),
     ...(extras.saveMemoryPrompt ? { saveMemoryPrompt: extras.saveMemoryPrompt } : {}),
     ...(extras.saveMemoryHandoff ? { saveMemoryHandoff: extras.saveMemoryHandoff } : {}),
     ...(extras.handoffSummary ? { handoffSummary: extras.handoffSummary } : {}),
@@ -3842,5 +3850,174 @@ describe('RunInstructionUseCase — ask_user mandate gate (S-46)', () => {
 
     const back = run(h, 'apply', 'renderer');
     expect(contentTexts(back).some((t) => t.includes(`<${ASK_USER_MANDATE_TAG}`))).toBe(true);
+  });
+});
+
+describe('RunInstructionUseCase — code mode gateway (S-50)', () => {
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-cm-run-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const cfg = (): FakeConfig => {
+    const c = new FakeConfig(path.join(tmpDir, '.devia-app'));
+    c.set({ workspaceRoot: tmpDir });
+    return c;
+  };
+  const GATEWAY_ID = 'devia-code-mode';
+  const codeModeServer = (id: string): McpServerConfig => ({ ...enabledServer(id), exposure: 'codemode' });
+  /** The real planner, with an injector that writes nothing to disk. */
+  const planner = (args: Parameters<NonNullable<BuildExtras['codeMode']>>[0]): CodeModePlan | null =>
+    planCodeMode({ ...args, injector: { serverConfig: () => enabledServer(GATEWAY_ID) } });
+
+  function runWith(def: Partial<RuntimeAgentDef>, servers: McpServerConfig[], extras: BuildExtras = {}) {
+    const h = build(def, { config: cfg(), mcpServers: makeMcpRegistry(servers), codeMode: planner, codeModeProtocol, ...extras });
+    const prepare = vi.spyOn(h.mappers.forDef(h.def), 'prepareRun');
+    h.uc.execute('proj-a', 'do thing', [], makeHandlers(), 'apply');
+    return { h, plan: prepare.mock.calls[0]?.[0], system: prepare.mock.calls[0]?.[1] ?? '' };
+  }
+  const ids = (list: readonly McpServerConfig[] | undefined): string[] => (list ?? []).map((s) => s.id);
+  const claudeMcpIds = (h: Harness): string[] => {
+    const args = h.runner.last().req.prepared.args;
+    const file = args[args.indexOf('--mcp-config') + 1] ?? '';
+    return Object.keys((JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown> }).mcpServers);
+  };
+
+  it('moves a code-mode server behind the gateway: gone from user, gateway added to devia', () => {
+    const { h, plan } = runWith(claudeStreamDef, [enabledServer('plain'), codeModeServer('tiendas')]);
+    expect(ids(plan?.harness.mcp.user)).toEqual(['plain']);
+    expect(ids(plan?.harness.mcp.devia)).toContain(GATEWAY_ID);
+    const delivered = claudeMcpIds(h);
+    expect(delivered).toContain(GATEWAY_ID);
+    expect(delivered).toContain('plain');
+    expect(delivered).not.toContain('tiendas');
+  });
+
+  it('leaves the run exactly as before when no server asks for code mode', () => {
+    const servers = [enabledServer('plain'), { ...enabledServer('other'), exposure: 'direct' as const }];
+    const withFeature = runWith(claudeStreamDef, servers);
+    const without = runWith(claudeStreamDef, servers, { codeMode: () => null });
+    expect(withFeature.plan?.harness.mcp).toEqual(without.plan?.harness.mcp);
+    expect(ids(withFeature.plan?.harness.mcp.devia)).not.toContain(GATEWAY_ID);
+    expect(claudeMcpIds(withFeature.h)).toEqual(claudeMcpIds(without.h));
+  });
+
+  it('puts the servers back when the agent will not get the gateway (enterprise MCP policy)', () => {
+    const { plan } = runWith(claudeStreamDef, [codeModeServer('tiendas')], { enterpriseMcpConfigPresent: () => true });
+    expect(ids(plan?.harness.mcp.user)).toEqual(['tiendas']);
+    expect(ids(plan?.harness.mcp.devia)).not.toContain(GATEWAY_ID);
+  });
+
+  it('keeps the servers direct for an agent that cannot take the gateway (pi has its own code mode)', () => {
+    const { plan } = runWith({ id: 'pi', name: 'Pi' }, [codeModeServer('tiendas')]);
+    expect(ids(plan?.harness.mcp.user)).toEqual(['tiendas']);
+    expect(ids(plan?.harness.mcp.devia)).not.toContain(GATEWAY_ID);
+  });
+
+  it('never moves a Devia-named server behind the gateway, whatever its exposure', () => {
+    const { plan } = runWith(claudeStreamDef, [codeModeServer('devia-memory'), codeModeServer('tiendas')]);
+    expect(ids(plan?.harness.mcp.user)).toEqual(['devia-memory']);
+    expect(ids(plan?.harness.mcp.devia)).toContain(GATEWAY_ID);
+  });
+
+  it('tells Claude about the gateway in the turn context, not in the frozen system prompt', () => {
+    const { plan, system } = runWith(claudeStreamDef, [codeModeServer('tiendas')]);
+    expect(plan?.turnContext ?? '').toContain('run_script');
+    expect(plan?.turnContext ?? '').toContain('`tiendas`');
+    expect(system).not.toContain('run_script');
+  });
+
+  it('tells a non-freezing agent in its system prompt, when the gateway was really delivered', () => {
+    const delivered = runWith({ id: 'gemini', name: 'Gemini CLI' }, [codeModeServer('tiendas')], { nativeMcp: nativeDelivery(true) });
+    expect(delivered.system).toContain('run_script');
+    const notDelivered = runWith({ id: 'gemini', name: 'Gemini CLI' }, [codeModeServer('tiendas')], { nativeMcp: nativeDelivery(false) });
+    expect(notDelivered.system).not.toContain('run_script');
+    expect(ids(notDelivered.plan?.harness.mcp.user)).toEqual(['tiendas']);
+  });
+});
+
+describe('RunInstructionUseCase — code mode events and cleanup (S-50 T-557)', () => {
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-cm-relay-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const deviaDir = (): string => path.join(tmpDir, '.devia-app');
+  const cfg = (): FakeConfig => {
+    const c = new FakeConfig(deviaDir());
+    c.set({ workspaceRoot: tmpDir });
+    return c;
+  };
+  const sha16 = (code: string): string => crypto.createHash('sha256').update(code).digest('hex').slice(0, 16);
+  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+  function start(extras: BuildExtras = {}) {
+    const config = cfg();
+    const feature = buildCodeModeFeature({ config });
+    const h = build(claudeStreamDef, {
+      config,
+      mcpServers: makeMcpRegistry([{ ...enabledServer('tiendas'), exposure: 'codemode' }]),
+      codeMode: feature.codeMode,
+      codeModeProtocol: feature.codeModeProtocol,
+      ...extras,
+    });
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'cross the data', [], handlers, 'apply');
+    const capture = h.runner.last();
+    return { h, handlers, capture, runDir: codeModeRunDir(deviaDir(), capture.req.runId ?? '') };
+  }
+  const lines = (handlers: RunInstructionHandlers): Array<Record<string, unknown>> =>
+    (handlers.onClaudeOutput as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>);
+
+  it('shows a script\'s calls nested under the agent\'s run_script card, after the card itself', async () => {
+    const { handlers, capture, runDir } = start();
+    expect(fs.existsSync(path.join(runDir, 'servers.json'))).toBe(true);
+
+    emitToolUse(capture, 'toolu_9', 'mcp__devia-code-mode__run_script', { code: 'return 1;' });
+    fs.mkdirSync(path.join(runDir, 'events'), { recursive: true });
+    fs.writeFileSync(
+      path.join(runDir, 'events', 's1.jsonl'),
+      [
+        { type: 'script_started', scriptId: 's1', codeHash: sha16('return 1;'), at: 1 },
+        { type: 'call_started', scriptId: 's1', callId: 'c1', server: 'tiendas', tool: 'listar', args: { region: 'n' }, at: 2 },
+        { type: 'call_finished', scriptId: 's1', callId: 'c1', ok: true, bytes: 10, durationMs: 3 },
+        { type: 'script_finished', scriptId: 's1', ok: true, callCount: 1, bytesFetched: 10, bytesReturned: 2, durationMs: 9, result: '{"value":1,"stats":{"calls":1}}' },
+      ].map((e) => `${JSON.stringify(e)}\n`).join(''),
+    );
+    await sleep(500);
+
+    const out = lines(handlers);
+    const parentIdx = out.findIndex((e) => e['type'] === 'tool_use' && e['id'] === 'toolu_9');
+    const childIdx = out.findIndex((e) => e['type'] === 'tool_use' && e['id'] === 'c1');
+    expect(parentIdx).toBeGreaterThanOrEqual(0);
+    expect(childIdx).toBeGreaterThan(parentIdx);
+    expect(out[childIdx]).toMatchObject({ name: 'tiendas.listar', parentToolUseId: 'toolu_9' });
+    expect(out.some((e) => e['type'] === 'tool_result' && e['toolUseId'] === 'c1')).toBe(true);
+    // The agent's own stream may not carry the run_script result (Claude's does not): the relay does.
+    expect(out.find((e) => e['type'] === 'tool_result' && e['toolUseId'] === 'toolu_9')).toMatchObject({ content: '{"value":1,"stats":{"calls":1}}', isError: false });
+    capture.handlers.onDone(0);
+  });
+
+  it('removes the servers file (it carries credentials) when the run ends', () => {
+    const { capture, runDir } = start();
+    expect(fs.existsSync(runDir)).toBe(true);
+    capture.handlers.onDone(0);
+    expect(fs.existsSync(runDir)).toBe(false);
+  });
+
+  it('removes it when the run fails too', () => {
+    const { capture, runDir } = start();
+    capture.handlers.onError('boom');
+    expect(fs.existsSync(runDir)).toBe(false);
+  });
+
+  it('removes it at once when the agent will not get the gateway', () => {
+    const { runDir } = start({ enterpriseMcpConfigPresent: () => true });
+    expect(fs.existsSync(runDir)).toBe(false);
+  });
+
+  it('does nothing of this for a run without code-mode servers', () => {
+    const config = cfg();
+    const h = build(claudeStreamDef, { config, mcpServers: makeMcpRegistry([enabledServer('plain')]), codeMode: buildCodeModeFeature({ config }).codeMode });
+    h.uc.execute('proj-a', 'x', [], makeHandlers(), 'apply');
+    expect(fs.existsSync(path.join(deviaDir(), 'tmp', 'code-mode'))).toBe(false);
   });
 });

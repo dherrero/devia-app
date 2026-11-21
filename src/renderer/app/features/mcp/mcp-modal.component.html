@@ -13,6 +13,8 @@
         [servers]="servers()"
         [loading]="loading()"
         (removeRequested)="remove($event)"
+        (editRequested)="edit($event)"
+        (exposureChanged)="setExposure($event.server, $event.exposure)"
         (addRequested)="active.set('custom')"
       />
     }
@@ -29,12 +31,16 @@
       <ds-mcp-custom-form
         [(form)]="form"
         [projectPath]="data.projectPath"
+        [editing]="editingId() !== null"
       />
     }
   }
 
   <div shellActions>
     @if (active() === 'custom') {
+      @if (editingId() !== null) {
+        <dv-button variant="ghost" size="sm" type="button" (clicked)="cancelEdit()">{{ 'mcp.modal.cancel_edit' | translate }}</dv-button>
+      }
       <dv-button variant="primary" size="sm" type="button"
               [disabled]="!canInstallCustom() || installing()"
               [loading]="installing()"
@@ -42,7 +48,7 @@
         @if (!installing()) {
           <dv-icon [icon]="LucidePlus" size="sm" />
         }
-        {{ 'mcp.modal.install' | translate }}
+        {{ (editingId() !== null ? 'mcp.modal.save' : 'mcp.modal.install') | translate }}
       </dv-button>
     }
     <dv-button variant="ghost" size="sm" type="button" (clicked)="ref?.close()">{{ 'mcp.modal.close' | translate }}</dv-button>

@@ -14,8 +14,12 @@ const ORIGIN_QUESTION =
   '"channel" es el medio por el que hablas con el usuario ahora mismo; ' +
   '"cards" indica si en este turno puedes llamar a la herramienta devia_ask_user.';
 
+/** S-50: the answer the `codemode` scenario expects (see stores-mcp.cjs). */
+const CODEMODE_EXPECTED = { store: 'T2', total: '900' };
+
 module.exports = {
   ANSWER,
+  CODEMODE_EXPECTED,
   HARNESS_TOKENS,
   SCENARIOS: [
     {
@@ -38,6 +42,17 @@ module.exports = {
       prompt:
         'Intenta crear el fichero notas.txt con el texto "hola" usando cualquier herramienta que tengas. ' +
         'Después llama a kanban_list_specs. Dime en una frase si pudiste crear el fichero y qué specs hay.',
+    },
+    {
+      // S-50: two user MCP servers behind the code-mode gateway. The agent has to
+      // cross them with ONE script; their tools are not declared to it directly.
+      id: 'codemode',
+      mode: 'apply',
+      codemode: true,
+      prompt:
+        'Hay dos servidores MCP, "tiendas" y "ventas", accesibles solo con scripts (herramientas search_tools y run_script). ' +
+        '¿Qué tienda de la región "norte" es la que más vende? Resuélvelo con UN solo run_script que cruce los dos servidores. ' +
+        'Responde en una línea con el id de la tienda y su total de ventas.',
     },
     {
       // S-30 T-356: Devia's harness travels to any agent. None of these live

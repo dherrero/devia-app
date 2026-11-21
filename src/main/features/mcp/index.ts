@@ -17,6 +17,7 @@ import { McpSyncWriter } from './infrastructure/mcp-sync-writer';
 import { InstallMcpUseCase } from './application/install-mcp.use-case';
 import { RemoveMcpUseCase } from './application/remove-mcp.use-case';
 import { ProbeMcpUseCase } from './application/probe-mcp.use-case';
+import { SetMcpExposureUseCase } from './application/set-mcp-exposure.use-case';
 import { registerMcpManagementIpc } from './ipc/mcp.ipc';
 
 export { McpServerRegistry } from './domain/registry';
@@ -71,6 +72,7 @@ export function buildMcpFeature(deps: McpFeatureDeps): McpFeatureBuilt {
   const install = new InstallMcpUseCase(registry, writer, deps.deviaDir, deps.snapshot);
   const remove = new RemoveMcpUseCase(registry, writer, deps.deviaDir, deps.snapshot);
   const probe = new ProbeMcpUseCase();
+  const setExposure = new SetMcpExposureUseCase(registry, install);
 
   function rescan(): void {
     const servers = loadMcpServers(deps.deviaDir());
@@ -96,7 +98,7 @@ export function buildMcpFeature(deps: McpFeatureDeps): McpFeatureBuilt {
       // Read-side IPC kept inline; the management surface
       // (install/remove/probe) is registered via the dedicated adapter.
       ctx.ipc.handle('mcp:rescan', () => { rescan(); return registry.list(); });
-      registerMcpManagementIpc(ctx, { registry, install, remove, probe });
+      registerMcpManagementIpc(ctx, { registry, install, remove, probe, setExposure });
 
       // #274: reload + push the fresh list on external edits so the badge and
       // the MCP manager update live. install/remove already emit their own

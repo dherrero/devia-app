@@ -211,7 +211,22 @@
     "review_changes": "Rivedi queste modifiche",
     "subagent_tools": "{{count}} strumenti",
     "subagent_tokens": "{{count}} token",
-    "subagent_report": "Rapporto"
+    "subagent_report": "Rapporto",
+    "script_title": "Script",
+    "script_line": "{{servers}} · {{calls}} chiamate · {{seconds}} s",
+    "script_line_running": "{{servers}} · {{calls}} chiamate finora",
+    "script_line_no": "riga {{line}}",
+    "script_returned": "Restituito",
+    "script_calls": "Chiamate",
+    "script_code": "Codice",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} token di dati sono rimasti fuori dal contesto (stima)",
+    "script_denied_note": "{{count}} chiamata/e negata/e: gli script possono solo leggere",
+    "script_error_type": "Errore di tipo: nessuno strumento è stato chiamato",
+    "script_error_runtime": "Lo script è fallito",
+    "script_error_denied": "Negato: gli script possono solo leggere",
+    "script_error_other": "Errore",
+    "script_no_calls": "Nessuna chiamata a strumenti"
   },
   "bubble_progress": {
     "thinking": "Sto pensando…"
@@ -624,7 +639,17 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Elimina server MCP",
-      "remove_confirm_message": "Eliminare il server «{{name}}»? Questa azione non può essere annullata."
+      "remove_confirm_message": "Eliminare il server «{{name}}»? Questa azione non può essere annullata.",
+      "exposure_label": "Esposizione degli strumenti",
+      "exposure_direct": "Diretta",
+      "exposure_codemode": "Tramite code mode",
+      "exposure_hint": "In code mode l'agente non vede gli strumenti di questo server. Li raggiunge con uno script e nella chat torna solo il risultato. Gli script possono solo leggere.",
+      "exposure_saved": "Esposizione aggiornata.",
+      "edit": "Modifica",
+      "edit_ok": "Server aggiornato.",
+      "edit_missing": "Questo server non esiste più.",
+      "save": "Salva",
+      "cancel_edit": "Annulla modifica"
     }
   },
   "common": {

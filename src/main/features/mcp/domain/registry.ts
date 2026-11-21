@@ -1,4 +1,4 @@
-import type { McpServerConfig, McpServerView } from '../../../../shared/domain/mcp';
+import type { McpServerConfig, McpServerEditView, McpServerView } from '../../../../shared/domain/mcp';
 
 /**
  * In-memory MCP server registry (REV-AGENT-CORE-004).
@@ -48,6 +48,26 @@ export class McpServerRegistry {
       if (s.exposure !== undefined) v.exposure = s.exposure;
       return v;
     });
+  }
+
+  /** The one server the edit form opens, env values included; null when unknown. */
+  editView(id: string): McpServerEditView | null {
+    const s = this.servers.get(id);
+    if (!s) return null;
+    return {
+      id: s.id,
+      name: s.name,
+      command: s.command,
+      args: [...s.args],
+      agents: s.agents ?? ['claude'],
+      scope: s.scope ?? 'global',
+      source: s.source ?? 'manual',
+      enabled: s.enabled,
+      ...(s.description !== undefined && { description: s.description }),
+      ...(s.env !== undefined && { env: { ...s.env } }),
+      ...(s.allowedEnvKeys !== undefined && { allowedEnvKeys: [...s.allowedEnvKeys] }),
+      ...(s.exposure !== undefined && { exposure: s.exposure }),
+    };
   }
 
   /** Returns the full McpServerConfig for an id, or null. Used by the

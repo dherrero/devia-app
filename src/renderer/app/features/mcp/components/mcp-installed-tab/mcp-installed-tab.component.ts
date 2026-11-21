@@ -1,11 +1,12 @@
 import {
   ChangeDetectionStrategy, Component, computed, inject, input, output, signal,
 } from '@angular/core';
-import { TranslateModule } from '@ngx-translate/core';
-import { LucidePlay, LucidePlus, LucideTrash2 } from '@lucide/angular';
-import { ButtonComponent, IconComponent, SpinnerComponent } from '@devia/ui';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { LucidePencil, LucidePlay, LucidePlus, LucideTrash2 } from '@lucide/angular';
+import { ButtonComponent, ButtonToggleGroupComponent, IconComponent, SpinnerComponent } from '@devia/ui';
 import { ElectronApiService } from '../../../../core/services/electron-api.service';
 import { ALL_AGENTS } from '../../models/mcp-form.model';
+import { exposureChoice, isExposureChoice, type McpExposureChoice } from '../../models/mcp-exposure.model';
 import type { McpAgentId, McpProbeResult, McpServerView } from '../../../../../types/devia';
 
 /**
@@ -18,13 +19,15 @@ import type { McpAgentId, McpProbeResult, McpServerView } from '../../../../../t
   selector: 'ds-mcp-installed-tab',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent, IconComponent, SpinnerComponent, TranslateModule],
+  imports: [ButtonComponent, ButtonToggleGroupComponent, IconComponent, SpinnerComponent, TranslateModule],
   templateUrl: './mcp-installed-tab.component.html',
   styleUrl: './mcp-installed-tab.component.scss',
 })
 export class McpInstalledTabComponent {
   private readonly api = inject(ElectronApiService);
+  private readonly translate = inject(TranslateService);
 
+  readonly LucidePencil = LucidePencil;
   readonly LucidePlay = LucidePlay;
   readonly LucidePlus = LucidePlus;
   readonly LucideTrash2 = LucideTrash2;
@@ -33,7 +36,11 @@ export class McpInstalledTabComponent {
   readonly loading = input.required<boolean>();
 
   readonly removeRequested = output<McpServerView>();
+  /** T-562: the user wants to edit this server. */
+  readonly editRequested = output<McpServerView>();
   readonly addRequested = output<void>();
+  /** S-50: the user switched a server between direct and code mode. */
+  readonly exposureChanged = output<{ server: McpServerView; exposure: McpExposureChoice }>();
 
   readonly selectedServerId = signal<string | null>(null);
   readonly projectServers = computed(() => this.servers().filter((s) => s.scope === 'project'));
@@ -44,6 +51,20 @@ export class McpInstalledTabComponent {
     return all.find((server) => server.id === this.selectedServerId()) ?? all[0];
   });
   readonly probeResults = signal<Record<string, McpProbeResult>>({});
+
+  readonly exposureItems = computed(() => [
+    { id: 'direct', label: this.translate.instant('mcp.modal.exposure_direct') },
+    { id: 'codemode', label: this.translate.instant('mcp.modal.exposure_codemode') },
+  ]);
+
+  exposureOf(server: McpServerView): McpExposureChoice {
+    return exposureChoice(server);
+  }
+
+  setExposure(server: McpServerView, value: string): void {
+    if (!isExposureChoice(value) || value === exposureChoice(server)) return;
+    this.exposureChanged.emit({ server, exposure: value });
+  }
 
   agentLabel(id: McpAgentId): string {
     return ALL_AGENTS.find((a) => a.id === id)?.label ?? id;

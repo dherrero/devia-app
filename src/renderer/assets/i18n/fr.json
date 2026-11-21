@@ -211,7 +211,22 @@
     "review_changes": "Réviser ces modifications",
     "subagent_tools": "{{count}} outils",
     "subagent_tokens": "{{count}} jetons",
-    "subagent_report": "Rapport"
+    "subagent_report": "Rapport",
+    "script_title": "Script",
+    "script_line": "{{servers}} · {{calls}} appels · {{seconds}} s",
+    "script_line_running": "{{servers}} · {{calls}} appels jusqu'ici",
+    "script_line_no": "ligne {{line}}",
+    "script_returned": "Retourné",
+    "script_calls": "Appels",
+    "script_code": "Code",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} tokens de données sont restés hors du contexte (estimation)",
+    "script_denied_note": "{{count}} appel(s) refusé(s) : les scripts ne peuvent que lire",
+    "script_error_type": "Erreur de type : aucun outil n'a été appelé",
+    "script_error_runtime": "Le script a échoué",
+    "script_error_denied": "Refusé : les scripts ne peuvent que lire",
+    "script_error_other": "Erreur",
+    "script_no_calls": "Aucun appel d'outil"
   },
   "bubble_progress": {
     "thinking": "Réflexion…"
@@ -628,7 +643,17 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Supprimer le serveur MCP",
-      "remove_confirm_message": "Supprimer le serveur « {{name}} » ? Cette action est irréversible."
+      "remove_confirm_message": "Supprimer le serveur « {{name}} » ? Cette action est irréversible.",
+      "exposure_label": "Exposition des outils",
+      "exposure_direct": "Directe",
+      "exposure_codemode": "Via le mode code",
+      "exposure_hint": "En mode code, l'agent ne voit pas les outils de ce serveur. Il y accède par un script et seul le résultat revient dans le chat. Les scripts ne peuvent que lire.",
+      "exposure_saved": "Exposition mise à jour.",
+      "edit": "Modifier",
+      "edit_ok": "Serveur mis à jour.",
+      "edit_missing": "Ce serveur n'existe plus.",
+      "save": "Enregistrer",
+      "cancel_edit": "Annuler la modification"
     }
   },
   "common": {

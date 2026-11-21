@@ -13,7 +13,7 @@ import { ElectronApiService } from '../../core/services/electron-api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ModalShellComponent, type ModalNavSection } from '../../shared/components/modal-shell/modal-shell.component';
 import { MCP_CATALOG } from './catalog';
-import { ALL_AGENTS, emptyForm, parseEnv, type FormState, type McpInstallRequest } from './models/mcp-form.model';
+import { ALL_AGENTS, emptyForm, formFromConfig, parseEnv, splitArgs, type FormState, type McpInstallRequest } from './models/mcp-form.model';
 import { McpInstalledTabComponent } from './components/mcp-installed-tab/mcp-installed-tab.component';
 import { McpCatalogTabComponent } from './components/mcp-catalog-tab/mcp-catalog-tab.component';
 import { McpCustomFormComponent } from './components/mcp-custom-form/mcp-custom-form.component';
@@ -80,6 +80,9 @@ export class McpModalComponent {
 
   readonly form = signal<FormState>(emptyForm(this.data.projectPath));
 
+  /** T-562: id of the installed server the form is editing, or null when it adds a new one. */
+  readonly editingId = signal<string | null>(null);
+
   readonly canInstallCustom = computed(() => {
     const f = this.form();
     return f.id.length > 0
@@ -127,7 +130,42 @@ export class McpModalComponent {
     }
   }
 
+  /** S-50: direct ⇄ code mode. The main process re-syncs the agents' files. */
+  async setExposure(server: McpServerView, exposure: 'direct' | 'codemode'): Promise<void> {
+    const result = await this.api.mcpSetExposure(
+      server.id,
+      exposure,
+      server.scope === 'project' ? this.data.projectPath : undefined,
+    );
+    if (result.ok) {
+      this.toast.show(this.translate.instant('mcp.modal.exposure_saved'), { kind: 'success' });
+    } else {
+      this.toast.show(result.error ?? 'Error', { kind: 'error' });
+    }
+    await this.refresh();
+  }
+
+  /** T-562: open the form with the stored server, credentials included (they are ones the user typed). */
+  async edit(server: McpServerView): Promise<void> {
+    const config = await this.api.mcpGet(server.id);
+    if (config === null) {
+      this.toast.show(this.translate.instant('mcp.modal.edit_missing'), { kind: 'error' });
+      await this.refresh();
+      return;
+    }
+    this.form.set(formFromConfig(config));
+    this.editingId.set(config.id);
+    this.active.set('custom');
+  }
+
+  cancelEdit(): void {
+    this.editingId.set(null);
+    this.form.set(emptyForm(this.data.projectPath));
+    this.active.set('installed');
+  }
+
   openCatalogInstall(entry: McpCatalogEntry): void {
+    this.editingId.set(null);
     const requiredEnvKeys = entry.requiredEnvKeys ?? [];
     this.form.set({
       id: entry.slug,
@@ -153,8 +191,11 @@ export class McpModalComponent {
       name: f.name,
       ...(f.description !== '' && { description: f.description }),
       command: f.command,
-      args: f.argsText.trim().length === 0 ? [] : f.argsText.trim().split(/\s+/),
+      args: splitArgs(f.argsText),
       ...(env !== null && { env }),
+      // Editing: what the form does not show must survive the save.
+      ...(f.allowedEnvKeys !== undefined && { allowedEnvKeys: f.allowedEnvKeys }),
+      ...(f.enabled !== undefined && { enabled: f.enabled }),
       agents: Array.from(f.agents),
       scope: f.scope,
       source: f.source,
@@ -162,11 +203,13 @@ export class McpModalComponent {
         projectPath: this.data.projectPath,
       }),
     };
+    const wasEditing = this.editingId() !== null;
     this.installing.set(true);
     try {
       const result = await this.api.mcpInstall(request);
       if (result.ok) {
-        this.toast.show(this.translate.instant('mcp.modal.install_ok'), { kind: 'success' });
+        this.toast.show(this.translate.instant(wasEditing ? 'mcp.modal.edit_ok' : 'mcp.modal.install_ok'), { kind: 'success' });
+        this.editingId.set(null);
         this.form.set(emptyForm(this.data.projectPath));
         this.active.set('installed');
         await this.refresh();
