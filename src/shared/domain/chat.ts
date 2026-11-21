@@ -1,5 +1,5 @@
 import type { DiffFile } from './git';
-import type { CancelReason, ErrorClassification } from './agent-event';
+import type { CancelReason, ErrorClassification, SubagentInfo } from './agent-event';
 import type { RunId } from './agent';
 import type { PersistedAgentEvent } from './persisted-agent-event';
 import type { RunMode } from './run-capabilities';
@@ -37,6 +37,10 @@ export interface ToolCallRecord {
   isError?: boolean;
   /** Diff snapshot attached after a file-editing tool result (TS-CLI-10). */
   diff?: DiffFile[];
+  /** Set when a sub-agent made this call: id of the parent's `Agent`/`Task` call. */
+  parentId?: string;
+  /** Present on an `Agent`/`Task` call: the sub-agent's live state. */
+  subagent?: SubagentInfo;
 }
 
 export interface MessageUsage {

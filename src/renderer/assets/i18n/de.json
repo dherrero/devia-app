@@ -208,7 +208,10 @@
     "show_full_input": "Vollständige Eingabe",
     "hide_full_input": "Eingabe ausblenden",
     "diff_changes": "Änderungen",
-    "review_changes": "Diese Änderungen prüfen"
+    "review_changes": "Diese Änderungen prüfen",
+    "subagent_tools": "{{count}} Werkzeuge",
+    "subagent_tokens": "{{count}} Tokens",
+    "subagent_report": "Bericht"
   },
   "bubble_progress": {
     "thinking": "Denke…"

@@ -208,7 +208,10 @@
     "show_full_input": "Показать весь ввод",
     "hide_full_input": "Скрыть ввод",
     "diff_changes": "Изменения",
-    "review_changes": "Просмотреть изменения"
+    "review_changes": "Просмотреть изменения",
+    "subagent_tools": "инструментов: {{count}}",
+    "subagent_tokens": "токенов: {{count}}",
+    "subagent_report": "Отчёт"
   },
   "bubble_progress": {
     "thinking": "Думаю…"

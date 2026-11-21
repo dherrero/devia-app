@@ -208,7 +208,10 @@
     "show_full_input": "पूरा इनपुट दिखाएँ",
     "hide_full_input": "पूरा इनपुट छिपाएँ",
     "diff_changes": "बदलाव",
-    "review_changes": "इन बदलावों की समीक्षा करें"
+    "review_changes": "इन बदलावों की समीक्षा करें",
+    "subagent_tools": "{{count}} टूल",
+    "subagent_tokens": "{{count}} टोकन",
+    "subagent_report": "रिपोर्ट"
   },
   "bubble_progress": {
     "thinking": "सोच रहा है…"

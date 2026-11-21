@@ -208,7 +208,10 @@
     "show_full_input": "إظهار كامل المدخلات",
     "hide_full_input": "إخفاء المدخلات",
     "diff_changes": "التغييرات",
-    "review_changes": "مراجعة هذه التغييرات"
+    "review_changes": "مراجعة هذه التغييرات",
+    "subagent_tools": "{{count}} أدوات",
+    "subagent_tokens": "{{count}} رمز",
+    "subagent_report": "التقرير"
   },
   "bubble_progress": {
     "thinking": "جارٍ التفكير…"

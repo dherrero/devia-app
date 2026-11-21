@@ -1,7 +1,7 @@
 import {
   LucideTerminal, LucidePencil, LucideFileEdit, LucideSave, LucideFileText,
   LucideSearch, LucideFileSearch, LucideHelpCircle, LucideGlobe,
-  LucideClipboard, LucideSend,
+  LucideClipboard, LucideSend, LucideBot,
   type LucideIcon,
 } from '@lucide/angular';
 import type { ToolCallRecord } from '../../../../../../../../shared/domain/chat';
@@ -19,6 +19,7 @@ const TOOL_ICON_MAP: Record<string, LucideIcon> = {
   travel_explore: LucideGlobe,
   public:       LucideGlobe,
   assignment:   LucideClipboard,
+  smart_toy:    LucideBot,
   send:         LucideSend,
 };
 

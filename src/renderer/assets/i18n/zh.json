@@ -208,7 +208,10 @@
     "show_full_input": "显示完整输入",
     "hide_full_input": "隐藏完整输入",
     "diff_changes": "更改",
-    "review_changes": "审查这些更改"
+    "review_changes": "审查这些更改",
+    "subagent_tools": "{{count}} 个工具",
+    "subagent_tokens": "{{count}} 个 token",
+    "subagent_report": "报告"
   },
   "bubble_progress": {
     "thinking": "思考中…"

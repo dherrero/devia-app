@@ -14,15 +14,16 @@
  * (REV-AGENT-CORE-002)
  */
 
-import type { AgentEvent, ErrorClassification } from './agent-event';
+import type { AgentEvent, ErrorClassification, SubagentInfo } from './agent-event';
 import type { ToolCallRecord, ContentBlock, MessageUsage } from './chat';
 
 export type PersistedAgentEvent =
   | { kind: 'status'; label: string; model?: string; ttftMs?: number }
   | { kind: 'text'; text: string }
   | { kind: 'thinking'; text: string }
-  | { kind: 'tool_use'; id: string; name: string; input: unknown }
+  | { kind: 'tool_use'; id: string; name: string; input: unknown; parentToolUseId?: string }
   | { kind: 'tool_result'; toolUseId: string; content: string; isError: boolean }
+  | ({ kind: 'subagent'; toolUseId: string } & Partial<SubagentInfo>)
   | { kind: 'usage'; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningOutputTokens?: number; costUsd?: number; durationMs?: number; contextWindow?: number }
   | { kind: 'turn_end'; stopReason: string }
   | { kind: 'session_started'; agentSessionId: string }
@@ -65,9 +66,17 @@ export function appendAgentEvent(
     case 'status':
       return [...events, { kind: 'status', label: event.label, ...(event.model !== undefined && { model: event.model }), ...(event.ttftMs !== undefined && { ttftMs: event.ttftMs }) }];
     case 'tool_use':
-      return [...events, { kind: 'tool_use', id: event.id, name: event.name, input: event.input }];
+      return [...events, {
+        kind: 'tool_use', id: event.id, name: event.name, input: event.input,
+        ...(event.parentToolUseId !== undefined && { parentToolUseId: event.parentToolUseId }),
+      }];
     case 'tool_result':
       return [...events, { kind: 'tool_result', toolUseId: event.toolUseId, content: event.content, isError: event.isError }];
+    case 'subagent': {
+      const { type: _type, ...rest } = event;
+      void _type;
+      return [...events, { kind: 'subagent', ...rest }];
+    }
     case 'usage':
       return [...events, {
         kind: 'usage',
@@ -120,6 +129,20 @@ export interface RebuiltMessageShape {
   agentSessionId?: string;
 }
 
+/** Fold one `subagent` event into the running state: defined fields win, the rest is kept. */
+export function mergeSubagent(
+  prev: SubagentInfo | undefined,
+  patch: Partial<SubagentInfo> & { type?: string; kind?: string; toolUseId?: string },
+): SubagentInfo {
+  const next: SubagentInfo = { status: prev?.status ?? 'running', ...prev };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value !== undefined && key !== 'type' && key !== 'kind' && key !== 'toolUseId') {
+      (next as unknown as Record<string, unknown>)[key] = value;
+    }
+  }
+  return next;
+}
+
 /**
  * Rebuild the compacted `ChatMessage` fields from a persisted event log.
  * Pure. Tolerates a malformed/empty array by returning empty defaults.
@@ -150,8 +173,13 @@ export function rebuildFromEvents(events: readonly PersistedAgentEvent[]): Rebui
         thinking += ev.text;
         break;
       case 'tool_use': {
-        toolCalls.push({ id: ev.id, name: ev.name, input: ev.input });
-        contentBlocks.push({ kind: 'tool_ref', toolCallId: ev.id });
+        // A sub-agent's call nests under its parent: only top-level calls are blocks.
+        const nested = ev.parentToolUseId !== undefined && toolCalls.some((c) => c.id === ev.parentToolUseId);
+        toolCalls.push({
+          id: ev.id, name: ev.name, input: ev.input,
+          ...(nested && { parentId: ev.parentToolUseId }),
+        });
+        if (!nested) contentBlocks.push({ kind: 'tool_ref', toolCallId: ev.id });
         break;
       }
       case 'tool_result': {
@@ -160,6 +188,11 @@ export function rebuildFromEvents(events: readonly PersistedAgentEvent[]): Rebui
           target.result = ev.content;
           target.isError = ev.isError;
         }
+        break;
+      }
+      case 'subagent': {
+        const target = toolCalls.find(tc => tc.id === ev.toolUseId);
+        if (target) target.subagent = mergeSubagent(target.subagent, ev);
         break;
       }
       case 'usage': {
@@ -203,7 +236,7 @@ export function rebuildFromEvents(events: readonly PersistedAgentEvent[]): Rebui
 export function isValidEventLog(value: unknown): value is PersistedAgentEvent[] {
   if (!Array.isArray(value)) return false;
   const validKinds = new Set([
-    'status', 'text', 'thinking', 'tool_use', 'tool_result',
+    'status', 'text', 'thinking', 'tool_use', 'tool_result', 'subagent',
     'usage', 'turn_end', 'session_started', 'error', 'raw',
   ]);
   return value.every(ev =>
