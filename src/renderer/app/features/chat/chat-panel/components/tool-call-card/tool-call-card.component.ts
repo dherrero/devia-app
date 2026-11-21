@@ -1,5 +1,5 @@
 import {
-  ChangeDetectionStrategy, Component, computed, inject, input, signal,
+  ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked,
 } from '@angular/core';
 import { TranslateModule } from '@ngx-translate/core';
 import { DvChatStatusBadgeComponent, IconComponent } from '@devia/ui';
@@ -33,11 +33,39 @@ export class ToolCallCardComponent {
   private readonly assets = inject(ProjectAssetsService);
   readonly toolCall = input.required<ToolCallRecord>();
   readonly active = input(true);
+  /** Calls a sub-agent made under this one (set only on an Agent/Task call). */
+  readonly children = input<ToolCallRecord[]>([]);
   readonly collapsed = signal(true);
+  /** Once the user opens or folds the card by hand, a sub-agent's progress stops moving it. */
+  private userToggled = false;
+
+  constructor() {
+    // A sub-agent card stays open while the sub-agent runs and folds when it ends.
+    effect(() => {
+      const status = this.toolCall().subagent?.status;
+      const live = this.active();
+      if (status === undefined) return;
+      untracked(() => {
+        // Open only while it really runs: a persisted `running` (run cancelled or
+        // reloaded) must not stay open and spinning.
+        if (!this.userToggled) this.collapsed.set(!(status === 'running' && live));
+      });
+    });
+  }
 
   toggleCollapsed(): void {
+    this.userToggled = true;
     this.collapsed.update((value) => !value);
   }
+
+  readonly subagent = computed(() => this.toolCall().subagent ?? null);
+
+  /** `3 tools · 18,598 tokens`-style facts, already localised by the template. */
+  readonly subagentToolsCount = computed(() => this.subagent()?.toolUses ?? null);
+  readonly subagentTokens = computed(() => {
+    const tokens = this.subagent()?.totalTokens;
+    return tokens === undefined ? null : tokens.toLocaleString();
+  });
 
   /**
    * MCP-provided tools come over the wire as `mcp__<serverId>__<tool>`

@@ -208,7 +208,10 @@
     "show_full_input": "Afficher toute l'entrée",
     "hide_full_input": "Masquer l'entrée",
     "diff_changes": "Modifications",
-    "review_changes": "Réviser ces modifications"
+    "review_changes": "Réviser ces modifications",
+    "subagent_tools": "{{count}} outils",
+    "subagent_tokens": "{{count}} jetons",
+    "subagent_report": "Rapport"
   },
   "bubble_progress": {
     "thinking": "Réflexion…"

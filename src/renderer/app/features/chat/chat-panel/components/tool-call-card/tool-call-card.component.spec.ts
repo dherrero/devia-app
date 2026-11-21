@@ -16,7 +16,7 @@ import { signal, type Type } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TranslateModule } from '@ngx-translate/core';
-import { LucideNetwork, LucideLayoutDashboard } from '@lucide/angular';
+import { LucideNetwork, LucideLayoutDashboard, LucideBot } from '@lucide/angular';
 import { ToolCallCardComponent } from './tool-call-card.component';
 import { ToolTerminalBlockComponent } from './components/tool-terminal-block/tool-terminal-block.component';
 import { ToolTodoBlockComponent } from './components/tool-todo-block/tool-todo-block.component';
@@ -579,3 +579,77 @@ describe('ToolCallCardComponent — pure computeds', () => {
     expect(fakeEvent.stopPropagation).toHaveBeenCalledOnce();
   });
 });
+
+describe('ToolCallCardComponent — sub-agent card (S-49)', () => {
+  let fixture: ComponentFixture<ToolCallCardComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [ToolCallCardComponent, TranslateModule.forRoot()],
+      providers: [
+        { provide: ElectronApiService, useValue: mockApi },
+        { provide: AppStateService, useValue: mockState },
+        { provide: ProjectAssetsService, useValue: mockAssets },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(ToolCallCardComponent);
+  });
+
+  const agent = (subagent: ToolCallRecord['subagent']) =>
+    makeTc({ id: 'a1', name: 'Agent', input: { description: 'Read a.txt' }, subagent });
+  const child = makeTc({ id: 'c1', name: 'Read', input: { file_path: '/p/a.txt' }, parentId: 'a1', result: 'alpha', isError: false });
+  const html = () => (fixture.nativeElement as HTMLElement).innerHTML;
+
+  it('is open while the sub-agent runs and folds when it completes', () => {
+    fixture.componentRef.setInput('toolCall', agent({ status: 'running', description: 'Read a.txt' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.collapsed()).toBe(false);
+
+    fixture.componentRef.setInput('toolCall', agent({ status: 'completed', description: 'Read a.txt', summary: 'alpha' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.collapsed()).toBe(true);
+  });
+
+  it('uses the robot icon for Agent and Task calls', () => {
+    fixture.componentRef.setInput('toolCall', agent({ status: 'running' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.toolIconLucide()).toBe(LucideBot);
+    fixture.componentRef.setInput('toolCall', makeTc({ id: 't2', name: 'Task' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.toolIconLucide()).toBe(LucideBot);
+  });
+
+  it('does not fold a card the user opened by hand', () => {
+    fixture.componentRef.setInput('toolCall', agent({ status: 'running' }));
+    fixture.detectChanges();
+    fixture.componentInstance.toggleCollapsed(); // user closes
+    fixture.componentInstance.toggleCollapsed(); // user opens again
+    fixture.componentRef.setInput('toolCall', agent({ status: 'completed' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.collapsed()).toBe(false);
+  });
+
+  it('shows the task, the stats, the nested calls and the final report', () => {
+    fixture.componentRef.setInput('toolCall', agent({
+      status: 'completed', description: 'Read a.txt', subagentType: 'general-purpose',
+      toolUses: 1, totalTokens: 18598, summary: 'the file says alpha',
+    }));
+    fixture.componentRef.setInput('children', [child]);
+    fixture.detectChanges();
+    expect(fixture.debugElement.queryAll(By.css('.tc-subagent-children ds-tool-call-card'))).toHaveLength(1);
+    expect(html()).toContain('general-purpose');
+    expect(html()).toContain('Read a.txt');
+    expect(html()).toContain('the file says alpha');
+  });
+
+  it('keeps two parallel sub-agent cards independent', () => {
+    const second = TestBed.createComponent(ToolCallCardComponent);
+    fixture.componentRef.setInput('toolCall', agent({ status: 'running' }));
+    second.componentRef.setInput('toolCall', { ...agent({ status: 'completed' }), id: 'a2' });
+    fixture.detectChanges();
+    second.detectChanges();
+    expect(fixture.componentInstance.collapsed()).toBe(false);
+    expect(second.componentInstance.collapsed()).toBe(true);
+  });
+});
+

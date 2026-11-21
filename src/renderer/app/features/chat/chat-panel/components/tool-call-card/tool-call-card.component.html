@@ -47,6 +47,43 @@
         <ds-tool-todo-block [toolCall]="toolCall()" />
       }
 
+      <!-- Sub-agent: task, facts, nested calls and its final report (S-49) -->
+      @else if (subagent(); as sa) {
+        <div class="tc-subagent">
+          <div class="tc-subagent-head">
+            @if (sa.subagentType) {
+              <span class="tc-mcp-chip">{{ sa.subagentType }}</span>
+            }
+            @if (sa.description) {
+              <span class="tc-subagent-task">{{ sa.description }}</span>
+            }
+          </div>
+          @if (subagentToolsCount() !== null || subagentTokens() !== null) {
+            <div class="tc-subagent-facts">
+              @if (subagentToolsCount() !== null) {
+                <span>{{ 'tool_card.subagent_tools' | translate: { count: subagentToolsCount() } }}</span>
+              }
+              @if (subagentTokens() !== null) {
+                <span>{{ 'tool_card.subagent_tokens' | translate: { count: subagentTokens() } }}</span>
+              }
+            </div>
+          }
+          @if (children().length) {
+            <div class="tc-subagent-children">
+              @for (child of children(); track child.id) {
+                <ds-tool-call-card [toolCall]="child" [active]="active() && sa.status === 'running'" />
+              }
+            </div>
+          }
+          @if (sa.summary) {
+            <div class="tc-subagent-report">
+              <span class="tc-subagent-report-label">{{ 'tool_card.subagent_report' | translate }}</span>
+              <pre class="tc-subagent-report-text">{{ sa.summary }}</pre>
+            </div>
+          }
+        </div>
+      }
+
       <!-- Generic render (non-terminal, non-todo) -->
       @else {
         <ds-tool-generic-block [toolCall]="toolCall()" [filePath]="filePathArg()" />

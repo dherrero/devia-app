@@ -222,10 +222,25 @@ export class AssistantTurnComponent {
   });
 
   /** Legacy flat tool-calls with AskUserQuestion stripped (it renders as a
-   *  question record, never as a tool card). */
+   *  question record, never as a tool card). A sub-agent's calls render inside
+   *  their Agent card, so they are not top-level cards (S-49). */
   readonly legacyToolCalls = computed<ToolCallRecord[]>(() =>
-    (this.msg().toolCalls ?? []).filter((tc) => !isAskUserTool(tc.name)),
+    (this.msg().toolCalls ?? []).filter((tc) => !isAskUserTool(tc.name) && tc.parentId === undefined),
   );
+
+  /** Calls made by each sub-agent, by the id of its Agent/Task call (S-49). */
+  private readonly childrenByParent = computed(() => {
+    const map = new Map<string, ToolCallRecord[]>();
+    for (const tc of this.msg().toolCalls ?? []) {
+      if (tc.parentId === undefined) continue;
+      map.set(tc.parentId, [...(map.get(tc.parentId) ?? []), tc]);
+    }
+    return map;
+  });
+
+  childrenOf(tc: ToolCallRecord): ToolCallRecord[] {
+    return this.childrenByParent().get(tc.id) ?? [];
+  }
 
   /** Answered AskUserQuestion calls for the legacy (no contentBlocks) path. */
   readonly legacyAnsweredQuestions = computed<ToolCallRecord[]>(() =>
@@ -336,7 +351,10 @@ export class AssistantTurnComponent {
   private readonly inFlightToolCall = computed<ToolCallRecord | null>(() => {
     const tcs = this.msg().toolCalls;
     if (!tcs?.length) return null;
-    const last = tcs[tcs.length - 1];
+    // A sub-agent's own calls are not the agent's current step: the Agent call is.
+    const topLevel = tcs.filter((tc) => tc.parentId === undefined);
+    const last = topLevel[topLevel.length - 1];
+    if (!last) return null;
     return (last.result === undefined && !last.isError) ? last : null;
   });
 
@@ -348,6 +366,9 @@ export class AssistantTurnComponent {
    */
   isToolInFlight(tc: ToolCallRecord | null | undefined): boolean {
     if (!tc || this.msg().streaming !== true) return false;
+    // Sub-agents run in parallel and report their own end: one that has not
+    // ended is live while the message streams, even when it is not the last call.
+    if (tc.subagent?.status === 'running') return true;
     return this.inFlightToolCall()?.id === tc.id;
   }
 

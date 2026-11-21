@@ -398,6 +398,74 @@ describe('MessageBubbleComponent — pure computeds', () => {
     expect(el.querySelector('details.thinking-block')).not.toBeNull();
   });
 
+  // ── S-49: sub-agent calls nest under their Agent card ───────────────────
+
+  describe('sub-agent calls', () => {
+    const agent: ToolCallRecord = { id: 'a1', name: 'Agent', input: {}, subagent: { status: 'running' } };
+    const childCall: ToolCallRecord = { id: 'c1', name: 'Read', input: { file_path: '/p/a.txt' }, parentId: 'a1' };
+
+    function cards(): { all: number; nested: number } {
+      const el = fixture.nativeElement as HTMLElement;
+      return {
+        all: el.querySelectorAll('ds-tool-call-card').length,
+        nested: el.querySelectorAll('.tc-subagent-children ds-tool-call-card').length,
+      };
+    }
+
+    it('renders the child inside its Agent card, not as a card of its own', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: true,
+        toolCalls: [agent, childCall],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }],
+      }));
+      fixture.detectChanges();
+      expect(cards()).toEqual({ all: 2, nested: 1 });
+    });
+
+    it('does the same for a message without contentBlocks (legacy path)', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({ streaming: false, toolCalls: [agent, childCall] }));
+      fixture.detectChanges();
+      expect(cards()).toEqual({ all: 2, nested: 1 });
+    });
+
+    const pillStates = () =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('ds-tool-call-card .tc-status-pill'))
+        .map((el) => el.getAttribute('data-state'));
+
+    it('keeps a running sub-agent and its unfinished call running while the message streams', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: true,
+        toolCalls: [agent, childCall],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }],
+      }));
+      fixture.detectChanges();
+      expect(pillStates()).toEqual(['running', 'running']);
+    });
+
+    it('keeps two parallel running sub-agents running, not only the last call', () => {
+      const second: ToolCallRecord = { id: 'a2', name: 'Agent', input: {}, subagent: { status: 'running' } };
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: true,
+        toolCalls: [agent, second],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }, { kind: 'tool_ref', toolCallId: 'a2' }],
+      }));
+      fixture.detectChanges();
+      expect(pillStates()).toEqual(['running', 'running']);
+    });
+
+    it('does not spin forever on a finished message whose sub-agent never reported an end', () => {
+      fixture.componentRef.setInput('msg', makeAssistant({
+        streaming: false,
+        toolCalls: [agent, childCall],
+        contentBlocks: [{ kind: 'tool_ref', toolCallId: 'a1' }],
+      }));
+      fixture.detectChanges();
+      expect(pillStates()).not.toContain('running');
+      const open = (fixture.nativeElement as HTMLElement).querySelector('ds-tool-call-card .tc-card--open');
+      expect(open).toBeNull();
+    });
+  });
+
   // ── Improvement #1: streaming progress line ────────────────────────────
 
   it('shows .progress-line when streaming=true and there is an in-flight tool call', () => {

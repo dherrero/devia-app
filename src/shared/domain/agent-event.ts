@@ -43,13 +43,33 @@ export type ErrorClassification =
  */
 export type CancelReason = 'user' | 'idle' | 'question_timeout';
 
+/** Lifecycle of a sub-agent the agent delegated to (Claude `Agent`/`Task` tool). */
+export type SubagentStatus = 'running' | 'completed' | 'failed' | 'stopped';
+
+/** What Devia knows about one sub-agent run; merged field by field as events arrive. */
+export interface SubagentInfo {
+  status: SubagentStatus;
+  description?: string;
+  subagentType?: string;
+  toolUses?: number;
+  totalTokens?: number;
+  durationMs?: number;
+  /** The sub-agent's final report. */
+  summary?: string;
+}
+
 export type AgentEvent =
   | { type: 'status'; label: string; model?: string; ttftMs?: number }
   | { type: 'text_delta'; delta: string }
   | { type: 'thinking_delta'; delta: string }
   | { type: 'thinking_start' }
-  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  /** `parentToolUseId` is set when a sub-agent made the call: it is the id of the
+   *  parent's `Agent`/`Task` tool_use, so the UI nests the call under it. */
+  | { type: 'tool_use'; id: string; name: string; input: unknown; parentToolUseId?: string }
   | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
+  /** Progress of the sub-agent launched by the tool_use `toolUseId` (Claude only
+   *  today: system/task_started|task_progress|task_updated|task_notification). */
+  | ({ type: 'subagent'; toolUseId: string } & Partial<SubagentInfo>)
   /** `inputTokens` EXCLUDES cached tokens (Anthropic's split): context fill =
    *  inputTokens + cachedInputTokens of the LAST request, never a run sum. */
   | { type: 'usage'; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningOutputTokens?: number; costUsd?: number; durationMs?: number; contextWindow?: number }

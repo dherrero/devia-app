@@ -49,6 +49,16 @@ function changeCount(input: unknown): number | null {
 
 export function summarizeToolCall(tc: ToolCallRecord): ToolSummary {
   const name = tc.name;
+  // A sub-agent's Agent/Task call reports through its own status events: Claude
+  // never sends a tool_result for it on the stream.
+  if (tc.subagent) {
+    switch (tc.subagent.status) {
+      case 'running': return { state: 'running', key: 'tool_summary.working' };
+      case 'completed': return { state: 'success', key: 'tool_summary.done' };
+      case 'failed':
+      case 'stopped': return { state: 'error', key: 'tool_summary.error' };
+    }
+  }
   // `result === undefined` (not falsy) so a successful tool with empty output
   // is treated as done, never stuck in the running state.
   const running = tc.result === undefined && !tc.isError;

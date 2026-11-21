@@ -54,3 +54,20 @@ describe('summarizeToolCall', () => {
     expect(summarizeToolCall(tc({ name: 'CustomThing', result: 'x' }))).toEqual({ state: 'success', key: 'tool_summary.done' });
   });
 });
+
+describe('summarizeToolCall — sub-agents (S-49)', () => {
+  const agent = (subagent?: ToolCallRecord['subagent'], extra: Partial<ToolCallRecord> = {}) =>
+    tc({ name: 'Agent', ...(subagent && { subagent }), ...extra });
+
+  it('follows the sub-agent status, not the (never emitted) result of the Agent call', () => {
+    expect(summarizeToolCall(agent({ status: 'running' }))).toEqual({ state: 'running', key: 'tool_summary.working' });
+    expect(summarizeToolCall(agent({ status: 'completed' }))).toEqual({ state: 'success', key: 'tool_summary.done' });
+    expect(summarizeToolCall(agent({ status: 'failed' }))).toEqual({ state: 'error', key: 'tool_summary.error' });
+    expect(summarizeToolCall(agent({ status: 'stopped' }))).toEqual({ state: 'error', key: 'tool_summary.error' });
+  });
+
+  it('keeps the generic behaviour when no sub-agent status is known', () => {
+    expect(summarizeToolCall(agent())).toEqual({ state: 'running', key: 'tool_summary.working' });
+  });
+});
+
