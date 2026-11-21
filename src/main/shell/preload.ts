@@ -217,6 +217,7 @@ const bridge: DeviaBridge = {
   // MCP management (#272/273/274).
   mcp: {
     list:           ()                     => ipcRenderer.invoke('mcp:list'),
+    get:            (id)                   => ipcRenderer.invoke('mcp:get', id),
     install:        (req)                  => ipcRenderer.invoke('mcp:install', req),
     remove:         (id, projectPath)      => ipcRenderer.invoke('mcp:remove', id, projectPath),
     sync:           (scope, projectPath)   => ipcRenderer.invoke('mcp:sync', scope, projectPath),

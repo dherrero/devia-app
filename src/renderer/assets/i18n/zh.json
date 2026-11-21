@@ -644,7 +644,12 @@
       "exposure_direct": "直接",
       "exposure_codemode": "通过代码模式",
       "exposure_hint": "在代码模式下，智能体看不到此服务器的工具，而是通过脚本调用它们，只有脚本结果会回到聊天中。脚本只能读取。",
-      "exposure_saved": "暴露方式已更新。"
+      "exposure_saved": "暴露方式已更新。",
+      "edit": "编辑",
+      "edit_ok": "服务器已更新。",
+      "edit_missing": "该服务器已不存在。",
+      "save": "保存",
+      "cancel_edit": "取消编辑"
     }
   },
   "common": {

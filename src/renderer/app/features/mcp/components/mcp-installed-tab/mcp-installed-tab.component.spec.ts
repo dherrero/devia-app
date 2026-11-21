@@ -72,3 +72,35 @@ describe('McpInstalledTabComponent — exposure (S-50)', () => {
     expect(el.querySelectorAll('.dvtg-item')).toHaveLength(2);
   });
 });
+
+describe('McpInstalledTabComponent — edit (T-562)', () => {
+  function mount(servers: McpServerView[]) {
+    TestBed.configureTestingModule({
+      imports: [McpInstalledTabComponent, TranslateModule.forRoot()],
+      providers: [{ provide: ElectronApiService, useValue: { mcpProbe: vi.fn() } }],
+    });
+    const fixture = TestBed.createComponent(McpInstalledTabComponent);
+    fixture.componentRef.setInput('servers', servers);
+    fixture.componentRef.setInput('loading', false);
+    fixture.detectChanges();
+    const asked: McpServerView[] = [];
+    fixture.componentInstance.editRequested.subscribe((s) => asked.push(s));
+    return { fixture, asked };
+  }
+
+  it('has an Edit button on the selected server, next to Remove', () => {
+    const { fixture } = mount([view()]);
+    const buttons = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.detail-actions dv-button'));
+    expect(buttons).toHaveLength(2);
+  });
+
+  it('asks to edit the server that is selected, not the first one', () => {
+    const second = view({ id: 'b', name: 'B' });
+    const { fixture, asked } = mount([view(), second]);
+    fixture.componentInstance.selectedServerId.set('b');
+    fixture.detectChanges();
+    const edit = (fixture.nativeElement as HTMLElement).querySelector('.detail-actions dv-button') as HTMLElement;
+    edit.querySelector('button')?.click();
+    expect(asked).toEqual([second]);
+  });
+});

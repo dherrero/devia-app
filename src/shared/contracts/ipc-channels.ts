@@ -201,6 +201,7 @@ export const IPC = {
   mcpRemove:             'mcp:remove',
   mcpSync:               'mcp:sync',
   mcpProbe:              'mcp:probe',
+  mcpGet:                'mcp:get',
   mcpSetExposure:        'mcp:set-exposure',
   mcpListChanged:        'mcp:list-changed',
 

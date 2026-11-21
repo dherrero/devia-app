@@ -2,7 +2,7 @@ import {
   ChangeDetectionStrategy, Component, computed, inject, input, output, signal,
 } from '@angular/core';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { LucidePlay, LucidePlus, LucideTrash2 } from '@lucide/angular';
+import { LucidePencil, LucidePlay, LucidePlus, LucideTrash2 } from '@lucide/angular';
 import { ButtonComponent, ButtonToggleGroupComponent, IconComponent, SpinnerComponent } from '@devia/ui';
 import { ElectronApiService } from '../../../../core/services/electron-api.service';
 import { ALL_AGENTS } from '../../models/mcp-form.model';
@@ -27,6 +27,7 @@ export class McpInstalledTabComponent {
   private readonly api = inject(ElectronApiService);
   private readonly translate = inject(TranslateService);
 
+  readonly LucidePencil = LucidePencil;
   readonly LucidePlay = LucidePlay;
   readonly LucidePlus = LucidePlus;
   readonly LucideTrash2 = LucideTrash2;
@@ -35,6 +36,8 @@ export class McpInstalledTabComponent {
   readonly loading = input.required<boolean>();
 
   readonly removeRequested = output<McpServerView>();
+  /** T-562: the user wants to edit this server. */
+  readonly editRequested = output<McpServerView>();
   readonly addRequested = output<void>();
   /** S-50: the user switched a server between direct and code mode. */
   readonly exposureChanged = output<{ server: McpServerView; exposure: McpExposureChoice }>();

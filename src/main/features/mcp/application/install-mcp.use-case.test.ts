@@ -304,3 +304,59 @@ describe('InstallMcpUseCase — servers behind the code-mode gateway (S-50)', ()
     for (const [agent, text] of Object.entries(nativeFiles())) expect(text, agent).not.toContain('tiendas');
   });
 });
+
+describe('InstallMcpUseCase — editing a server (T-562)', () => {
+  let fx: ReturnType<typeof setup>;
+  beforeEach(() => { fx = setup(); });
+  afterEach(() => fx.cleanup());
+
+  const base = { name: 'Tiendas', command: 'node', args: ['/a.cjs'], scope: 'global' as const, source: 'manual' as const };
+  const read = (...p: string[]): string => {
+    const file = path.join(fx.home, ...p);
+    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  };
+
+  it('replaces the command, args and env of an existing server', () => {
+    fx.install.execute({ ...base, id: 't', agents: ['gemini'], env: { STORES_ROLES: 'tiendas' } });
+    const r = fx.install.execute({ ...base, id: 't', args: ['/b.cjs'], agents: ['gemini'], env: { STORES_ROLE: 'tiendas' } });
+    expect(r.ok).toBe(true);
+    const saved = fx.registry.get('t');
+    expect(saved?.args).toEqual(['/b.cjs']);
+    expect(saved?.env).toEqual({ STORES_ROLE: 'tiendas' });
+    const gemini = JSON.parse(read('.gemini', 'settings.json')) as { mcpServers: Record<string, { args: string[]; env?: Record<string, string> }> };
+    expect(gemini.mcpServers['t']?.args).toEqual(['/b.cjs']);
+    expect(gemini.mcpServers['t']?.env).toEqual({ STORES_ROLE: 'tiendas' });
+  });
+
+  it('removes the server from an agent that was unticked, leaving the rest alone', () => {
+    fx.install.execute({ ...base, id: 'other', agents: ['gemini', 'claude'] });
+    fx.install.execute({ ...base, id: 't', agents: ['gemini', 'claude'] });
+    fx.install.execute({ ...base, id: 't', agents: ['gemini'] }); // claude unticked
+    expect(read('.gemini', 'settings.json')).toContain('"t"');
+    const claude = read('.claude.json');
+    expect(claude).not.toContain('"t"');
+    expect(claude).toContain('"other"');
+  });
+
+  it('removes it even when it was the only server that agent had', () => {
+    fx.install.execute({ ...base, id: 't', agents: ['gemini', 'claude'] });
+    expect(read('.claude.json')).toContain('"t"');
+    fx.install.execute({ ...base, id: 't', agents: ['gemini'] }); // claude unticked, nothing else for claude
+    expect(read('.claude.json')).not.toContain('"t"');
+    expect(read('.gemini', 'settings.json')).toContain('"t"');
+  });
+
+  it('keeps the createdAt and pinned flag of the server', () => {
+    fx.install.execute({ ...base, id: 't', agents: ['gemini'] });
+    const before = fx.registry.get('t')?.createdAt;
+    fx.install.execute({ ...base, id: 't', name: 'Renamed', agents: ['gemini'] });
+    expect(fx.registry.get('t')?.name).toBe('Renamed');
+    expect(fx.registry.get('t')?.createdAt).toBe(before);
+  });
+
+  it('keeps allowedEnvKeys and enabled when the edit carries them', () => {
+    fx.install.execute({ ...base, id: 't', agents: ['gemini'], allowedEnvKeys: ['EXTRA'], enabled: false });
+    fx.install.execute({ ...base, id: 't', args: ['/c.cjs'], agents: ['gemini'], allowedEnvKeys: ['EXTRA'], enabled: false });
+    expect(fx.registry.get('t')).toMatchObject({ allowedEnvKeys: ['EXTRA'], enabled: false });
+  });
+});

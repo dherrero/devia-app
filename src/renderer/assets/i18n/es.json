@@ -893,7 +893,12 @@
       "exposure_direct": "Directa",
       "exposure_codemode": "Vía code mode",
       "exposure_hint": "En code mode el agente no ve las tools de este servidor. Llega a ellas con un script y al chat solo vuelve el resultado. Los scripts solo pueden leer.",
-      "exposure_saved": "Exposición actualizada."
+      "exposure_saved": "Exposición actualizada.",
+      "edit": "Editar",
+      "edit_ok": "Servidor actualizado.",
+      "edit_missing": "Ese servidor ya no existe.",
+      "save": "Guardar",
+      "cancel_edit": "Cancelar edición"
     }
   },
   "common": {

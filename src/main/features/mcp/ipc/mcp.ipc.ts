@@ -80,6 +80,9 @@ export function registerMcpManagementIpc(ctx: FeatureContext, deps: McpIpcDeps):
     return result;
   });
 
+  // T-562: one server with its env values, for the edit form.
+  ctx.ipc.handle(IPC.mcpGet, (_e, id: string) => (typeof id === 'string' ? deps.registry.editView(id) : null));
+
   ctx.ipc.handle(IPC.mcpProbe, async (_e, id: string) => {
     const server = deps.registry.get(id);
     if (!server) {

@@ -648,7 +648,12 @@
       "exposure_direct": "Directe",
       "exposure_codemode": "Via le mode code",
       "exposure_hint": "En mode code, l'agent ne voit pas les outils de ce serveur. Il y accède par un script et seul le résultat revient dans le chat. Les scripts ne peuvent que lire.",
-      "exposure_saved": "Exposition mise à jour."
+      "exposure_saved": "Exposition mise à jour.",
+      "edit": "Modifier",
+      "edit_ok": "Serveur mis à jour.",
+      "edit_missing": "Ce serveur n'existe plus.",
+      "save": "Enregistrer",
+      "cancel_edit": "Annuler la modification"
     }
   },
   "common": {

@@ -34,6 +34,8 @@ export class McpCustomFormComponent {
   readonly form = model.required<FormState>();
   /** Active project path; empty string hides the scope toggle. */
   readonly projectPath = input.required<string>();
+  /** T-562: editing an installed server. Its id and scope are what identify it, so they are fixed. */
+  readonly editing = input(false);
 
   readonly scopeOptions = computed<RadioOption[]>(() => [
     { value: 'global', label: this.translate.instant('mcp.modal.scope_global') },
@@ -51,6 +53,7 @@ export class McpCustomFormComponent {
   }
 
   setScope(value: string): void {
+    if (this.editing()) return;
     if (value !== 'global' && value !== 'project') return;
     this.form.update((f) => ({ ...f, scope: value }));
   }

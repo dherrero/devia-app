@@ -648,7 +648,12 @@
       "exposure_direct": "Direkt",
       "exposure_codemode": "Über Code-Modus",
       "exposure_hint": "Im Code-Modus sieht der Agent die Tools dieses Servers nicht. Er erreicht sie über ein Skript, und nur dessen Ergebnis kommt in den Chat zurück. Skripte können nur lesen.",
-      "exposure_saved": "Bereitstellung aktualisiert."
+      "exposure_saved": "Bereitstellung aktualisiert.",
+      "edit": "Bearbeiten",
+      "edit_ok": "Server aktualisiert.",
+      "edit_missing": "Dieser Server existiert nicht mehr.",
+      "save": "Speichern",
+      "cancel_edit": "Bearbeitung abbrechen"
     }
   },
   "common": {

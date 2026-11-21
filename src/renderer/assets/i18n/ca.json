@@ -648,7 +648,12 @@
       "exposure_direct": "Directa",
       "exposure_codemode": "Via code mode",
       "exposure_hint": "En code mode l'agent no veu les eines d'aquest servidor. Hi arriba amb un script i al xat només torna el resultat. Els scripts només poden llegir.",
-      "exposure_saved": "Exposició actualitzada."
+      "exposure_saved": "Exposició actualitzada.",
+      "edit": "Edita",
+      "edit_ok": "Servidor actualitzat.",
+      "edit_missing": "Aquest servidor ja no existeix.",
+      "save": "Desa",
+      "cancel_edit": "Cancel·la l'edició"
     }
   },
   "common": {

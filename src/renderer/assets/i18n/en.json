@@ -893,7 +893,12 @@
       "exposure_direct": "Direct",
       "exposure_codemode": "Via code mode",
       "exposure_hint": "In code mode the agent does not see this server's tools. It reaches them through a script, and only the script's result comes back to the chat. Scripts can only read.",
-      "exposure_saved": "Exposure updated."
+      "exposure_saved": "Exposure updated.",
+      "edit": "Edit",
+      "edit_ok": "Server updated.",
+      "edit_missing": "That server no longer exists.",
+      "save": "Save",
+      "cancel_edit": "Cancel editing"
     }
   },
   "common": {

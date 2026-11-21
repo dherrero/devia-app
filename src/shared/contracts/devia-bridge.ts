@@ -104,6 +104,7 @@ import type {
   McpInstallResult,
   McpProbeResult,
   McpScope,
+  McpServerEditView,
   McpServerView,
   McpSource,
 } from '../domain/mcp';
@@ -567,6 +568,8 @@ export interface DeviaBridge {
   readonly mcp: {
     /** Catalog snapshot (env values redacted). */
     list(): Promise<McpServerView[]>;
+    /** One server with its env values, to fill the edit form (T-562); null when unknown. */
+    get(id: string): Promise<McpServerEditView | null>;
     /** Streaming refresh — fired after every install / remove / sync.
      *  Returns an unsubscribe so transient consumers (modals, per-message
      *  cards) can release the listener and avoid the EventEmitter leak. */

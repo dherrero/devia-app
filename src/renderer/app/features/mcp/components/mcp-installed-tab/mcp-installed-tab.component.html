@@ -99,6 +99,10 @@
           </div>
 
           <div class="detail-actions">
+            <dv-button variant="secondary" size="sm" type="button" (clicked)="editRequested.emit(s)">
+              <dv-icon [icon]="LucidePencil" size="sm" />
+              {{ 'mcp.modal.edit' | translate }}
+            </dv-button>
             <dv-button variant="danger" size="sm" type="button" (clicked)="removeRequested.emit(s)">
               <dv-icon [icon]="LucideTrash2" size="sm" />
               {{ 'mcp.modal.remove' | translate }}

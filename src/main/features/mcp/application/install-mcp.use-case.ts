@@ -145,17 +145,25 @@ export class InstallMcpUseCase {
     // agent's native file, or the agent would see it both ways and nothing would be
     // saved. The agent keeps an entry in the map (maybe empty) so the write below
     // still runs and removes what an earlier sync left there.
-    const behindGateway = new Map<McpAgentId, string[]>();
+    const removedIdsByAgent = new Map<McpAgentId, string[]>();
     for (const s of syncedServers) {
       for (const agentId of s.agents ?? ['claude']) {
         const list = byAgent.get(agentId) ?? [];
         if (s.exposure === 'codemode' && isCodeModeAgent(agentId)) {
-          behindGateway.set(agentId, [...(behindGateway.get(agentId) ?? []), s.id]);
+          removedIdsByAgent.set(agentId, [...(removedIdsByAgent.get(agentId) ?? []), s.id]);
         } else {
           list.push(s);
         }
         byAgent.set(agentId, list);
       }
+    }
+    // Editing a server can untick an agent. That agent keeps an entry (maybe empty)
+    // so the write below still runs and removes what the server left in its file.
+    const stillFor = new Set(validated.agents ?? ['claude']);
+    for (const agentId of previous?.agents ?? []) {
+      if (stillFor.has(agentId)) continue;
+      if (!byAgent.has(agentId)) byAgent.set(agentId, []);
+      removedIdsByAgent.set(agentId, [...(removedIdsByAgent.get(agentId) ?? []), validated.id]);
     }
     const failed: string[] = [];
     for (const [agent, servers] of byAgent.entries()) {
@@ -165,7 +173,7 @@ export class InstallMcpUseCase {
         agent,
         target,
         managed: servers,
-        ...(behindGateway.has(agent) && { removedIds: behindGateway.get(agent) as string[] }),
+        ...(removedIdsByAgent.has(agent) && { removedIds: removedIdsByAgent.get(agent) as string[] }),
         parentEnv: process.env,
       };
       try {
