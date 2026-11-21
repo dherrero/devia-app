@@ -211,7 +211,22 @@
     "review_changes": "مراجعة هذه التغييرات",
     "subagent_tools": "{{count}} أدوات",
     "subagent_tokens": "{{count}} رمز",
-    "subagent_report": "التقرير"
+    "subagent_report": "التقرير",
+    "script_title": "سكربت",
+    "script_line": "{{servers}} · {{calls}} استدعاء · {{seconds}} ث",
+    "script_line_running": "{{servers}} · {{calls}} استدعاء حتى الآن",
+    "script_line_no": "السطر {{line}}",
+    "script_returned": "القيمة المُعادة",
+    "script_calls": "الاستدعاءات",
+    "script_code": "الكود",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} رمز من البيانات لم يدخل السياق (تقدير)",
+    "script_denied_note": "تم رفض {{count}} استدعاء: السكربتات تقرأ فقط",
+    "script_error_type": "خطأ في الأنواع: لم يتم استدعاء أي أداة",
+    "script_error_runtime": "فشل السكربت",
+    "script_error_denied": "مرفوض: السكربتات تقرأ فقط",
+    "script_error_other": "خطأ",
+    "script_no_calls": "لا توجد استدعاءات للأدوات"
   },
   "bubble_progress": {
     "thinking": "جارٍ التفكير…"
@@ -628,7 +643,17 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "حذف خادم MCP",
-      "remove_confirm_message": "حذف الخادم «{{name}}»؟ لا يمكن التراجع عن هذا الإجراء."
+      "remove_confirm_message": "حذف الخادم «{{name}}»؟ لا يمكن التراجع عن هذا الإجراء.",
+      "exposure_label": "إتاحة الأدوات",
+      "exposure_direct": "مباشرة",
+      "exposure_codemode": "عبر وضع الكود",
+      "exposure_hint": "في وضع الكود لا يرى الوكيل أدوات هذا الخادم، بل يصل إليها عبر سكربت ولا يعود إلى المحادثة إلا النتيجة. السكربتات تقرأ فقط.",
+      "exposure_saved": "تم تحديث الإتاحة.",
+      "edit": "تعديل",
+      "edit_ok": "تم تحديث الخادم.",
+      "edit_missing": "هذا الخادم لم يعد موجودًا.",
+      "save": "حفظ",
+      "cancel_edit": "إلغاء التعديل"
     }
   },
   "common": {

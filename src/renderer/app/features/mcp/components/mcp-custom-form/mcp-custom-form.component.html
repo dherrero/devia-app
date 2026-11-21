@@ -1,6 +1,7 @@
 <div class="custom-form">
   <dv-input
     label="id"
+    [disabled]="editing()"
     [ngModel]="form().id"
     (ngModelChange)="updateFormText('id', $event)"
   />
@@ -53,6 +54,7 @@
         class="scope-radio"
         [options]="scopeOptions()"
         [ngModel]="form().scope"
+        [disabled]="editing()"
         (ngModelChange)="setScope($event)"
       />
     </fieldset>

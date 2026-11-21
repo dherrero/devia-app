@@ -118,6 +118,7 @@ export type {
   McpScope,
   McpSource,
   McpServerView,
+  McpServerEditView,
   McpInstallResult,
   McpProbeResult,
   McpCatalogEntry,

@@ -27,7 +27,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { buildHeadlessRun, buildFakeAcpAgent } = require('./headless.cjs');
-const { SCENARIOS, ANSWER, HARNESS_TOKENS } = require('./scenarios.cjs');
+const { SCENARIOS, ANSWER, HARNESS_TOKENS, CODEMODE_EXPECTED } = require('./scenarios.cjs');
 
 const APP_ROOT = path.resolve(__dirname, '../..');
 const SNAP_DIR = path.join(__dirname, 'snapshots');
@@ -431,6 +431,7 @@ function buildSnapshot(ctx, agent, scenario, result) {
     ...(scenario.origin !== undefined && originAnswer(finalText)),
     ...(scenario.id === 'plan' && { wroteFile: fs.existsSync(path.join(ctx.projectDir, 'notas.txt')) }),
     ...(scenario.kit && kitBehaviour(ctx, result, finalText)),
+    ...(scenario.codemode && codeModeBehaviour(result, finalText)),
     ...(scenario.harness && {
       quoted: Object.fromEntries(Object.entries(HARNESS_TOKENS).map(([k, token]) => [k, finalText.includes(token)])),
     }),
@@ -473,6 +474,36 @@ function setUpHarness(ctx) {
     id: 'e2e-echo', name: 'e2e-echo', command: process.execPath,
     args: [path.join(__dirname, 'echo-mcp.cjs')], enabled: true,
   }]);
+}
+
+/**
+ * S-50: two user MCP servers (tiendas, ventas) set to code mode. With the gateway
+ * the agent must not see their tools directly; it reaches them through run_script.
+ */
+function setUpCodeMode(ctx) {
+  const server = (id) => ({
+    id, name: id, command: process.execPath, args: [path.join(__dirname, 'stores-mcp.cjs')],
+    env: { STORES_ROLE: id }, enabled: true, exposure: 'codemode',
+  });
+  ctx.userServers.set([server('tiendas'), server('ventas')]);
+}
+
+/** What the `codemode` scenario checks beyond wiring: did the agent use the gateway, and get it right? */
+function codeModeBehaviour(result, finalText) {
+  const uses = result.events.filter((e) => e.type === 'tool_use');
+  const names = uses.map((e) => e.name);
+  const scripts = uses.filter((e) => /run_script$/.test(e.name));
+  const nested = uses.filter((e) => e.parentToolUseId !== undefined);
+  return {
+    usedRunScript: scripts.length > 0,
+    runScriptCalls: scripts.length,
+    nestedCalls: nested.length,
+    // Claude's main stream carries no tool results, so the card gets this one from the gateway.
+    scriptResultShown: scripts.some((c) => result.events.some((e) => e.type === 'tool_result' && e.toolUseId === c.id && /"stats"/.test(e.content ?? ''))),
+    sawDirectServerTools: names.some((n) => /^mcp__(tiendas|ventas)__/.test(n)),
+    answeredRight: finalText.includes(CODEMODE_EXPECTED.store) && finalText.includes(CODEMODE_EXPECTED.total),
+    ...(process.env.E2E_DEBUG && { debug: { tools: names, text: finalText.slice(0, 500) } }),
+  };
 }
 
 /** What the renderer saves after a run: the user turn and the assistant text. */
@@ -548,10 +579,11 @@ async function runAgent(agent, flags) {
   for (const scenario of scenarios) {
     process.stdout.write(`▶ ${agent}/${scenario.id} … `);
     if (scenario.harness) setUpHarness(ctx);
+    if (scenario.codemode) setUpCodeMode(ctx);
     if (scenario.kit) ctx.setKit(true);
     if (fakeAcp) fakeAcp.def.env = { FAKE_ACP_SCRIPT: JSON.stringify(FAKE_SCRIPTS[scenario.id]) };
     const result = await runScenario(ctx, scenario);
-    if (scenario.harness) ctx.userServers.set([]);
+    if (scenario.harness || scenario.codemode) ctx.userServers.set([]);
     if (scenario.kit) ctx.setKit(false);
     persistTranscript(ctx, sessions, scenario, result);
     const snap = buildSnapshot(ctx, agent, scenario, result);

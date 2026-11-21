@@ -47,6 +47,79 @@
         <ds-tool-todo-block [toolCall]="toolCall()" />
       }
 
+      <!-- run_script (S-50): what it returned, the calls it made, and the code -->
+      @else if (script(); as sc) {
+        <div class="tc-script">
+          @if (sc.description) {
+            <div class="tc-script-desc">{{ sc.description }}</div>
+          }
+
+          @if (scriptErrorKey(); as errKey) {
+            <div class="tc-script-note" [attr.data-kind]="sc.status">
+              <span class="tc-script-note-title">{{ 'tool_card.script_error_' + errKey | translate }}</span>
+              @if (sc.line !== null) {
+                <span class="tc-script-note-line">{{ 'tool_card.script_line_no' | translate: { line: sc.line } }}</span>
+              }
+              @if (sc.preview) {
+                <pre class="tc-script-pre">{{ sc.preview }}</pre>
+              }
+            </div>
+          }
+
+          @if (sc.status === 'ok') {
+            <div class="tc-script-block">
+              <span class="tc-script-label">{{ 'tool_card.script_returned' | translate }}</span>
+              <pre class="tc-script-pre">{{ sc.valueText }}</pre>
+            </div>
+            @if (scriptSavings(); as saved) {
+              <div class="tc-script-facts">{{ 'tool_card.script_savings' | translate: { tokens: saved } }}</div>
+            }
+            @if (sc.deniedCount > 0) {
+              <div class="tc-script-note" data-kind="denied">
+                <span class="tc-script-note-title">{{ 'tool_card.script_denied_note' | translate: { count: sc.deniedCount } }}</span>
+              </div>
+            }
+            @if (sc.warnings) {
+              <pre class="tc-script-pre tc-script-warn">{{ sc.warnings }}</pre>
+            }
+          }
+
+          <div class="tc-script-block">
+            <span class="tc-script-label">{{ 'tool_card.script_calls' | translate }}</span>
+            @if (sc.calls.length) {
+              <ul class="tc-script-calls">
+                @for (c of sc.calls; track c.id) {
+                  <li class="tc-script-call" [attr.data-state]="c.state">
+                    <span class="tc-script-call-dot" aria-hidden="true"></span>
+                    <span class="tc-script-call-name">{{ c.label }}</span>
+                    <span class="tc-script-call-args">{{ c.argsText }}</span>
+                    @if (c.detail) {
+                      <span class="tc-script-call-detail">{{ c.detail }}</span>
+                    }
+                  </li>
+                }
+              </ul>
+            } @else {
+              <span class="tc-script-empty">{{ 'tool_card.script_no_calls' | translate }}</span>
+            }
+          </div>
+
+          @if (sc.logs.length) {
+            <details class="tc-script-logs">
+              <summary>{{ 'tool_card.script_logs' | translate }}</summary>
+              <pre class="tc-script-pre">{{ sc.logs.join('\n') }}</pre>
+            </details>
+          }
+
+          @if (sc.code) {
+            <details class="tc-script-code">
+              <summary>{{ 'tool_card.script_code' | translate }}</summary>
+              <pre class="tc-script-pre">{{ sc.code }}</pre>
+            </details>
+          }
+        </div>
+      }
+
       <!-- Sub-agent: task, facts, nested calls and its final report (S-49) -->
       @else if (subagent(); as sa) {
         <div class="tc-subagent">

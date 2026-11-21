@@ -155,10 +155,11 @@
 }
 .probe-ok { background: var(--dv-success-lo); border-color: var(--dv-success-bor); color: var(--dv-success); }
 .probe-err { background: var(--dv-danger-lo); border-color: var(--dv-danger-bor); color: var(--dv-danger); }
-.detail-actions { margin-top: auto; padding-top: 0.25rem; }
+.detail-actions { margin-top: auto; padding-top: 0.25rem; display: flex; gap: 0.5rem; }
 
 .empty {
   display: grid; place-items: center;
   padding: 2rem 0.875rem;
   color: var(--dv-muted);
 }
+.exposure-hint { margin-top: 0.5rem; }

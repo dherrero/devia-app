@@ -37,6 +37,7 @@ function loadModules() {
     SkillReader: req('src-main/features/skills/infrastructure/skill-reader.js').SkillReader,
     SubAgentReader: req('src-main/features/sub-agents/infrastructure/sub-agent-reader.js').SubAgentReader,
     buildStarterKitsFeature: req('src-main/features/starter-kits/index.js').buildStarterKitsFeature,
+    buildCodeModeFeature: req('src-main/features/code-mode/index.js').buildCodeModeFeature,
   };
 }
 
@@ -141,6 +142,8 @@ function buildHeadlessRun(opts) {
   const memory = new m.MemoryMcpInjector(deviaDir);
   const kanban = new m.KanbanMcpInjector(deviaDir);
   const ui = new m.UiMcpInjector();
+  // S-50: user servers with exposure 'codemode' sit behind the gateway; none in the other scenarios.
+  const codeMode = m.buildCodeModeFeature({ config });
   const registry = new m.InMemoryProjectRegistry();
   const sessions = createSessionStore();
   const userServers = createUserServers();
@@ -182,6 +185,8 @@ function buildHeadlessRun(opts) {
     kanbanMcpServer: (p) => kanban.serverConfig(p),
     memoryMcpServer: (p, a) => memory.serverConfig(p, a),
     uiMcpServer: (dir, tools, harness) => ui.serverConfig(dir, tools, harness),
+    codeMode: codeMode.codeMode,
+    codeModeProtocol: codeMode.codeModeProtocol,
     mcpServers: userServers,
     starterKits: starterKits.port,
     harnessCatalog: m.createHarnessCatalog({
