@@ -49,6 +49,7 @@ import {
   wiredUiTools,
 } from '../../../../shared/domain/ui-tools-policy';
 import type { McpServerRegistry } from '../../mcp';
+import { CODE_MODE_SERVER_ID, CodeModeEventRelay, codeModeRunDir, removeCodeModeRunDir, type CodeModePlan } from '../../code-mode';
 import type { AgentRunPlan, MapperRegistry } from '../../agents/domain';
 import type { McpServerConfig } from '../../../../shared/domain/mcp';
 import type { MemoryRecall } from '../../../../shared/domain/memory';
@@ -244,6 +245,14 @@ export class RunInstructionUseCase {
     codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
     /** T-508: the brief prompt guide for the graph tools; null when the run has no graph server. */
     codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
+    /**
+     * S-50: per run, which of the user's MCP servers (those with `exposure:
+     * 'codemode'`) go behind the `devia-code-mode` gateway instead of being
+     * declared to the agent. Null = none: the run is untouched.
+     */
+    codeMode?: (args: { userServers: readonly McpServerConfig[]; agentId: string; mode: RunMode; runId: RunId }) => CodeModePlan | null;
+    /** S-50: the brief prompt guide for the gateway, gated on THIS run's delivery. */
+    codeModeProtocol?: (args: { serverIds: readonly string[]; delivered: boolean }) => string | null;
     /**
      * S-25: provider for Devia's bundled `devia-ui` MCP server config, keyed by
      * the PER-RUN rendezvous directory (not by project — unlike the other two
@@ -782,10 +791,16 @@ export class RunInstructionUseCase {
             ...(uiCandidate.includes('send_file') && { sendRoots, cwd, denyRoots: sendDenyRoots }),
           })
         : undefined;
+    // S-50: the user's servers set to code mode leave `harness.mcp.user` and sit
+    // behind the gateway, which travels with Devia's own servers.
+    const userServers = this.deps.mcpServers?.enabled(capabilities.allowedMcpServerIds) ?? [];
+    let codeModePlan: CodeModePlan | null =
+      this.deps.codeMode?.({ userServers, agentId: def.id, mode: requestedMode, runId }) ?? null;
     const deviaServers = (withUi: boolean): McpServerConfig[] => [
       ...(kanbanServer ? [kanbanServer] : []),
       ...(memoryServer ? [memoryServer] : []),
       ...(codeGraphServer ? [codeGraphServer] : []),
+      ...(codeModePlan ? [codeModePlan.gateway] : []),
       ...(withUi && uiServer ? [uiServer] : []),
     ];
     // S-43: the files attached to THIS message live in `<deviaDir>/attachments`,
@@ -798,7 +813,7 @@ export class RunInstructionUseCase {
         ? [path.join(this.deps.config.deviaDir(), 'attachments')]
         : [];
     const readDirs = [...(kit ? [kit.dir] : []), ...attachmentDirs];
-    const basePlan: AgentRunPlan = {
+    const buildBasePlan = (): AgentRunPlan => ({
       runId,
       agentId: def.id,
       mode: requestedMode,
@@ -822,7 +837,7 @@ export class RunInstructionUseCase {
         mcp: {
           devia: deviaServers(true),
           // REV-AGENT-CORE-005: narrowed to the run's MCP allowlist.
-          user: this.deps.mcpServers?.enabled(capabilities.allowedMcpServerIds) ?? [],
+          user: codeModePlan ? codeModePlan.user : userServers,
         },
         skills,
         subagents,
@@ -831,8 +846,19 @@ export class RunInstructionUseCase {
         isolateExternalMcp: cfg.memory.blockExternalMemory,
       },
       ui: { rendezvousDir: uiDir, toolTimeoutMs: QUESTION_TIMEOUT_MS },
-    };
-    const delivery = mapper.resolveDelivery(basePlan);
+    });
+    let basePlan = buildBasePlan();
+    let delivery = mapper.resolveDelivery(basePlan);
+    // S-50: an agent that will not get the gateway (enterprise MCP policy, no
+    // config target, a failed write) must not lose the servers meant to sit behind
+    // it: put them back as ordinary servers and resolve the delivery again.
+    if (codeModePlan !== null && !delivery.mcpServerIds.includes(CODE_MODE_SERVER_ID)) {
+      codeModePlan = null;
+      // Its servers file carries credentials and nothing will ever read it.
+      removeCodeModeRunDir(this.deps.config.deviaDir(), runId);
+      basePlan = buildBasePlan();
+      delivery = mapper.resolveDelivery(basePlan);
+    }
     // S-1 T-12 + E-DSK-13 #313: announce the memory protocol ONLY when the
     // `devia-memory` tools actually reach this agent — decided by its mapper's
     // delivery, not a per-agent table. Telling an agent without them to "call
@@ -868,6 +894,12 @@ export class RunInstructionUseCase {
       this.deps.codeGraphProtocol?.({
         serverRegistered: codeGraphServer !== undefined && delivery.mcpServerIds.includes(CODE_GRAPH_SERVER_ID),
       }) ?? null;
+    // S-50: gated on THIS run's delivery, like the graph above.
+    const codeModeHint =
+      this.deps.codeModeProtocol?.({
+        serverIds: codeModePlan?.serverIds ?? [],
+        delivered: codeModePlan !== null && delivery.mcpServerIds.includes(CODE_MODE_SERVER_ID),
+      }) ?? null;
     // Plan mode blocks file-writers but keeps the kanban MCP: tell the agent to
     // persist long plans as kanban specs instead of attempting failing writes.
     // S-39: with the method on, plan mode hands its sequence over to the method's
@@ -886,6 +918,7 @@ export class RunInstructionUseCase {
       remote: remoteHint || null,
       uiFallback: uiFallbackHint || null,
       codeGraph: codeGraphHint || null,
+      codeMode: codeModeHint || null,
       plan: planHint || null,
     };
     const allBodies = orderedBodies(promptBodies);
@@ -1035,6 +1068,20 @@ export class RunInstructionUseCase {
     // Agent-agnostic since S-24: whoever got the server publishes its requests
     // to the rendezvous, so polling follows the delivery, not the agent id.
     interaction.start();
+    // S-50: the gateway publishes each script's calls to a per-run events dir; the
+    // relay shows them nested under the agent's `run_script` card.
+    const codeModeRelay =
+      codeModePlan === null
+        ? null
+        : new CodeModeEventRelay({
+            eventsDir: path.join(codeModeRunDir(this.deps.config.deviaDir(), runId), 'events'),
+            emit: (event) => handlers.onClaudeOutput(JSON.stringify(event), runId),
+          });
+    codeModeRelay?.start();
+    const stopCodeMode = (): void => {
+      codeModeRelay?.stop();
+      if (codeModeRelay !== null) removeCodeModeRunDir(this.deps.config.deviaDir(), runId);
+    };
 
     // S-32: the outbox is flushed from the EFFECTIVE cwd (the worktree of an
     // isolated pane) BEFORE `onProcessEnd`, so a relay-bound file is on the
@@ -1079,8 +1126,10 @@ export class RunInstructionUseCase {
 
     const runHandlers: AgentRunHandlers = {
         onOutput: (line) => {
+          let seenByCodeMode: AgentEvent | null = null;
           try {
             const parsed = JSON.parse(line) as AgentEvent;
+            seenByCodeMode = parsed;
 
             // Capture agent-generated session ID the moment it arrives.
             // This is the ONLY place agentSessionId is ever written.
@@ -1161,9 +1210,12 @@ export class RunInstructionUseCase {
             /* non-JSON lines are fine */
           }
           handlers.onClaudeOutput(line, runId);
+          // After the line, never before: a nested call must not reach the chat ahead of its parent.
+          if (seenByCodeMode !== null) codeModeRelay?.observeAgentEvent(seenByCodeMode);
         },
         onDone: (code) => {
           interaction.stop();
+          stopCodeMode();
           cleanupUiDir();
           // Every temp artifact the mapper prepared (MCP config, system prompt file).
           prepared?.cleanup();
@@ -1195,6 +1247,7 @@ export class RunInstructionUseCase {
         },
         onError: (msg, classification, signal, cancelReason, classifiedError) => {
           interaction.stop();
+          stopCodeMode();
           cleanupUiDir();
           prepared?.cleanup();
           this.deps.registry.detachProcess(identity);

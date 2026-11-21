@@ -211,7 +211,22 @@
     "review_changes": "Revisa aquests canvis",
     "subagent_tools": "{{count}} eines",
     "subagent_tokens": "{{count}} tokens",
-    "subagent_report": "Informe"
+    "subagent_report": "Informe",
+    "script_title": "Script",
+    "script_line": "{{servers}} · {{calls}} crides · {{seconds}} s",
+    "script_line_running": "{{servers}} · {{calls}} crides fins ara",
+    "script_line_no": "línia {{line}}",
+    "script_returned": "Retornat",
+    "script_calls": "Crides",
+    "script_code": "Codi",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} tokens de dades no han entrat al context (estimació)",
+    "script_denied_note": "{{count}} crida/es denegada/des: els scripts només poden llegir",
+    "script_error_type": "Error de tipus: no s'ha cridat cap eina",
+    "script_error_runtime": "L'script ha fallat",
+    "script_error_denied": "Denegat: els scripts només poden llegir",
+    "script_error_other": "Error",
+    "script_no_calls": "Sense crides a eines"
   },
   "bubble_progress": {
     "thinking": "Pensant…"
@@ -628,7 +643,17 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "Eliminar servidor MCP",
-      "remove_confirm_message": "Vols eliminar el servidor «{{name}}»? Esta acció no es pot desfer."
+      "remove_confirm_message": "Vols eliminar el servidor «{{name}}»? Esta acció no es pot desfer.",
+      "exposure_label": "Exposició de les eines",
+      "exposure_direct": "Directa",
+      "exposure_codemode": "Via code mode",
+      "exposure_hint": "En code mode l'agent no veu les eines d'aquest servidor. Hi arriba amb un script i al xat només torna el resultat. Els scripts només poden llegir.",
+      "exposure_saved": "Exposició actualitzada.",
+      "edit": "Edita",
+      "edit_ok": "Servidor actualitzat.",
+      "edit_missing": "Aquest servidor ja no existeix.",
+      "save": "Desa",
+      "cancel_edit": "Cancel·la l'edició"
     }
   },
   "common": {

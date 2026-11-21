@@ -211,7 +211,22 @@
     "review_changes": "इन बदलावों की समीक्षा करें",
     "subagent_tools": "{{count}} टूल",
     "subagent_tokens": "{{count}} टोकन",
-    "subagent_report": "रिपोर्ट"
+    "subagent_report": "रिपोर्ट",
+    "script_title": "स्क्रिप्ट",
+    "script_line": "{{servers}} · {{calls}} कॉल · {{seconds}} से",
+    "script_line_running": "{{servers}} · अब तक {{calls}} कॉल",
+    "script_line_no": "पंक्ति {{line}}",
+    "script_returned": "लौटाया गया",
+    "script_calls": "कॉल",
+    "script_code": "कोड",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} टोकन का डेटा संदर्भ में नहीं आया (अनुमान)",
+    "script_denied_note": "{{count}} कॉल अस्वीकृत: स्क्रिप्ट केवल पढ़ सकती हैं",
+    "script_error_type": "टाइप त्रुटि: कोई टूल कॉल नहीं हुआ",
+    "script_error_runtime": "स्क्रिप्ट विफल हुई",
+    "script_error_denied": "अस्वीकृत: स्क्रिप्ट केवल पढ़ सकती हैं",
+    "script_error_other": "त्रुटि",
+    "script_no_calls": "कोई टूल कॉल नहीं"
   },
   "bubble_progress": {
     "thinking": "सोच रहा है…"
@@ -624,7 +639,17 @@
   "mcp": {
     "modal": {
       "remove_confirm_title": "MCP सर्वर हटाएँ",
-      "remove_confirm_message": "क्या सर्वर “{{name}}” हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।"
+      "remove_confirm_message": "क्या सर्वर “{{name}}” हटाएँ? यह क्रिया पूर्ववत नहीं की जा सकती।",
+      "exposure_label": "टूल एक्सपोज़र",
+      "exposure_direct": "सीधे",
+      "exposure_codemode": "कोड मोड के ज़रिए",
+      "exposure_hint": "कोड मोड में एजेंट इस सर्वर के टूल नहीं देखता। वह स्क्रिप्ट के ज़रिए उन तक पहुँचता है और चैट में केवल परिणाम लौटता है। स्क्रिप्ट केवल पढ़ सकती हैं।",
+      "exposure_saved": "एक्सपोज़र अपडेट हो गया।",
+      "edit": "संपादित करें",
+      "edit_ok": "सर्वर अपडेट हो गया।",
+      "edit_missing": "वह सर्वर अब मौजूद नहीं है।",
+      "save": "सहेजें",
+      "cancel_edit": "संपादन रद्द करें"
     }
   },
   "common": {

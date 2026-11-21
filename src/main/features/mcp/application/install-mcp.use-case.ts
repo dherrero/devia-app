@@ -15,6 +15,7 @@ import { targetsForServer } from '../domain/agent-targets';
 import { McpSyncWriter, type SyncTargetInput } from '../infrastructure/mcp-sync-writer';
 import { writeRegistry } from '../infrastructure/source-of-truth';
 import { grantClaudeMcpAccess } from '../../../shared/claude-defaults';
+import { isCodeModeAgent } from '../../code-mode/domain/code-mode-agents';
 import type { SnapshotCapturer } from '../../../shared/ports';
 
 /**
@@ -42,6 +43,12 @@ export interface InstallMcpRequest {
   projectPath?: string;
   /** Defaults to true. Honoured when present. */
   enabled?: boolean;
+  /**
+   * S-50: `'codemode'` puts the server behind the `devia-code-mode` gateway for the
+   * agents that take it, so it is NOT written to their native config. Left out, a
+   * re-install keeps whatever the server already had.
+   */
+  exposure?: McpServerConfig['exposure'];
 }
 
 export class InstallMcpUseCase {
@@ -68,6 +75,7 @@ export class InstallMcpUseCase {
       ...(req.description !== undefined && { description: req.description }),
       ...(req.env !== undefined && { env: req.env }),
       ...(req.allowedEnvKeys !== undefined && { allowedEnvKeys: req.allowedEnvKeys }),
+      ...(req.exposure !== undefined && { exposure: req.exposure }),
     };
     const validated = validateServerConfig(candidate);
     if (!validated) {
@@ -113,6 +121,8 @@ export class InstallMcpUseCase {
       // Keep createdAt stable across re-installs.
       ...(previous?.createdAt !== undefined && { createdAt: previous.createdAt }),
       ...(previous?.pinned !== undefined && { pinned: previous.pinned }),
+      // Editing a server must not silently move it back out of code mode.
+      ...(validated.exposure === undefined && previous?.exposure !== undefined && { exposure: previous.exposure }),
     };
     this.registry.upsert(merged);
 
@@ -131,12 +141,29 @@ export class InstallMcpUseCase {
     // Group by agent so each target file is written once with every
     // server belonging to that agent.
     const byAgent = new Map<McpAgentId, McpServerConfig[]>();
+    // S-50: a server behind the code-mode gateway must not ALSO be declared in the
+    // agent's native file, or the agent would see it both ways and nothing would be
+    // saved. The agent keeps an entry in the map (maybe empty) so the write below
+    // still runs and removes what an earlier sync left there.
+    const removedIdsByAgent = new Map<McpAgentId, string[]>();
     for (const s of syncedServers) {
       for (const agentId of s.agents ?? ['claude']) {
         const list = byAgent.get(agentId) ?? [];
-        list.push(s);
+        if (s.exposure === 'codemode' && isCodeModeAgent(agentId)) {
+          removedIdsByAgent.set(agentId, [...(removedIdsByAgent.get(agentId) ?? []), s.id]);
+        } else {
+          list.push(s);
+        }
         byAgent.set(agentId, list);
       }
+    }
+    // Editing a server can untick an agent. That agent keeps an entry (maybe empty)
+    // so the write below still runs and removes what the server left in its file.
+    const stillFor = new Set(validated.agents ?? ['claude']);
+    for (const agentId of previous?.agents ?? []) {
+      if (stillFor.has(agentId)) continue;
+      if (!byAgent.has(agentId)) byAgent.set(agentId, []);
+      removedIdsByAgent.set(agentId, [...(removedIdsByAgent.get(agentId) ?? []), validated.id]);
     }
     const failed: string[] = [];
     for (const [agent, servers] of byAgent.entries()) {
@@ -146,6 +173,7 @@ export class InstallMcpUseCase {
         agent,
         target,
         managed: servers,
+        ...(removedIdsByAgent.has(agent) && { removedIds: removedIdsByAgent.get(agent) as string[] }),
         parentEnv: process.env,
       };
       try {

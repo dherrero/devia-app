@@ -148,6 +148,8 @@
     "@agentclientprotocol/sdk": "1.9.0",
     "electron-updater": "^6.6.2",
     "node-pty": "^1.1.0",
+    "quickjs-emscripten": "^0.32.0",
+    "typescript": "^5.9.3",
     "web-tree-sitter": "^0.25.10",
     "zod": "4.6.6"
   },
@@ -206,7 +208,6 @@
     "rxjs": "^7.8.2",
     "tslib": "^2.8.1",
     "tsx": "^4.22.4",
-    "typescript": "^5.9.3",
     "vitest": "^4.1.9",
     "wait-on": "^9.0.10",
     "zone.js": "^0.16.2"

@@ -1,5 +1,5 @@
 import type { ElectronApiService } from '../../../core/services/electron-api.service';
-import type { McpAgentId, McpSource } from '../../../../types/devia';
+import type { McpAgentId, McpServerEditView, McpSource } from '../../../../types/devia';
 
 export const ALL_AGENTS: ReadonlyArray<{ id: McpAgentId; label: string }> = [
   { id: 'claude',       label: 'Claude Code' },
@@ -26,6 +26,9 @@ export interface FormState {
   // Only used by catalog-driven installs to remember required env values.
   requiredEnv: Record<string, string>;
   requiredEnvKeys: string[];
+  /** Edit only: what the form does not show but a save must not lose. */
+  allowedEnvKeys?: string[];
+  enabled?: boolean;
 }
 
 export type McpInstallRequest = Parameters<ElectronApiService['mcpInstall']>[0];
@@ -61,4 +64,44 @@ export function parseEnv(text: string): Record<string, string> | null {
     out[k] = v;
   }
   return out;
+}
+
+/**
+ * Splits the "args" field: whitespace separates arguments, and a double-quoted piece
+ * stays together (spaces included), so a path with a space is representable.
+ */
+export function splitArgs(text: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|(\S+)/g;
+  for (const m of text.matchAll(re)) out.push(m[1] ?? m[2] ?? '');
+  return out;
+}
+
+/** The inverse of `splitArgs`: quotes only the arguments that contain whitespace. */
+export function joinArgs(args: readonly string[]): string {
+  return args.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ');
+}
+
+/** "KEY=VALUE" lines, the inverse of `parseEnv`. */
+export function envToText(env: Record<string, string> | undefined): string {
+  return Object.entries(env ?? {}).map(([k, v]) => `${k}=${v}`).join('\n');
+}
+
+/** Fills the form from a stored server, to edit it. */
+export function formFromConfig(c: McpServerEditView): FormState {
+  return {
+    id: c.id,
+    name: c.name,
+    description: c.description ?? '',
+    command: c.command,
+    argsText: joinArgs(c.args),
+    envText: envToText(c.env),
+    agents: new Set<McpAgentId>(c.agents),
+    scope: c.scope,
+    source: c.source,
+    requiredEnv: {},
+    requiredEnvKeys: [],
+    ...(c.allowedEnvKeys !== undefined && { allowedEnvKeys: c.allowedEnvKeys }),
+    enabled: c.enabled,
+  };
 }

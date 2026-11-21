@@ -89,6 +89,15 @@ export interface ClaudeRunnerDeps {
   codeGraphMcpServer?: (projectAbs: string, agentId?: string) => import('../../../shared/domain/mcp').McpServerConfig | null;
   /** T-508: brief prompt guide for the graph tools, null when no server was registered. */
   codeGraphProtocol?: (args: { serverRegistered: boolean }) => string | null;
+  /** S-50: per run, which user MCP servers go behind the `devia-code-mode` gateway (null = none). */
+  codeMode?: (args: {
+    userServers: readonly import('../../../shared/domain/mcp').McpServerConfig[];
+    agentId: string;
+    mode: import('../../../shared/domain/run-capabilities').RunMode;
+    runId: import('../../../shared/domain/agent').RunId;
+  }) => import('../code-mode').CodeModePlan | null;
+  /** S-50: brief prompt guide for the gateway, gated on this run's delivery. */
+  codeModeProtocol?: (args: { serverIds: readonly string[]; delivered: boolean }) => string | null;
   /**
    * S-25: the bundled `devia-ui` server, which carries every interface tool.
    * Keyed by the PER-RUN rendezvous directory, not by project. How it reaches
@@ -192,6 +201,8 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     ...(deps.memoryMcpServer !== undefined && { memoryMcpServer: deps.memoryMcpServer }),
     ...(deps.codeGraphMcpServer !== undefined && { codeGraphMcpServer: deps.codeGraphMcpServer }),
     ...(deps.codeGraphProtocol !== undefined && { codeGraphProtocol: deps.codeGraphProtocol }),
+    ...(deps.codeMode !== undefined && { codeMode: deps.codeMode }),
+    ...(deps.codeModeProtocol !== undefined && { codeModeProtocol: deps.codeModeProtocol }),
     ...(deps.uiMcpServer !== undefined && { uiMcpServer: deps.uiMcpServer }),
     ...(deps.harnessCatalog !== undefined && { harnessCatalog: deps.harnessCatalog }),
     ...(deps.starterKits !== undefined && { starterKits: deps.starterKits }),

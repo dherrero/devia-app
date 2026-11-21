@@ -260,7 +260,22 @@
     "review_changes": "Review these changes",
     "subagent_tools": "{{count}} tools",
     "subagent_tokens": "{{count}} tokens",
-    "subagent_report": "Report"
+    "subagent_report": "Report",
+    "script_title": "Script",
+    "script_line": "{{servers}} · {{calls}} calls · {{seconds}} s",
+    "script_line_running": "{{servers}} · {{calls}} calls so far",
+    "script_line_no": "line {{line}}",
+    "script_returned": "Returned",
+    "script_calls": "Calls",
+    "script_code": "Code",
+    "script_logs": "console.log",
+    "script_savings": "≈{{tokens}} tokens of data stayed out of the context (estimate)",
+    "script_denied_note": "{{count}} call(s) denied: scripts can only read",
+    "script_error_type": "Type error: no tool was called",
+    "script_error_runtime": "The script failed",
+    "script_error_denied": "Denied: scripts can only read",
+    "script_error_other": "Error",
+    "script_no_calls": "No tool calls"
   },
   "bubble_progress": {
     "thinking": "Thinking…"
@@ -873,7 +888,17 @@
       "scope_global": "Global (user)",
       "scope_project": "This project only",
       "remove_confirm_title": "Remove MCP server",
-      "remove_confirm_message": "Remove the server “{{name}}”? This action cannot be undone."
+      "remove_confirm_message": "Remove the server “{{name}}”? This action cannot be undone.",
+      "exposure_label": "Tool exposure",
+      "exposure_direct": "Direct",
+      "exposure_codemode": "Via code mode",
+      "exposure_hint": "In code mode the agent does not see this server's tools. It reaches them through a script, and only the script's result comes back to the chat. Scripts can only read.",
+      "exposure_saved": "Exposure updated.",
+      "edit": "Edit",
+      "edit_ok": "Server updated.",
+      "edit_missing": "That server no longer exists.",
+      "save": "Save",
+      "cancel_edit": "Cancel editing"
     }
   },
   "common": {

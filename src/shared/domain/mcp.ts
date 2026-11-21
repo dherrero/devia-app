@@ -112,6 +112,27 @@ export interface McpServerView {
   exposure?: 'direct' | 'deferred' | 'codemode' | 'hidden';
 }
 
+/**
+ * Everything the edit form needs for ONE server, env VALUES included (unlike
+ * `McpServerView`, which redacts them for the lists). The renderer only ever asks
+ * for it when the user opens "Editar": the values are ones the user typed in the
+ * same form, and a form that cannot show them cannot fix a typo in them.
+ */
+export interface McpServerEditView {
+  id: string;
+  name: string;
+  description?: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  allowedEnvKeys?: string[];
+  agents: McpAgentId[];
+  scope: McpScope;
+  source: McpSource;
+  enabled: boolean;
+  exposure?: 'direct' | 'deferred' | 'codemode' | 'hidden';
+}
+
 /** Shape persisted at `<deviaDir>/mcp-servers.json`. */
 export interface McpServersFile {
   servers: McpServerConfig[];
