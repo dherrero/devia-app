@@ -47,7 +47,7 @@ Registry, installer, prober and writer of MCP servers: what the user configures 
 
 ## Config
 
-`config.memory.blockEngram` (Claude `--strict-mcp-config`), `DEVIA_ASSUME_ENTERPRISE_MCP=1|0` override.
+`config.memory.blockExternalMemory` (Claude `--strict-mcp-config`), `DEVIA_ASSUME_ENTERPRISE_MCP=1|0` override.
 
 ## Gotchas
 

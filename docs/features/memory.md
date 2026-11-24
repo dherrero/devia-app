@@ -15,7 +15,7 @@ Devia's own persistent memory (observations, session summaries, prompts) for eve
 - System prompt: `memory-protocol.ts` is appended only when `config.memory.enabled` (default true) and tells the agent the `mem_*` tools exist; first turn injects recalled context (`memory-context-hint.ts`, budget `memoryHintBudgetChars`); passive capture at run end saves prompts and an auto session summary (`memory-capture.ts`), where an agent-authored `mem_session_summary` is never replaced by the auto one.
 - Project identity = BASE checkout, never the run cwd: memory and kanban `--project` use `projectCheckout`; a startup migration (`worktree-memory-migration.ts`) folds orphan worktree-keyed stores back into their base project.
 - Records stamp `agentId` (in-process sinks pass `def.id`; the MCP server reads `DEVIA_ACTIVE_AGENT_ID`).
-- Engram integration: `DetectEngramUseCase` (binary on PATH and `${ENGRAM_DATA_DIR:-~/.engram}/engram.db`), `ImportEngramUseCase` (`engram export` into the personal store, preserving the original `project` tag, skipping soft-deleted and already-imported by `syncId`, sets `config.memory.engramImported`). `config.memory.blockEngram` (default true) makes Claude run with `--strict-mcp-config`.
+- Engram integration: `DetectEngramUseCase` (binary on PATH and `${ENGRAM_DATA_DIR:-~/.engram}/engram.db`), `ImportEngramUseCase` (`engram export` into the personal store, preserving the original `project` tag, skipping soft-deleted and already-imported by `syncId`, sets `config.memory.engramImported`). `config.memory.blockExternalMemory` (default true; renamed from `blockEngram`, migrated on load) makes Claude run with `--strict-mcp-config`.
 - Settings → Memory panel lists observations and SESSION summaries (newest first, capped at 10), project/personal toggle, forget, clear, pin.
 - Startup toast (once per launch) when engram is installed, memory is on and engram is not blocked.
 
@@ -50,7 +50,7 @@ Devia's own persistent memory (observations, session summaries, prompts) for eve
 
 ## Config
 
-`config.memory`: `{ enabled, blockEngram, engramImported, engramImportedAt? }` (defaults enabled true, blockEngram true).
+`config.memory`: `{ enabled, blockExternalMemory, engramImported, engramImportedAt? }` (defaults enabled true, blockExternalMemory true). `blockExternalMemory` was renamed from `blockExternalMemory` (provider-neutral: for Claude it is `--strict-mcp-config`, which ignores ANY ambient external MCP, not only engram); `fs-config-repository.ts` migrates the old key on load.
 
 ## Gotchas
 
