@@ -1,87 +1,85 @@
-# Devia Method — auditoría de la biblioteca de skills de partida, v7.0.1 (S-39 / T-419)
+# Devia Method — audit of the starting skills library, v7.0.1 (S-39 / T-419)
 
-Fuente: `vendor/upstream/skills/**` (14 skills, ~10 800 líneas con referencias). Criterio: lo que es disciplina pura se
-queda; lo que asume ficheros, harness o git se adapta o reemplaza; lo que solapa con una superficie de Devia se enlaza a ella.
+Status: implemented (design record)
+Verified: b08bff62130756f1e2eb66ac2578efbef65c2823
 
-## Hallazgo estructural
+Source: `vendor/upstream/skills/**` (14 skills, ~10,800 lines with references). Criterion: pure discipline stays; whatever assumes files, a harness or git is adapted or replaced; whatever overlaps a Devia surface is linked to it.
 
-`executing-plans` y `subagent-driven-development` son una **máquina de estado sobre ficheros**:
+## Structural finding
+
+`executing-plans` and `subagent-driven-development` are a **state machine over files**:
 
 ```
-docs/plans/<plan>.md ──task-brief──▶ <espacio-de-trabajo>/<plan>/task-N-brief.md
-        │                                         <espacio-de-trabajo>/<plan>/progress.md   (ledger: "Task N: complete …", "Ruling: …")
-        └──sdd-workspace──▶ directorio por plan   task-start / task-done / review-package
+docs/plans/<plan>.md ──task-brief──▶ <workspace>/<plan>/task-N-brief.md
+        │                                  <workspace>/<plan>/progress.md   (ledger: "Task N: complete …", "Ruling: …")
+        └──sdd-workspace──▶ one directory per plan   task-start / task-done / review-package
 ```
 
-Existe para sobrevivir a la compactación de contexto ("controllers that lost their place re-dispatched entire completed task
-sequences — the single most expensive failure observed"). Devia ya tiene el equivalente nativo: el kanban.
+It exists to survive context compaction ("controllers that lost their place re-dispatched entire completed task sequences — the single most expensive failure observed"). Devia already has the native equivalent: the kanban.
 
 | Upstream | Devia |
 | --- | --- |
-| plan en un fichero de `docs/` | tareas del kanban (`kanban_create_task`, `dependsOn`) |
-| design doc en un fichero de `docs/` | spec del kanban (`kanban_create_spec`) |
-| cabecera del plan (Goal, Architecture, Global Constraints, Review Focus) | descripción del spec |
-| `task-brief PLAN_FILE N` | `kanban_get_task` (el cuerpo de la tarea ES el brief) |
-| ledger `progress.md` · `Ruling:` · `minor (deferred)` | hilo de comentarios de la tarea (`kanban_comment`) |
+| plan in a `docs/` file | kanban tasks (`kanban_create_task`, `dependsOn`) |
+| design doc in a `docs/` file | kanban spec (`kanban_create_spec`) |
+| plan header (Goal, Architecture, Global Constraints, Review Focus) | a `Plan header: …` task |
+| `task-brief PLAN_FILE N` | `kanban_get_task` (the task body IS the brief) |
+| ledger `progress.md`, `Ruling:`, `minor (deferred)` | the task's comment thread (`kanban_comment`) |
 | `task-start` (brief + BASE) | `kanban_move_task in_progress` + `git rev-parse HEAD` |
-| `task-done` (corre tests, solo si pasan anota) | script `task-verify` (corre tests, guarda salida, no anota) + `kanban_close_task(commit)` solo si exit 0 |
-| "Task N: complete" · reanudar tras compactar | `kanban_close_task` con commit · `kanban_list` + `git log` |
-| `sdd-workspace` (directorio por plan) | desaparece (el estado ya no está en ficheros) |
-| `review-package PLAN_FILE BASE HEAD` | `review-package BASE HEAD` (sin plan; salida en `.devia/review/`, autoignorado) |
-| subagentes despachados | `kanban_record_subagent` deja constancia en la tarea |
+| `task-done` (runs tests, records only on pass) | script `task-verify` (runs tests, stores output, records nothing) + `kanban_close_task(commit)` only on exit 0 |
+| "Task N: complete", resume after compaction | `kanban_close_task` with commit; `kanban_list` + `git log` |
+| `sdd-workspace` (directory per plan) | removed (state no longer lives in files) |
+| `review-package PLAN_FILE BASE HEAD` | `review-package BASE HEAD` (no plan; output in `.devia/review/`, self-ignored) |
+| dispatched subagents | `kanban_record_subagent` logs them on the task |
 | `TodoWrite` | `devia_todo` (stepper) |
-| `AskUserQuestion` / preguntar | `devia_ask_user` (tarjeta) · texto cuando es conversación abierta |
-| pedir aprobación del plan | `devia_plan_approve` |
-| revisión humana | `devia_request_review` (vista Cambios con comentarios anclados) |
-| worktrees | paneles divididos de Devia (worktree por panel, protocolo propio) |
-| notas/decisiones | memoria de Devia (`mem_save`, `mem_context`) |
+| `AskUserQuestion` / asking | `devia_ask_user` (card); plain text for open conversation |
+| ask for plan approval | `devia_plan_approve` |
+| human review | `devia_request_review` (Changes view with anchored comments) |
+| worktrees | Devia split panes (one worktree per pane, own protocol) |
+| notes/decisions | Devia memory (`mem_save`, `mem_context`) |
 
-Ventaja añadida: con el estado en el kanban, **otro agente puede continuar** (handoff entre agentes), cosa que ficheros en
-un directorio oculto dentro de un worktree no permitían.
+Added advantage: with state on the kanban, **another agent can continue** (cross-agent handoff), which files in a hidden directory inside a worktree did not allow.
 
-## Matriz de disposición
+## Disposition matrix
 
-| Skill | Disposición | Qué cambia (líneas / secciones) |
+| Skill | Disposition | What changes |
 | --- | --- | --- |
-| skill de arranque de upstream | **REEMPLAZAR** → `using-devia` | Se conserva la regla ("1 % de probabilidad") y los red flags. Fuera: *Platform Adaptation* (6 `references/*-tools.md`), `SUBAGENT-STOP` se mantiene. Entra: índice de skills (nombre + disparador) para los agentes sin descubrimiento nativo, y mapa de superficies de Devia. |
-| `brainstorming` | **ADAPTAR a fondo** | Se quedan: *What do you actually know*, una pregunta por mensaje, *Play it back*, *Lay out the approaches*, *Size the work*, HARD-GATE, red flags, builder check. Cambian: *Look Before You Ask* + recall (`mem_search`, `kanban_list_specs`); *The Written Design* → spec del kanban (no fichero en `docs/`, no commit); aprobación por tarjeta; decisiones → `mem_save`; *Spike* → panel dividido. Fuera: *Visual Companion* y `scripts/` (server.cjs, helper.js, frame-template, start/stop-server) + `visual-companion.md`. |
-| `writing-plans` | **ADAPTAR** | *Save plans to* → tareas del kanban; cabecera → descripción del spec; *Task Structure* (Files, Interfaces, pasos TDD con Expected) → cuerpo de cada tarea; *Self-Review*, *Step Granularity*, *Task Right-Sizing* se quedan; *Execution Handoff* → `devia_plan_approve` (elección inline/subagentes dentro de la tarjeta/mensaje). |
-| `executing-plans` | **REESCRIBIR** sobre kanban | Se quedan: continuous execution, *Rulings, not stalls* y las 4 paradas, TDD como compuerta por tarea, completion contract, final review, rationalizations. Fuera: workspace, ledger, `task-start`, `task-done`, plan file. |
-| `subagent-driven-development` | **REESCRIBIR** sobre kanban | Igual + `kanban_record_subagent`. Se quedan `implementer-prompt`, `task-reviewer-prompt`, `re-review-prompt`, `references/{fix-loop,final-review,handling-reports,cannot-verify,batching,preflight}`; `resuming.md` desaparece (reanudar = `kanban_list`). `PLAN_FILE`→id de tarea; *Model Selection* abstracto. |
-| `dispatching-parallel-agents` | **MANTENER + nota** | Añadir paneles de Devia (hasta 4, worktree propio) como paralelismo real. |
-| `requesting-code-review` | **ADAPTAR** | Se quedan criterio y plantilla `code-reviewer.md`. Entra `devia_request_review` (revisión humana). Los SHAs ya no salen de rutas `docs/`. |
-| `receiving-code-review` | **MANTENER** | Solo "your human partner" → "el usuario" y mención de comentarios `revisa:` con anclas. |
-| `using-git-worktrees` | **REEMPLAZAR** → `isolating-work` | El aislamiento ES el panel dividido. Se conserva la *detección* (¿ya estoy en un worktree?). Fuera: creación manual, `.worktrees/`, gitignore. |
-| `finishing-a-development-branch` | **REEMPLAZAR** → `finishing-work` | Verificar → commit → `devia_request_review` → `devia_pick` (dejar listo / push / PR). Cerrar tareas con commit; sugerir archivar spec. **Fuera:** merge local, `git branch -D`, `git worktree remove` (Step 6 borra todo lo que cuelga de `worktrees/`: habría borrado los worktrees de Devia en `<deviaDir>/worktrees/`). |
-| `test-driven-development` (+`writing-good-tests`) | **MANTENER** | Solo "your human partner" → "el usuario" y referencias cruzadas sin prefijo de espacio de nombres. |
-| `systematic-debugging` (+4 refs, `find-polluter.sh`, `condition-based-waiting-example.ts`) | **MANTENER + 1 línea** | Al cerrar un bug con causa raíz → `mem_save` tipo `bugfix`. Se descartan `CREATION-LOG` y `test-*` (ya excluidos del vendoring). |
-| `verification-before-completion` | **MANTENER + 1 línea** | La evidencia va al comentario de cierre de la tarea y al `devia_todo`. |
-| `writing-skills` (+refs, `render-graphs.js`) | **ADAPTAR (baja prioridad)** | Dónde viven las skills en Devia (gestor de Skills, `.agents/skills`); fuera lo específico de plugins de Claude y `anthropic-best-practices.md` (1 150 líneas) si no aporta. |
-| skill de diagnóstico de upstream | **FUERA** | Lee transcripts de otros CLIs y puede abrir issues. Sustituto propio en backlog (T-429). |
+| upstream bootstrap skill | **REPLACE** → `using-devia` | Keeps the rule ("1% chance") and red flags. Out: *Platform Adaptation* (6 `references/*-tools.md`); `SUBAGENT-STOP` stays. In: skill index (name + trigger) for agents without native discovery, and a map of Devia surfaces. |
+| `brainstorming` | **ADAPT deeply** | Stays: *What do you actually know*, one question per message, *Play it back*, *Lay out the approaches*, *Size the work*, HARD-GATE, red flags, builder check. Changes: *Look Before You Ask* + recall (`mem_search`, `kanban_list_specs`); *The Written Design* → kanban spec (no `docs/` file, no commit); approval by card; decisions → `mem_save`; *Spike* → split pane. Out: *Visual Companion* and `scripts/` + `visual-companion.md`. |
+| `writing-plans` | **ADAPT** | *Save plans to* → kanban tasks; header → plan header task; *Task Structure* → each task body; *Self-Review*, *Step Granularity*, *Task Right-Sizing* stay; *Execution Handoff* → `devia_plan_approve`. |
+| `executing-plans` | **REWRITE** on kanban | Stays: continuous execution, *Rulings, not stalls* and the 4 stops, TDD gate per task, completion contract, final review, rationalizations. Out: workspace, ledger, `task-start`, `task-done`, plan file. |
+| `subagent-driven-development` | **REWRITE** on kanban | Same + `kanban_record_subagent`. Stays: `implementer-prompt`, `task-reviewer-prompt`, `re-review-prompt`, `references/{fix-loop,final-review,handling-reports,cannot-verify,batching,preflight}`; `resuming.md` disappears (resuming = `kanban_list`). `PLAN_FILE` → task id; *Model Selection* made abstract. |
+| `dispatching-parallel-agents` | **KEEP + note** | Add Devia panes (up to 4, own worktree) as real parallelism. |
+| `requesting-code-review` | **ADAPT** | Keeps criterion and `code-reviewer.md` template. Adds `devia_request_review` (human review). SHAs no longer come from `docs/` paths. |
+| `receiving-code-review` | **KEEP** | Only "your human partner" → "the user", and a mention of `revisa:` comments with anchors. |
+| `using-git-worktrees` | **REPLACE** → `isolating-work` | Isolation IS the split pane. Keeps detection (am I already in a worktree?). Out: manual creation, `.worktrees/`, gitignore. |
+| `finishing-a-development-branch` | **REPLACE** → `finishing-work` | Verify → commit → `devia_request_review` → `devia_pick` (leave ready / push / PR). Close tasks with commit; suggest archiving the spec. **Out:** local merge, `git branch -D`, `git worktree remove` (its Step 6 deletes everything under `worktrees/`, which is where Devia keeps its session worktrees: `<deviaDir>/worktrees/`). |
+| `test-driven-development` (+`writing-good-tests`) | **KEEP** | Only "your human partner" → "the user", cross-references without namespace prefix. |
+| `systematic-debugging` (+4 refs, `find-polluter.sh`, `condition-based-waiting-example.ts`) | **KEEP + 1 line** | When closing a bug with root cause → `mem_save` type `bugfix`. |
+| `verification-before-completion` | **KEEP + 1 line** | Evidence goes to the task's closing comment and `devia_todo`. |
+| `writing-skills` (+refs, `render-graphs.js`) | **ADAPT (low priority)** | Where skills live in Devia (Skills manager, `.agents/skills`); drop Claude-plugin specifics and `anthropic-best-practices.md` (1,150 lines) if it adds nothing. |
+| upstream diagnosis skill | **OUT** | Reads other CLIs' transcripts and can open issues. Own replacement in backlog (T-429). |
 
 ## Scripts
 
-| Script | Destino |
+| Script | Destination |
 | --- | --- |
-| `review-package` | **ADAPTAR**: `BASE HEAD [OUT]`, sin plan; salida en `.devia/review/` con `.gitignore` propio (`*`) |
-| `task-done` | **ADAPTAR** → `task-verify`: corre el comando, guarda la salida completa, imprime la cola, sale con el código del comando; ya no escribe ledger |
-| `task-brief`, `task-start`, `sdd-workspace` | **FUERA** |
-| `find-polluter.sh` | **MANTENER** |
-| `brainstorming/scripts/*`, `render-graphs.js` | **FUERA** |
+| `review-package` | **ADAPT**: `BASE HEAD [OUT]`, no plan; output in `.devia/review/` with its own `.gitignore` (`*`) |
+| `task-done` | **ADAPT** → `task-verify`: runs the command, stores full output, prints the tail, exits with the command's code; no longer writes a ledger |
+| `task-brief`, `task-start`, `sdd-workspace` | **OUT** |
+| `find-polluter.sh` | **KEEP** |
+| `brainstorming/scripts/*`, `render-graphs.js` | **OUT** |
 
-## Lo que upstream NO tiene y Devia aporta
+## What upstream lacks and Devia adds
 
-Memoria persistente entre sesiones (recall al empezar, decisiones y bugs al cerrar), tablero visible para el usuario, handoff
-entre agentes, paneles paralelos aislados, tarjetas de decisión, vista de revisión con comentarios por línea, stepper de progreso,
-aprobación de plan con paso a apply. El método los usa en cada fase en vez de reinventarlos con ficheros.
+Persistent memory across sessions (recall at start, decisions and bugs at close), a board visible to the user, agent-to-agent handoff, isolated parallel panes, decision cards, a review view with per-line comments, a progress stepper, plan approval with a step to apply. The method uses them in every phase instead of reinventing them with files.
 
-## Riesgos específicos detectados
+## Specific risks identified
 
-1. `executing-plans` pide *no detenerse* entre tareas; Devia en modo apply con permisos puede lanzar cambios grandes sin paradas:
-   las 4 condiciones de parada (destructivo, seguridad, efecto fuera del worktree, plan roto) se conservan y se enlazan a `devia_confirm`.
-2. El *Model Selection* de SDD asume que el controlador elige modelo por subagente; en Devia el modelo lo fija el usuario por agente:
-   se abstrae ("la opción más capaz disponible") y se deja de exigir `model:` explícito.
-3. Descripciones de skills largas e imperativas (`brainstorming`: "You MUST…") consumen contexto en cada turno de Claude (todas las
-   descripciones viven en el prompt): se reescriben como disparadores cortos.
-4. El arranque de upstream fuerza invocar skills *antes de cualquier respuesta, incluso preguntas aclaratorias*: se mantiene pero con la
-   excepción explícita de petición trivial y totalmente especificada (la excepción que ya cita brainstorming).
+1. `executing-plans` says do not stop between tasks; Devia in apply mode with permissions can launch large changes without pauses: the 4 stop conditions (destructive, security, effect outside the worktree, broken plan) are kept and linked to `devia_confirm`.
+2. SDD's *Model Selection* assumes the controller picks a model per subagent; in Devia the user fixes the model per agent: it is abstracted ("the most capable option available") and an explicit `model:` is no longer required.
+3. Long imperative skill descriptions (`brainstorming`: "You MUST…") cost context every Claude turn (all descriptions live in the prompt): rewritten as short triggers.
+4. The upstream bootstrap forces invoking skills *before any answer, even clarifying questions*: kept, with the explicit exception for a trivial, fully specified request (the exception brainstorming already cites).
+
+## Related
+
+- [01-design.md](01-design.md), [02-agents.md](02-agents.md), [../features/starter-kits.md](../features/starter-kits.md)

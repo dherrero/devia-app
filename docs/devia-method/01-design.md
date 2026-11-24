@@ -1,54 +1,49 @@
-# Devia Method — diseño (S-39)
+# Devia Method — design (S-39)
 
-Decisiones D1–D5 aprobadas el 2026-11-04. Ver `00-audit.md` para la matriz skill a skill.
+Status: implemented (design record)
+Verified: b08bff62130756f1e2eb66ac2578efbef65c2823
 
-## D1 · Procedencia: literal vendorizado + propio con rastro
+Decisions D1–D5 approved 2026-11-04. See [00-audit.md](00-audit.md) for the skill-by-skill matrix.
+
+## D1 · Provenance: vendored literal + own with trail
 
 ```
 resources/kits/devia-method/
-  kit.json                  id, version, bootstrap, índice de skills (nombre + disparador), disposición
-  UPSTREAM.md               por skill: ruta upstream, sha al hacer el fork, disposición, qué cambia y por qué
-  LICENSE                   la licencia MIT del proyecto de partida; NOTICE raíz con la atribución
-  skills/<nombre>/…         literales (copiadas del pin, hash verificado) y propias (su procedencia queda en `UPSTREAM.md`, generado desde `kit.json`)
-  VERSION.json              pin del upstream de las literales
+  kit.json                  id, version, bootstrap, skill index (name + trigger), disposition
+  UPSTREAM.md               per skill: upstream path, sha at fork, disposition, what changes and why
+  LICENSE                   the starting project's MIT license; root NOTICE carries attribution
+  skills/<name>/…           literal (copied from the pin, hash verified) and own (provenance in `UPSTREAM.md`, generated from `kit.json`)
+  VERSION.json              pin of the upstream the literals come from
 ```
 
-- Las **literales** se regeneran con `npm run vendor:upstream` y su hash se verifica; subir de versión es un re-vendor.
-- Las **propias** nunca se pisan. `npm run kit:upstream-diff -- --tag vX` compara upstream en el sha del fork con el tag nuevo para
-  cada skill propia y enseña el diff, para portar mejoras a mano (con criterio, no a ciegas).
+- **Literal** skills are regenerated with `npm run vendor:upstream` and their hash is verified; bumping a version is a re-vendor.
+- **Own** skills are never overwritten. `npm run kit:upstream-diff -- --tag vX` compares upstream at the fork sha with the new tag for each own skill and shows the diff, so improvements are ported by hand (with judgement, not blindly).
 
-## D2 · Nombre y licencia
+## D2 · Name and license
 
-"Devia Method", kit `devia-method`. Los nombres de skill se mantienen llanos (`brainstorming`, `writing-plans`…) salvo los
-reemplazos (`using-devia`, `isolating-work`, `finishing-work`). MIT exige conservar copyright y licencia en copias y obras
-derivadas: `LICENSE` del kit + `NOTICE` raíz. El producto final es de Devia y no se presenta como el proyecto original.
+"Devia Method", kit `devia-method`. Skill names stay plain (`brainstorming`, `writing-plans`…) except the replacements (`using-devia`, `isolating-work`, `finishing-work`). MIT requires keeping copyright and license in copies and derivative works: kit `LICENSE` + root `NOTICE`. The final product is Devia's and is not presented as the original project.
 
-## D3 · Un solo camino de bootstrap
+## D3 · One bootstrap path
 
-El bootstrap (`using-devia`) llega por el **prompt de sistema de Devia para todos los agentes**, Claude incluido. Claude conserva
-`--plugin-dir` solo para el descubrimiento nativo de skills (su tool `Skill` + descripciones), **sin `hooks/`**. Un único camino
-da comportamiento uniforme, es testeable por igual en los cinco agentes y elimina el riesgo de doble inyección.
+The bootstrap (`using-devia`) reaches **every agent through Devia's system prompt**, Claude included. Claude keeps `--plugin-dir` only for native skill discovery (its `Skill` tool + descriptions), **without `hooks/`**. One path gives uniform behaviour, is testable the same way on all five agents and removes the double-injection risk.
 
-## D4 · El kanban como estado
+## D4 · The kanban as state
 
-Spec = diseño aprobado. Tareas = plan. Hilo de la tarea = ledger. `kanban_close_task(commit)` = "tarea completa". La memoria guarda
-decisiones y bugs. `devia_todo` es la vista en vivo. No hay ficheros de plan ni de ledger. Reanudar (tras compactar o con otro
-agente) es `kanban_list` + `git log`.
+Spec = approved design. Tasks = plan. Task thread = ledger. `kanban_close_task(commit)` = "task complete". Memory keeps decisions and bugs. `devia_todo` is the live view. There are no plan or ledger files. Resuming (after compaction or with another agent) is `kanban_list` + `git log`.
 
-## D5 · Una sola secuencia en plan mode
+## D5 · One sequence in plan mode
 
-Con el método activo, el protocolo de plan de Devia deja de ordenar "explorar → persistir" por su cuenta y delega en la secuencia
-del método: `brainstorming` → diseño aprobado → plan en el kanban → `devia_plan_approve` → apply. Sin método, queda como hoy
-(byte-idéntico). Esto sustituye a la tabla de traducción de S-38, que dejaba dos instrucciones compitiendo.
+With the method active, Devia's plan protocol stops ordering "explore → persist" on its own and delegates to the method's sequence: `brainstorming` → approved design → plan on the kanban → `devia_plan_approve` → apply. Without the method it stays as before (byte-identical). This replaces S-38's translation table, which left two instructions competing.
 
-## Calidad
+## Quality
 
-1. **Lint del kit** (barato, en `npm test`): las skills propias no contienen `TodoWrite`, `AskUserQuestion`, `PLAN_FILE`, rutas de
-   plan en `docs/`, prefijos de espacio de nombres ni el nombre del proyecto de partida; toda herramienta `devia_*`/`kanban_*`/`mem_*` que nombran existe en los registros de
-   Devia; el manifiesto cubre todas las skills y viceversa; las literales siguen coincidiendo con su pin.
-2. **Evals de comportamiento** (T-426): multi-turno con usuario simulado y aserciones sobre llamadas a herramientas; nunca en CI.
+1. **Kit lint** (cheap, in `npm test`): own skills contain no `TodoWrite`, `AskUserQuestion`, `PLAN_FILE`, `docs/` plan paths, namespace prefixes or the starting project's name; every `devia_*` / `kanban_*` / `mem_*` tool they name exists in Devia's registries; the manifest covers all skills and vice versa; literals still match their pin.
+2. **Behaviour evals** (T-426): multi-turn with a simulated user and assertions on tool calls; never in CI.
 
-## Qué no cambia de S-38
+## What does not change from S-38
 
-Materializador por versión, puerto `StarterKitsPort`, detección de instalación nativa, entrega por agente, `devia_skill` con
-ficheros de apoyo y directorio de la skill, arreglo de Gemini, `readDirs` de OpenCode, UI de Ajustes.
+Per-version materializer, `StarterKitsPort`, native-install detection, per-agent delivery, `devia_skill` with support files and the skill directory, the Gemini fix, OpenCode `readDirs`, the Settings UI.
+
+## Related
+
+- [00-audit.md](00-audit.md), [02-agents.md](02-agents.md), [../features/starter-kits.md](../features/starter-kits.md)
