@@ -14,7 +14,7 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - Detection (`infrastructure/detection/`): `ParallelAgentDetector`, PATH resolution, version probes, per-agent auth probes (`probe-claude-auth`, `probe-gemini-auth`, `probe-cursor-agent-auth`, `probe-opencode-auth`, `probe-grok-auth`); detection errors are stripped of host paths by `classifyDetectionError` before IPC.
 - Launcher (`infrastructure/cli-launcher.ts`): spawns a `PreparedRun` only: binary, env (+ `PWD` = cwd), Windows command-line guards, watchdog, exit classification, `kill-tree.ts` (Windows `taskkill /T /F /PID`). It knows no prompt, system prompt or stream format.
 - Legacy stream parsers (`infrastructure/parsers/`): codex, copilot, cursor-agent, gemini, grok, qoder event streams plus `plain-text.ts`; `select-parser.ts` picks by `eventParser`. Error matchers in `infrastructure/matchers/<agent>.matchers.ts`.
-- Environment slicing: `spawn-env.ts` + `src/main/features/security/env-slicer.ts` pass only allowlisted env keys plus the def's `envOverrideKeys` (default-deny).
+- Child environment (`buildSpawnEnv` in `src/main/features/cli-adapters/infrastructure/spawn-env.ts`): the parent `process.env` is inherited, then the def's env, then the mapper's `prepared.env` (user `agentCliEnv` values filtered by the def's `envOverrideKeys`), then trusted `agentEnv`; `PWD` is forced to the cwd and a stripped `ANTHROPIC_BASE_URL` is logged. User-supplied defs may only override keys matching `SAFE_ENV_KEY_PATTERN` (`*_API_KEY`, `*_BASE_URL`, `*_CONFIG_DIR`, `*_TOKEN`).
 - Raw capture for parser diagnosis: `raw-stream-logger.ts` writes JSONL to `~/.devia-app/logs/agent-cli/<agentId>/` only when `IS_DEV` or `DEVIA_LOG_RAW_CLI=1` (size-capped, 7-day purge).
 - Use cases: list agents, select agent (`SelectAgentUseCase` rejects non-CLI providers), set model/reasoning, set env, test agent.
 
@@ -24,6 +24,7 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - Does NOT own prompt/MCP/stream logic any more (moved to the mappers, [agents.md](agents.md)).
 - Does NOT include a `mimo` agent: no def exists in this branch (spec S-23 did not land).
 - Does NOT keep user-defined `env` for custom agent defs (dropped), nor let a custom def re-point a built-in id.
+- Does NOT sanitise the inherited parent environment: the host `process.env` reaches the child (the default-deny `env-slicer` in the security feature is not wired in, see [security.md](security.md)).
 - Codex has no OS sandbox on Windows, so `apply` falls back to full access there.
 
 ## Entry points
