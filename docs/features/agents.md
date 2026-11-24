@@ -57,6 +57,9 @@ Per-run configs in `<deviaDir>/tmp/`, owner-only, removed after the run. Fixture
 
 ## Gotchas
 
+- The Claude session importer drops the `<devia-turn-context>` block from imported user messages (`src/shared/domain/claude-transcript.ts`). A literal copy of the tag in the user's text is escaped (`src/shared/domain/turn-context-tags.ts`). Known limits: the starter kit and skill registry are `stable`, so toggling them mid-session only applies to a new session; the block is dropped silently if a freezing mapper's def is not stream-json (only Claude freezes, and it is). Delivery is recorded when the model's first real event arrives (a `status`/`session_started` is not enough); a failed resume invalidates the session; a restart resends once.
+- Before declaring `freezesSystemPrompt` for an agent, verify whether the CLI keeps its first prompt on resume (two runs of one session with different marker words in the system prompt; ask which marker it sees). pi 1.3.0 does NOT freeze.
+
 - pi: the turn ends on `agent_settled`, NOT `agent_end`; MCP goes through a per-run extension (never `.pi/mcp.json`, which pi reads only in trusted projects); continuity is native via `--session-id`; stdout decoded with `StringDecoder`.
 - ACP permissions: plan mode rejects `edit/delete/move/execute` (devia MCP tools exempt); a remote (Telegram) run NEVER auto-approves; apply-yolo selects the broadest allow option on desktop only. Hermes in plan mode still writes through its `terminal` tool, so `AcpMapper` adds a guard section to the prompt plus a closing reminder when `planEnforcement` is `none`.
 - ACP SDK 2.x removed `ClientSideConnection`; do not bump past 1.9.0 without porting.
@@ -65,6 +68,10 @@ Per-run configs in `<deviaDir>/tmp/`, owner-only, removed after the run. Fixture
 - The renderer keys on `mcp__devia-ui__…` tool names; any mapper must emit canonical names.
 
 ## Tests
+
+- Agent E2E harness (`tools/agent-e2e/`, README there): drives real Claude / pi / OpenCode (and, free of charge, the scripted `acp-fake` ACP agent) through the real pipeline (headless composition over `dist/main`), four scenarios (apply, resume, plan, harness); snapshots split into `wiring` (what reached the CLI, must not change) and `behaviour` (model-dependent, warns). Costs money, never in CI. grok is excluded: its MCP config is GLOBAL, so sandbox `HOME` in anything that delivers to grok.
+- Per-turn-context guards: `run-instruction.use-case.test.ts` ("S-40" describes) pins that nothing volatile reaches a frozen `stable` prompt; `tools/agent-e2e/turn-context-eval.cjs` measures that the model obeys the block against a contradictory frozen prompt (10/10 on haiku and sonnet; costs money, never CI).
+- ACP layout: `profile.ts` (`AcpAgentProfile`, `ACP_PROFILES`), `connection.ts` (`AcpConnection`, `webStreamsFromChild`), `event-map.ts`, `permissions.ts`, `session.ts` (`openAcpSession`), `mapper.ts`, `testing/` (scriptable fake agent). Adding an ACP agent: verify against the real CLI with a minimal client (launch flag, `agentCapabilities`, mode ids, MCP tool naming, auth, whether it freezes instructions on resume); record fixtures; add a profile in `agents/acp/profiles/<id>.ts` and register in `ACP_PROFILES` (unverified fields stay `continuity: 'replay'`, `planEnforcement: 'none'` with an `unverified` comment); add a def in `cli-adapters/infrastructure/defs/` deriving `buildArgs`/`continuity` from the profile with `systemPromptStrategy: 'stdin-prepend'`; tests with the fake agent; a scenario in `tools/agent-e2e`; when in doubt ship a parallel `<agent>-acp` id until validated.
 
 - `src/main/features/agents/**` golden decoder tests, `legacy-mapper.equivalence.test.ts`, `static-mapper-registry.test.ts`; `tools/agent-e2e/` real-agent harness (costs money, never CI).
 

@@ -55,6 +55,10 @@ Decides WHAT a run needs (mode, composed system prompt, Devia's and the user's M
 
 ## Gotchas
 
+- Enterprise MCP carve-out (T-88): under an enterprise-managed Claude MCP config, Claude forbids BOTH `--strict-mcp-config` and `--mcp-config` (either aborts the run). `enterpriseMcpConfigPresent()` probes the standalone `managed-mcp.json` (mere presence as a valid JSON object with an `mcpServers` key activates the policy, even when empty) and, legacy, a non-empty `mcpServers` embedded in `managed-settings.json`. Paths: `managed-mcp.json` at `/Library/Application Support/ClaudeCode/` (macOS), `/etc/claude-code/` (Linux/WSL), `C:\Program Files\ClaudeCode\` (Windows: `Program Files`, NOT `ProgramData`); `managed-settings.json` on Windows is under `%PROGRAMDATA%`. When present the run passes neither flag and Devia's servers are not injected (a status notice says so); a Claude matcher classifies both abort messages with an actionable hint as a safety net.
+- Conversation continuity (S-19): the runner sends only the latest instruction and relies on native CLI resume (`agentSessionId`, captured from `session_started`); `continuity: 'replay'` agents (Gemini) get the prior transcript re-seeded through `buildConversationReplay`.
+- Delivering MCP permission to non-Claude agents: other agents already run permissive at runtime (Gemini `--approval-mode yolo` + `GEMINI_CLI_TRUST_WORKSPACE`, OpenCode `--dangerously-skip-permissions`, Codex `exec --sandbox`), so writing the server definition into their native config is enough; Cursor and Copilot have no yolo flag and their headless trust mechanism is UNVERIFIED.
+
 - `Workflow` (Claude's built-in multi-agent tool, ~4.5k tokens of cached prefix) is disallowed in every mode except `plan` through the Claude mapper's `disallowedTools(mode)`.
 - "Accept plan" cannot change the mode of the run in flight (flags are fixed in argv): the tool result tells the agent to end its turn, Devia switches the session mode and queues a follow-up instruction.
 - Anything volatile (channel, mode, tools on offer, worktree notice) must NOT live in a frozen system prompt: see the per-turn-context section of [agents.md](agents.md).
