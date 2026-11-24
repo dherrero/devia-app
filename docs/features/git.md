@@ -17,7 +17,7 @@ Git status/diff for the active project, branch switching, one-click pull, and gi
 
 ## Does NOT
 
-- Does NOT create commits, push, open pull requests, read CI checks, merge or rebase: there is no hosted-review (GitHub/GitLab/Bitbucket) integration, no auto-merge and no PR UI (case-insensitive search of `src/main`, `src/shared`, `src/renderer` for `octokit`, `pull request`, `gh pr`; also nothing for GitLab/Jira/Linear task sources). Agents do those through their own tools.
+- Does NOT create commits for the user's work (the only commit Devia makes is the first one when a project is created from a base, see [workspace.md](workspace.md)), push, open pull requests, read CI checks, merge or rebase: there is no hosted-review (GitHub/GitLab/Bitbucket) integration, no auto-merge and no PR UI (case-insensitive search of `src/main`, `src/shared`, `src/renderer` for `octokit`, `pull request`, `gh pr`; also nothing for GitLab/Jira/Linear task sources). Agents do those through their own tools.
 - Does NOT resolve merge conflicts or amend commits.
 - Does NOT switch branches while split view is active or an agent is running (guard in the renderer).
 - Does NOT run `git` against the base checkout from isolated panes: their agents are told not to (worktree protocol).
