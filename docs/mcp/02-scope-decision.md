@@ -58,7 +58,7 @@ install again with `global`.
 
 ## Implementation
 
-`src/renderer/app/mcp/mcp-modal.component.ts` — two locations
+`src/renderer/app/features/mcp/mcp-modal.component.ts` — two locations
 updated to derive the default from `projectPath`:
 
 - `emptyForm(projectPath)`: returns `scope: projectPath === '' ?
