@@ -37,7 +37,6 @@ export function explainProviderFailure(
   const raw = classified.rawMessage;
   const nested = extractNestedError(raw);
   const text = `${raw} ${nested?.message ?? ''}`;
-  const code = nested?.code ?? '';
   const status = nested?.statusCode;
   const provider = detectProvider(text, nested?.provider);
   const envVar = provider !== undefined ? ENV_BY_PROVIDER[provider] : undefined;

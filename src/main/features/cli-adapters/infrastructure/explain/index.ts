@@ -1,6 +1,10 @@
 import type { ClassifiedError } from '../../../../../shared/domain/cli-errors';
 import type { UserFacingError } from '../../../../../shared/domain/user-facing-error';
 import { claudeExplainer } from './claude.explain';
+import { codexExplainer } from './codex.explain';
+import { copilotExplainer } from './copilot.explain';
+import { cursorAgentExplainer } from './cursor-agent.explain';
+import { geminiExplainer } from './gemini.explain';
 import { genericExplain } from './generic';
 import { opencodeExplainer } from './opencode.explain';
 import { piExplainer } from './pi.explain';
@@ -13,6 +17,10 @@ export { extractNestedError, redactSecrets } from './nested-error';
 /** Per-agent readings, keyed by CLI id. An agent without one uses the generic mapping. */
 const EXPLAINERS: Readonly<Record<string, AgentExplainer>> = {
   claude: claudeExplainer,
+  codex: codexExplainer,
+  gemini: geminiExplainer,
+  'cursor-agent': cursorAgentExplainer,
+  copilot: copilotExplainer,
   opencode: opencodeExplainer,
   pi: piExplainer,
 };
