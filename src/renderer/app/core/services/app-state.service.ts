@@ -209,6 +209,29 @@ export class AppStateService implements OnDestroy {
     () => this.effectiveAgent()?.agentId ?? this.config()?.agentId ?? '',
   );
   /**
+   * Where a footer agent change is written (S-53): an additional split pane — or a
+   * primary pane whose session already has its own agent — changes its SESSION;
+   * otherwise the PROJECT.
+   */
+  readonly agentTarget = computed<'project' | 'session'>(() =>
+    this.focusedSessionKey() !== null || this.effectiveAgent()?.source === 'session' ? 'session' : 'project',
+  );
+
+  /** Change the agent of what the footer is showing: see {@link agentTarget}. */
+  async setFocusedAgent(agentId: string | null): Promise<SetContextAgentResult> {
+    const project = this.selectedProject();
+    if (!project) return this.setProjectAgent(agentId); // reports NO_PROJECT
+    const pane = this.focusedSessionKey();
+    const sessionId = pane ?? (this.agentTarget() === 'session'
+      ? this.availableSessions().find((x) => x.isActive)?.id
+      : undefined);
+    if (sessionId === undefined) return this.setProjectAgent(agentId);
+    const result = await this.api.setContextAgent({ scope: 'session', projectPath: project, sessionId, agentId });
+    if (result.accepted) this.effectiveAgentTick.update((n) => n + 1);
+    return result;
+  }
+
+  /**
    * Set (or clear with null) the agent of the SELECTED project; the global
    * default is changed from Settings. Main refuses it while a run is active.
    */
@@ -229,6 +252,8 @@ export class AppStateService implements OnDestroy {
     const project = this.selectedProject();
     const key = this.focusedKey();
     const sessionId = this.focusedSessionKey();
+    // The primary pane's active session can carry its own agent: ask again when it changes.
+    void this.availableSessions().find((x) => x.isActive)?.id;
     this.effectiveAgentTick();
     if (!project || !key) return;
     const request = ++this.effectiveAgentRequest;

@@ -134,6 +134,8 @@
     "agent_picker_title": "Agente de este proyecto",
     "agent_picker_hint": "Solo afecta a este proyecto. El agente predeterminado se elige en Ajustes.",
     "agent_use_default": "Usar el agente predeterminado",
+    "agent_picker_hint_session": "Solo afecta a la sesión de este panel. El agente del proyecto no cambia.",
+    "agent_use_project": "Usar el agente del proyecto",
     "agent_open_settings": "Ajustes de agentes…",
     "agent_change_blocked": "Espera a que termine la instrucción en curso antes de cambiar de agente.",
     "agent_change_failed": "No se pudo cambiar el agente.",

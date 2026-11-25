@@ -134,6 +134,8 @@
     "agent_picker_title": "Agent for this project",
     "agent_picker_hint": "Applies to this project only. The default agent is chosen in Settings.",
     "agent_use_default": "Use the default agent",
+    "agent_picker_hint_session": "Applies to this pane's session only. The project's agent stays as it is.",
+    "agent_use_project": "Use the project's agent",
     "agent_open_settings": "Agent settings…",
     "agent_change_blocked": "Wait for the running instruction to finish before changing the agent.",
     "agent_change_failed": "The agent could not be changed.",

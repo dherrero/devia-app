@@ -34,7 +34,8 @@ describe('AgentPickerComponent', () => {
   let fixture: ComponentFixture<AgentPickerComponent>;
   let effective: ReturnType<typeof signal<EffectiveAgent | null>>;
   let effectiveId: ReturnType<typeof signal<string>>;
-  const state = { setProjectAgent: vi.fn() };
+  const state = { setFocusedAgent: vi.fn() };
+  let target: ReturnType<typeof signal<'project' | 'session'>>;
   const handoff = { notify: vi.fn() };
   const toast = { show: vi.fn() };
   const shortcuts = { openSettings: vi.fn() };
@@ -43,7 +44,8 @@ describe('AgentPickerComponent', () => {
   beforeEach(async () => {
     effective = signal<EffectiveAgent | null>({ agentId: 'claude', source: 'global' });
     effectiveId = signal('claude');
-    state.setProjectAgent.mockReset();
+    state.setFocusedAgent.mockReset();
+    target = signal<'project' | 'session'>('project');
     handoff.notify.mockReset();
     toast.show.mockReset();
     shortcuts.openSettings.mockReset();
@@ -51,7 +53,7 @@ describe('AgentPickerComponent', () => {
     await TestBed.configureTestingModule({
       imports: [AgentPickerComponent, TranslateModule.forRoot()],
       providers: [
-        { provide: AppStateService, useValue: { ...state, detectedAgents: signal(AGENTS), effectiveAgent: effective, effectiveAgentId: effectiveId } },
+        { provide: AppStateService, useValue: { ...state, detectedAgents: signal(AGENTS), effectiveAgent: effective, effectiveAgentId: effectiveId, agentTarget: target } },
         { provide: AgentSwitchHandoffService, useValue: handoff },
         { provide: ToastService, useValue: toast },
         { provide: KeyboardShortcutsService, useValue: shortcuts },
@@ -72,15 +74,15 @@ describe('AgentPickerComponent', () => {
   });
 
   it('sets the project agent, announces a possible handoff and closes', async () => {
-    state.setProjectAgent.mockResolvedValue({ accepted: true, effective: { agentId: 'codex', source: 'project' } });
+    state.setFocusedAgent.mockResolvedValue({ accepted: true, effective: { agentId: 'codex', source: 'project' } });
     await fixture.componentInstance.pick('codex');
-    expect(state.setProjectAgent).toHaveBeenCalledWith('codex');
+    expect(state.setFocusedAgent).toHaveBeenCalledWith('codex');
     expect(handoff.notify).toHaveBeenCalledWith('claude', 'codex');
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
   it('keeps the dialog open and says why when main refuses (run active)', async () => {
-    state.setProjectAgent.mockResolvedValue({
+    state.setFocusedAgent.mockResolvedValue({
       accepted: false, effective: { agentId: 'claude', source: 'global' }, rejectedReason: 'AGENT_RUN_ACTIVE',
     });
     await fixture.componentInstance.pick('codex');
@@ -95,15 +97,15 @@ describe('AgentPickerComponent', () => {
     effectiveId.set('codex');
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.use-default')).not.toBeNull();
-    state.setProjectAgent.mockResolvedValue({ accepted: true, effective: { agentId: 'claude', source: 'global' } });
+    state.setFocusedAgent.mockResolvedValue({ accepted: true, effective: { agentId: 'claude', source: 'global' } });
     await fixture.componentInstance.pick(null);
-    expect(state.setProjectAgent).toHaveBeenCalledWith(null);
+    expect(state.setFocusedAgent).toHaveBeenCalledWith(null);
     expect(handoff.notify).toHaveBeenCalledWith('codex', 'claude');
   });
 
   it('picking the agent already in use changes nothing', async () => {
     await fixture.componentInstance.pick('claude');
-    expect(state.setProjectAgent).not.toHaveBeenCalled();
+    expect(state.setFocusedAgent).not.toHaveBeenCalled();
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
@@ -111,6 +113,22 @@ describe('AgentPickerComponent', () => {
     fixture.componentInstance.openSettings();
     expect(shortcuts.openSettings).toHaveBeenCalledWith('execution');
     expect(dialogRef.close).toHaveBeenCalled();
-    expect(state.setProjectAgent).not.toHaveBeenCalled();
+    expect(state.setFocusedAgent).not.toHaveBeenCalled();
+  });
+
+  it('on a split pane the dialog talks about the pane, and "back to default" means the project agent', () => {
+    target.set('session');
+    effective.set({ agentId: 'codex', source: 'session' });
+    effectiveId.set('codex');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ap-hint')?.textContent).toContain('statusbar.agent_picker_hint_session');
+    expect(fixture.nativeElement.querySelector('.use-default')?.textContent).toContain('statusbar.agent_use_project');
+  });
+
+  it('a pane that still follows its project offers no "back" action', () => {
+    target.set('session');
+    effective.set({ agentId: 'codex', source: 'project' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.use-default')).toBeNull();
   });
 });

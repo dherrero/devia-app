@@ -29,10 +29,13 @@ export function createEffectiveAgentResolver(deps: EffectiveAgentResolverDeps): 
   };
   return {
     forRun(projectPath, sessionId) {
+      const project = deps.registry.find(projectPath);
+      // No session given = the primary pane: its own active session counts, so the
+      // footer, Telegram, the queue and auto-continue agree with what the run uses.
+      const sid = sessionId ?? project?.activeSessionId ?? undefined;
       return resolveEffectiveAgentId({
-        sessionAgentId:
-          sessionId !== undefined ? deps.sessionAgentId?.(projectPath, sessionId) ?? null : null,
-        projectAgentId: deps.registry.find(projectPath)?.preferredAgentId ?? null,
+        sessionAgentId: sid !== undefined ? deps.sessionAgentId?.(projectPath, sid) ?? null : null,
+        projectAgentId: project?.preferredAgentId ?? null,
         globalAgentId: deps.config.get().agentId,
         isExecutable,
       });

@@ -3,7 +3,9 @@
     <dv-icon class="ic" [icon]="LucideBot" size="sm" />
     <span class="title">{{ 'statusbar.agent_picker_title' | translate }}</span>
   </header>
-  <p class="ap-hint">{{ 'statusbar.agent_picker_hint' | translate }}</p>
+  <p class="ap-hint">
+    {{ (target() === 'session' ? 'statusbar.agent_picker_hint_session' : 'statusbar.agent_picker_hint') | translate }}
+  </p>
 
   @if (fellBackFrom(); as lost) {
     <p class="ap-warn">{{ 'statusbar.agent_fallback_warning' | translate: { agent: lost.agentId } }}</p>
@@ -24,7 +26,7 @@
   <footer class="ap-footer">
     @if (hasOwnAgent()) {
       <button type="button" class="link use-default" (click)="pick(null)">
-        {{ 'statusbar.agent_use_default' | translate }}
+        {{ (target() === 'session' ? 'statusbar.agent_use_project' : 'statusbar.agent_use_default') | translate }}
       </button>
     }
     <button type="button" class="link open-settings" (click)="openSettings()">

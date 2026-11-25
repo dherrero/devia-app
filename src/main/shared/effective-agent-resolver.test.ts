@@ -4,6 +4,8 @@ import { createEffectiveAgentResolver } from './effective-agent-resolver';
 function setup(opts: {
   global?: string;
   projects?: Record<string, string | null>;
+  /** project -> its active (primary pane) session id */
+  active?: Record<string, string>;
   agents?: Record<string, string | undefined>; // id -> providerType ('cli' | undefined = cli | other)
   sessionAgent?: (project: string, sessionId: string) => string | null | undefined;
 }) {
@@ -12,7 +14,9 @@ function setup(opts: {
     config: { get: () => ({ agentId: opts.global ?? 'claude' }) },
     registry: {
       find: (p: string) =>
-        p in (opts.projects ?? {}) ? ({ preferredAgentId: opts.projects?.[p] ?? null } as never) : undefined,
+        p in (opts.projects ?? {})
+          ? ({ preferredAgentId: opts.projects?.[p] ?? null, activeSessionId: opts.active?.[p] ?? null } as never)
+          : undefined,
     },
     agents: { get: (id: string) => (id in agents ? { providerType: agents[id] } : null) },
     ...(opts.sessionAgent && { sessionAgentId: opts.sessionAgent }),
@@ -59,5 +63,23 @@ describe('createEffectiveAgentResolver', () => {
   it('treats a missing providerType as a CLI', () => {
     const r = setup({ projects: { a: 'legacy' }, agents: { claude: 'cli', legacy: undefined } });
     expect(r.forRun('a')).toEqual({ agentId: 'legacy', source: 'project' });
+  });
+
+  it("without a session id, the PRIMARY pane's active session counts (so the footer matches the run)", () => {
+    const r = setup({
+      projects: { a: 'codex' },
+      active: { a: 's-active' },
+      sessionAgent: (_p, s) => (s === 's-active' ? 'pi' : null),
+    });
+    expect(r.forRun('a')).toEqual({ agentId: 'pi', source: 'session' });
+  });
+
+  it('an explicit session id (an additional pane) is not replaced by the active one', () => {
+    const r = setup({
+      projects: { a: 'codex' },
+      active: { a: 's-active' },
+      sessionAgent: (_p, s) => (s === 's-active' ? 'pi' : null),
+    });
+    expect(r.forRun('a', 's-pane')).toEqual({ agentId: 'codex', source: 'project' });
   });
 });

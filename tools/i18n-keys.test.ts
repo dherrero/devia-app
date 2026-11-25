@@ -181,7 +181,8 @@ describe('round trip against the real files', () => {
     // 293: T-513 translated every codeGraph key into the nine locales (-195); what is
     // left is the pre-existing S-27 backlog, none of it under codeGraph.
     // 300: +7 for the footer agent picker (es/en only; S-27 translates).
-    expect(Object.keys(missing).length).toBe(300);
+    // 302: +2 for the pane-scoped wording of the agent picker (es/en only; S-27 translates).
+    expect(Object.keys(missing).length).toBe(302);
     expect(Object.keys(missing).filter((key) => key.startsWith('codeGraph.'))).toEqual([]);
   });
 

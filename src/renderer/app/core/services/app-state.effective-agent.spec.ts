@@ -119,6 +119,18 @@ describe('AppStateService — effective agent (S-53)', () => {
     expect(service.effectiveAgentId()).toBe('claude');
   });
 
+  it('asks again when the primary pane switches to another session of the same project', async () => {
+    service.selectedProject.set('proj-a');
+    service.availableSessions.set([{ id: 's1', isActive: true } as never, { id: 's2', isActive: false } as never]);
+    await flush();
+    getEffectiveAgent.mockClear();
+    answer = () => ({ agentId: 'pi', source: 'session' });
+    service.availableSessions.set([{ id: 's1', isActive: false } as never, { id: 's2', isActive: true } as never]);
+    await flush();
+    expect(getEffectiveAgent).toHaveBeenCalledTimes(1);
+    expect(service.effectiveAgentId()).toBe('pi');
+  });
+
   describe('setProjectAgent', () => {
     it('sets the agent of the selected project and asks main for the new effective agent', async () => {
       service.selectedProject.set('proj-a');
@@ -148,6 +160,43 @@ describe('AppStateService — effective agent (S-53)', () => {
 
     it('rejects without calling main when no project is selected', async () => {
       const result = await service.setProjectAgent('codex');
+      expect(result).toMatchObject({ accepted: false, rejectedReason: 'NO_PROJECT' });
+      expect(setContextAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setFocusedAgent / agentTarget', () => {
+    const SID = '33333333-2222-4333-8333-555555555555';
+    beforeEach(() => {
+      service.selectedProject.set('proj-a');
+      setContextAgent.mockResolvedValue({ accepted: true, effective: { agentId: 'codex', source: 'session' } });
+    });
+
+    it('the primary pane without a session agent targets the PROJECT', async () => {
+      expect(service.agentTarget()).toBe('project');
+      await service.setFocusedAgent('codex');
+      expect(setContextAgent).toHaveBeenCalledWith({ scope: 'project', projectPath: 'proj-a', agentId: 'codex' });
+    });
+
+    it('an additional pane targets its own SESSION, even before that session exists on disk', async () => {
+      service.focusedSessionKey.set(SID);
+      expect(service.agentTarget()).toBe('session');
+      await service.setFocusedAgent('codex');
+      expect(setContextAgent).toHaveBeenCalledWith({ scope: 'session', projectPath: 'proj-a', sessionId: SID, agentId: 'codex' });
+    });
+
+    it('the primary pane whose session already has its own agent keeps writing to that session', async () => {
+      answer = () => ({ agentId: 'pi', source: 'session' });
+      service.availableSessions.set([{ id: SID, isActive: true } as never]);
+      await flush();
+      expect(service.agentTarget()).toBe('session');
+      await service.setFocusedAgent(null);
+      expect(setContextAgent).toHaveBeenCalledWith({ scope: 'session', projectPath: 'proj-a', sessionId: SID, agentId: null });
+    });
+
+    it('rejects without calling main when there is no project', async () => {
+      service.selectedProject.set(null);
+      const result = await service.setFocusedAgent('codex');
       expect(result).toMatchObject({ accepted: false, rejectedReason: 'NO_PROJECT' });
       expect(setContextAgent).not.toHaveBeenCalled();
     });

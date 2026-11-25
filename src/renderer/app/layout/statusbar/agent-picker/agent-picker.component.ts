@@ -49,11 +49,10 @@ export class AgentPickerComponent {
   readonly LucideSettings2 = LucideSettings2;
 
   readonly items = computed(() => buildAgentPickerItems(this.state.detectedAgents() ?? [], this.state.effectiveAgentId()));
-  /** The project carries its own agent (or the session does): offer to go back to the default. */
-  readonly hasOwnAgent = computed(() => {
-    const source = this.state.effectiveAgent()?.source;
-    return source === 'project' || source === 'session';
-  });
+  /** What the change applies to: the project, or just this pane's session. */
+  readonly target = computed(() => this.state.agentTarget());
+  /** The target already carries its own agent: offer to drop it (back to the project's / the default). */
+  readonly hasOwnAgent = computed(() => this.state.effectiveAgent()?.source === this.target());
   readonly fellBackFrom = computed(() => this.state.effectiveAgent()?.fellBackFrom ?? null);
 
   /** `null` removes the project's agent so it follows the global default again. */
@@ -63,7 +62,7 @@ export class AgentPickerComponent {
       return;
     }
     const before = this.state.effectiveAgentId();
-    const result = await this.state.setProjectAgent(agentId);
+    const result = await this.state.setFocusedAgent(agentId);
     if (!result.accepted) {
       this.toast.show(this.rejectionText(result.rejectedReason), { kind: 'error' });
       return;
