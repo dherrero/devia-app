@@ -5,7 +5,7 @@
  */
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { piAgentDef } from './pi';
+import { parsePiModels, piAgentDef } from './pi';
 import { buildDefaultCapabilities } from '../../../../../shared/domain/run-capabilities';
 import type { RunId } from '../../../../../shared/domain/agent';
 
@@ -46,5 +46,33 @@ describe('pi def', () => {
     for (const mode of ['apply', 'apply-yolo'] as const) {
       expect(piAgentDef.buildExtraArgs?.({ systemPrompt: '', capabilities: buildDefaultCapabilities('r1' as RunId, mode) })).toEqual(['--tools', '+bash,+edit,+write']);
     }
+  });
+});
+
+describe('pi model discovery', () => {
+  const TABLE = [
+    'provider    model                                               context  max-out  thinking  images',
+    'openai      gpt-5                                               400K     128K     yes       yes   ',
+    'openrouter  ~anthropic/claude-sonnet-latest                     1M       128K     yes       yes   ',
+    'openrouter  ~anthropic/claude-sonnet-latest                     1M       128K     yes       yes   ',
+    '',
+  ].join('\n');
+
+  it('asks pi for the models of the providers it has credentials for', () => {
+    expect(piAgentDef.listModels?.args).toEqual(['--list-models']);
+    expect(piAgentDef.listModels?.parse).toBe(parsePiModels);
+  });
+
+  it('turns the table into provider/model ids, keeping the default option first and skipping the header and duplicates', () => {
+    expect(parsePiModels(TABLE)).toEqual([
+      { id: 'default', label: 'Default (CLI config)' },
+      { id: 'openai/gpt-5', label: 'gpt-5 (openai)' },
+      { id: 'openrouter/~anthropic/claude-sonnet-latest', label: '~anthropic/claude-sonnet-latest (openrouter)' },
+    ]);
+  });
+
+  it('returns nothing for output that is not the table, so detection falls back to the built-in list', () => {
+    expect(parsePiModels('')).toEqual([]);
+    expect(parsePiModels('No models available. Set up authentication first.\n')).toEqual([]);
   });
 });

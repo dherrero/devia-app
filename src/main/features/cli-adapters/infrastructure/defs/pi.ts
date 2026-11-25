@@ -1,4 +1,4 @@
-import type { RuntimeAgentDef } from '../../domain/runtime-agent-def';
+import type { RuntimeAgentDef, RuntimeModelOption } from '../../domain/runtime-agent-def';
 import { DEFAULT_MODEL_OPTION } from './shared';
 
 /**
@@ -40,11 +40,39 @@ const WRITE_TOOLS = ['+bash', '+edit', '+write'];
  * - pi has no sandbox, so `extraAllowedDirs` needs no flag: every path the
  *   process can reach is already reachable.
  */
+/**
+ * `pi --list-models` prints a table of the models of every provider pi has
+ * credentials for (its own auth + env vars), e.g.
+ * `openrouter  ~anthropic/claude-sonnet-latest  1M  128K  yes  yes`.
+ * A model row has a numeric context size in its third column, which is what
+ * tells it apart from the header and from any message. Returns `[]` when no
+ * row is found so detection keeps the built-in list.
+ */
+export function parsePiModels(stdout: string): RuntimeModelOption[] {
+  const seen = new Set<string>();
+  const out: RuntimeModelOption[] = [];
+  for (const line of String(stdout || '').split('\n')) {
+    const match = /^(\S+)\s+(\S+)\s+\d/.exec(line.trim());
+    if (!match) continue;
+    const [, provider, model] = match;
+    const id = `${provider}/${model}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, label: `${model} (${provider})` });
+  }
+  return out.length > 0 ? [DEFAULT_MODEL_OPTION, ...out] : [];
+}
+
 export const piAgentDef: RuntimeAgentDef = {
   id: 'pi',
   name: 'Pi',
   bin: 'pi',
   versionArgs: ['--version'],
+  listModels: {
+    args: ['--list-models'],
+    parse: parsePiModels,
+    timeoutMs: 8000,
+  },
   fallbackModels: [
     DEFAULT_MODEL_OPTION,
     { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5 (anthropic)' },
