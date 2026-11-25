@@ -4021,3 +4021,77 @@ describe('RunInstructionUseCase — code mode events and cleanup (S-50 T-557)', 
     expect(fs.existsSync(path.join(deviaDir(), 'tmp', 'code-mode'))).toBe(false);
   });
 });
+
+// ── S-54 safety net — auto-continue after the usage limit ──────────────────
+//
+// The error-explanation work must never change how a rejected usage limit is
+// reported: `onRateLimited` fires with the agent id and `resetsAt`, ahead of
+// `onProcessEnd`, on a clean exit AND on an error exit.
+
+describe('RunInstructionUseCase — usage limit reporting (auto-continue contract)', () => {
+  const RESETS_AT = 1_900_000_000_000;
+
+  /** Records the relative order of the two lifecycle calls that matter. */
+  function trackedHandlers(): { handlers: RunInstructionHandlers; order: string[]; limited: ReturnType<typeof vi.fn> } {
+    const order: string[] = [];
+    const limited = vi.fn(() => { order.push('limited'); });
+    const handlers = makeHandlers({
+      onRateLimited: limited,
+      onProcessEnd: vi.fn(() => { order.push('end'); }),
+    });
+    return { handlers, order, limited };
+  }
+
+  it('reports onRateLimited with the agent id and resetsAt BEFORE onProcessEnd on an error exit', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, order, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected', resetsAt: RESETS_AT });
+    capture.handlers.onError('usage limit reached');
+
+    expect(limited).toHaveBeenCalledOnce();
+    expect(limited).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'claude', resetsAt: RESETS_AT }));
+    expect(order).toEqual(['limited', 'end']);
+  });
+
+  it('reports it on a clean exit too, before onProcessEnd', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, order, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected', resetsAt: RESETS_AT });
+    capture.handlers.onDone(0);
+
+    expect(limited).toHaveBeenCalledOnce();
+    expect(order).toEqual(['limited', 'end']);
+  });
+
+  it('reports a rejection without resetsAt as an empty payload (no resetsAt key)', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected' });
+    capture.handlers.onError('limit');
+
+    expect(limited).toHaveBeenCalledOnce();
+    const payload = limited.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect('resetsAt' in payload).toBe(false);
+  });
+
+  it('stays silent for an allowed (non-rejected) status', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'allowed_warning', resetsAt: RESETS_AT });
+    capture.handlers.onDone(0);
+
+    expect(limited).not.toHaveBeenCalled();
+  });
+});
