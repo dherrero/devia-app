@@ -4095,3 +4095,57 @@ describe('RunInstructionUseCase — usage limit reporting (auto-continue contrac
     expect(limited).not.toHaveBeenCalled();
   });
 });
+
+// ── S-54 — user-facing error beside the raw one ────────────────────────────
+
+describe('RunInstructionUseCase — user-facing errors (S-54)', () => {
+  const lastEnd = (handlers: RunInstructionHandlers): Record<string, unknown> =>
+    (handlers.onProcessEnd as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Record<string, unknown>;
+
+  it('adds userError to process end and keeps the raw error text untouched', () => {
+    const h = build();
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+    h.runner.last().handlers.onError('HTTP 401 unauthorized');
+
+    const end = lastEnd(handlers);
+    expect(end['error']).toBe('HTTP 401 unauthorized');
+    expect(end['userError']).toMatchObject({ code: 'auth_required', details: 'HTTP 401 unauthorized' });
+  });
+
+  it('explains an error that arrives as a stream event (PI/OpenCode shape) and keeps the message', () => {
+    const h = build();
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'error', message: 'OpenAI API error (401): {"code":"invalid_api_key","message":"Incorrect API key provided"}' });
+
+    const out = (handlers.onClaudeOutput as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string) as Record<string, unknown>);
+    const err = out.find((e) => e['type'] === 'error');
+    expect(err?.['message']).toContain('OpenAI API error (401)');
+    expect(err?.['userError']).toMatchObject({ code: 'auth_required' });
+  });
+
+  it('does not add userError to a deliberate cancellation', () => {
+    const h = build();
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+    h.runner.last().handlers.onError('Cancelado por ti.', undefined, 'SIGTERM', 'user');
+
+    expect(lastEnd(handlers)['userError']).toBeUndefined();
+  });
+
+  it('never lets explaining change the usage-limit report: onRateLimited still fires first with resetsAt', () => {
+    const h = build({ id: 'claude' });
+    const order: string[] = [];
+    const limited = vi.fn(() => { order.push('limited'); });
+    const handlers = makeHandlers({ onRateLimited: limited, onProcessEnd: vi.fn(() => { order.push('end'); }) });
+    h.uc.execute('proj-a', 'work', [], handlers);
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected', resetsAt: 1_900_000_000_000 });
+    capture.handlers.onError('usage limit reached');
+
+    expect(limited).toHaveBeenCalledWith(expect.objectContaining({ resetsAt: 1_900_000_000_000 }));
+    expect(order).toEqual(['limited', 'end']);
+  });
+});

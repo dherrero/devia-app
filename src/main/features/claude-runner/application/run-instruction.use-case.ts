@@ -34,6 +34,10 @@ import type { WorktreeRef } from '../../git/domain/worktree-ref';
 import type { AgentEvent, CancelReason, ErrorClassification } from '../../../../shared/domain/agent-event';
 import type { QuestionOption, QuestionPrompt } from '../../../../shared/contracts/events';
 import type { ClassifiedError } from '../../../../shared/domain/cli-errors';
+import type { UserFacingError } from '../../../../shared/domain/user-facing-error';
+import { classify } from '../../cli-adapters/infrastructure/error-classifier';
+import { explainError } from '../../cli-adapters/infrastructure/explain';
+import { buildExplainContext } from './error-context';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { AgentAuditLog } from '../../security/audit-log';
 import { buildDefaultCapabilities, sanitiseToolNames, type RunMode } from '../../../../shared/domain/run-capabilities';
@@ -129,6 +133,8 @@ export interface RunInstructionHandlers {
     cancelReason?: CancelReason;
     /** E-DSK-09 #262 — recovery-action taxonomy forwarded onto `process:end`. */
     classifiedError?: ClassifiedError;
+    /** S-54 — what to show the user; `error` keeps the raw agent text. */
+    userError?: UserFacingError;
   }): void;
   onOutboxFile(file: OutboxFile): void;
   /**
@@ -1023,6 +1029,24 @@ export class RunInstructionUseCase {
 
     // Set when the agent reports the account's usage limit is exhausted.
     let rateLimited: { resetsAt?: number } | null = null;
+    /** S-54: explain a failure of this run. Never throws; null when it cannot. */
+    const explainRunError = (raw: string, known?: ClassifiedError): UserFacingError | null => {
+      try {
+        const classified = known ?? classify(def.id, raw);
+        return explainError(
+          def.id,
+          classified,
+          buildExplainContext({
+            agentId: def.id,
+            cfg,
+            origin,
+            ...(rateLimited?.resetsAt !== undefined && { resetsAt: rateLimited.resetsAt }),
+          }),
+        );
+      } catch {
+        return null;
+      }
+    };
     const reportRateLimit = (): void => {
       if (rateLimited === null) return;
       handlers.onRateLimited?.({
@@ -1127,9 +1151,16 @@ export class RunInstructionUseCase {
     const runHandlers: AgentRunHandlers = {
         onOutput: (line) => {
           let seenByCodeMode: AgentEvent | null = null;
+          // S-54: an `error` event leaves with its user-facing reading beside the raw message.
+          let outLine = line;
           try {
             const parsed = JSON.parse(line) as AgentEvent;
             seenByCodeMode = parsed;
+
+            if (parsed.type === 'error' && parsed.userError === undefined) {
+              const userError = explainRunError(parsed.message);
+              if (userError !== null) outLine = JSON.stringify({ ...parsed, userError });
+            }
 
             // Capture agent-generated session ID the moment it arrives.
             // This is the ONLY place agentSessionId is ever written.
@@ -1209,7 +1240,7 @@ export class RunInstructionUseCase {
           } catch {
             /* non-JSON lines are fine */
           }
-          handlers.onClaudeOutput(line, runId);
+          handlers.onClaudeOutput(outLine, runId);
           // After the line, never before: a nested call must not reach the chat ahead of its parent.
           if (seenByCodeMode !== null) codeModeRelay?.observeAgentEvent(seenByCodeMode);
         },
@@ -1288,10 +1319,12 @@ export class RunInstructionUseCase {
           }
           reportRateLimit();
           const outboxFiles = flushOutbox();
+          const userError = cancelReason === undefined ? explainRunError(msg, classifiedError) : null;
           handlers.onProcessEnd({
             runId,
             code: 1,
             error: msg,
+            ...(userError !== null && { userError }),
             ...(classification !== undefined && { classification }),
             ...(signal !== undefined && { signal }),
             ...(cancelReason !== undefined && { cancelReason }),
