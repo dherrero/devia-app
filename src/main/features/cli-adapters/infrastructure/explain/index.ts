@@ -2,6 +2,8 @@ import type { ClassifiedError } from '../../../../../shared/domain/cli-errors';
 import type { UserFacingError } from '../../../../../shared/domain/user-facing-error';
 import { claudeExplainer } from './claude.explain';
 import { genericExplain } from './generic';
+import { opencodeExplainer } from './opencode.explain';
+import { piExplainer } from './pi.explain';
 import { redactSecrets } from './nested-error';
 import type { AgentExplainer, ExplainContext } from './types';
 
@@ -11,6 +13,8 @@ export { extractNestedError, redactSecrets } from './nested-error';
 /** Per-agent readings, keyed by CLI id. An agent without one uses the generic mapping. */
 const EXPLAINERS: Readonly<Record<string, AgentExplainer>> = {
   claude: claudeExplainer,
+  opencode: opencodeExplainer,
+  pi: piExplainer,
 };
 
 /** Remote (Telegram) runs get the text only: there is no UI to act on. */
