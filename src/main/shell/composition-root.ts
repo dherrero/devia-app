@@ -59,6 +59,7 @@ import { buildCodeGraphFeature, codeGraphProtocol } from '../features/code-graph
 import { buildCodeModeFeature } from '../features/code-mode';
 import { buildStarterKitsFeature } from '../features/starter-kits';
 import { createEffectiveAgentResolver } from '../shared/effective-agent-resolver';
+import { SessionAgentIndex } from '../shared/session-agent-index';
 import { prepareHandoffsAfterAgentChange } from './agent-switch-handoff';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
@@ -205,10 +206,12 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // S-53: one answer to "which agent runs here" for runs, Telegram, the queue,
   // auto-continue, handoff and kit detection. `cliAdapters` is built below; the
   // lookups are lazy so ordering doesn't matter (nothing runs before bootstrap ends).
+  const sessionAgents = new SessionAgentIndex({ sessions: sessionStore });
   const effectiveAgent = createEffectiveAgentResolver({
     config,
     registry,
     agents: { get: (id) => cliAdapters.exports.registry.get(id) },
+    sessionAgentId: (projectPath, sessionId) => sessionAgents.get(projectPath, sessionId),
   });
   // Pane records are keyed by a session UUID whose base project main can't
   // resolve: those fall back to the global agent until the session agent lands.
@@ -240,6 +243,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     effectiveAgent,
     projects: registry,
     state: stateStore,
+    sessions: sessionStore,
+    sessionAgents,
     describeHarness: (def) => {
       const mapper = mappers.forDef(def);
       return { ...mapper.harnessSupport, isolatesExternalMcp: mapper.isolatesExternalMcp };
@@ -513,6 +518,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       registry,
       sessions: sessionStore,
       state: stateStore,
+      sessionAgents,
       // S-2 F0.4: a switch with parked items would dispatch them into the
       // newly chosen session — sessions consults the queue through this port.
       queue: { pendingCount: (identity) => queueBuilt.service.view(identity).items.length },

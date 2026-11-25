@@ -19,7 +19,16 @@ export class SaveChatUseCase {
     registry: ProjectRegistry;
     sessions: SessionStore;
     state: StateStore;
+    /** S-53: lets a choice made before the session existed land in its first save. */
+    sessionAgents?: { resolveForSave(projectPath: string, sessionId: string, existing: string | undefined): string | undefined };
   }) {}
+
+  private preferredAgent(projectPath: string, sessionId: string, existing: PersistedSession | null): Pick<PersistedSession, 'preferredAgentId'> {
+    const resolved = this.deps.sessionAgents
+      ? this.deps.sessionAgents.resolveForSave(projectPath, sessionId, existing?.preferredAgentId)
+      : existing?.preferredAgentId;
+    return resolved !== undefined ? { preferredAgentId: resolved } : {};
+  }
 
   execute(projectPath: string, messages: unknown[], stats?: SessionStats, runMode?: RunMode): true {
     const record = this.deps.registry.getOrCreate(projectPath);
@@ -58,6 +67,7 @@ export class SaveChatUseCase {
       ...(existing?.workdir !== undefined && { workdir: existing.workdir }),
       ...(existing?.worktreeBranch !== undefined && { worktreeBranch: existing.worktreeBranch }),
       ...resolveRunMode(runMode, existing),
+      ...this.preferredAgent(projectPath, record.activeSessionId, existing),
     });
     return true;
   }
@@ -106,6 +116,7 @@ export class SaveChatUseCase {
       ...(resolvedWorkdir !== undefined && { workdir: resolvedWorkdir }),
       ...(resolvedBranch !== undefined && { worktreeBranch: resolvedBranch }),
       ...resolveRunMode(runMode, existing),
+      ...this.preferredAgent(baseProject, sessionId, existing),
     });
     return true;
   }

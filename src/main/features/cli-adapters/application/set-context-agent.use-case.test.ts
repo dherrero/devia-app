@@ -79,10 +79,64 @@ describe('SetContextAgentUseCase — project scope', () => {
     expect(t.projects.getOrCreate('b').preferredAgentId).toBeNull();
   });
 
-  it('session scope is not available until the session agent lands', () => {
+});
+
+describe('SetContextAgentUseCase — session scope', () => {
+  const SID = '11111111-2222-3333-4444-555555555555';
+
+  function sessionSetup() {
     const t = setup();
-    const r = t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: 's', agentId: 'codex' });
-    expect(r).toMatchObject({ accepted: false, rejectedReason: 'SCOPE_UNSUPPORTED' });
+    const stored = new Map<string, string | null>();
+    const sessionAgents = {
+      set: vi.fn((p: string, s: string, a: string | null) => { stored.set(`${p}|${s}`, a); }),
+    };
+    const sessions = { isValidSessionId: (id?: string | null): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id) };
+    const uc = new SetContextAgentUseCase({
+      agents: { get: (id: string) => (['claude', 'codex'].includes(id) ? { providerType: 'cli' } : null) },
+      projects: t.projects, state: t.state, effective: t.effective, sessions, sessionAgents, onSelected: t.onSelected,
+    });
+    return { ...t, uc, sessionAgents };
+  }
+
+  it('stores the agent on the session, not on the project', () => {
+    const t = sessionSetup();
+    const r = t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: SID, agentId: 'codex' });
+    expect(r.accepted).toBe(true);
+    expect(t.sessionAgents.set).toHaveBeenCalledWith('a', SID, 'codex');
+    expect(t.projects.getOrCreate('a').preferredAgentId).toBeNull();
+  });
+
+  it('clears the session agent with null', () => {
+    const t = sessionSetup();
+    t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: SID, agentId: null });
+    expect(t.sessionAgents.set).toHaveBeenCalledWith('a', SID, null);
+  });
+
+  it('rejects a session scope without a valid session id', () => {
+    const t = sessionSetup();
+    expect(t.uc.execute({ scope: 'session', projectPath: 'a', agentId: 'codex' })).toMatchObject({ accepted: false, rejectedReason: 'INVALID_SESSION' });
+    expect(t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: 'nope', agentId: 'codex' })).toMatchObject({ accepted: false, rejectedReason: 'INVALID_SESSION' });
+    expect(t.sessionAgents.set).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown agent and a run in that pane', () => {
+    const t = sessionSetup();
+    expect(t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: SID, agentId: 'nope' }).accepted).toBe(false);
+    vi.spyOn(t.projects, 'isRunning').mockImplementation((key: string) => key === SID);
+    expect(t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: SID, agentId: 'codex' })).toMatchObject({ rejectedReason: 'AGENT_RUN_ACTIVE' });
+  });
+
+  it('blocks the change while the primary pane runs that very session', () => {
+    const t = sessionSetup();
+    t.projects.getOrCreate('a').activeSessionId = SID;
+    vi.spyOn(t.projects, 'isRunning').mockImplementation((key: string) => key === 'a');
+    expect(t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: SID, agentId: 'codex' })).toMatchObject({ rejectedReason: 'AGENT_RUN_ACTIVE' });
+  });
+
+  it('does not run the project-wide handoff precompute', () => {
+    const t = sessionSetup();
+    t.uc.execute({ scope: 'session', projectPath: 'a', sessionId: SID, agentId: 'codex' });
+    expect(t.onSelected).not.toHaveBeenCalled();
   });
 });
 

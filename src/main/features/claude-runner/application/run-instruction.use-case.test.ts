@@ -318,6 +318,8 @@ interface BuildExtras {
   config?: ConfigRepository;
   /** Extra agents installed next to the main fake one (S-53). */
   otherDefs?: RuntimeAgentDef[];
+  /** S-53 phase 2: the persisted session's own agent. */
+  sessionAgentId?: (project: string, sessionId: string) => string | null | undefined;
   kanbanMcpServer?: (projectAbs: string) => McpServerConfig;
   memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
   codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
@@ -367,7 +369,10 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
   const agents = new FakeRegistry(def, extras.otherDefs ?? []);
   const uc = new RunInstructionUseCase({
     config,
-    effectiveAgent: createEffectiveAgentResolver({ config, registry, agents }),
+    effectiveAgent: createEffectiveAgentResolver({
+      config, registry, agents,
+      ...(extras.sessionAgentId && { sessionAgentId: extras.sessionAgentId }),
+    }),
     sessions: extras.sessions ?? new FakeSessions(),
     state: new FakeState(),
     registry,
@@ -4074,5 +4079,40 @@ describe('RunInstructionUseCase — effective agent per project (S-53)', () => {
     h.uc.execute('proj-a', 'sigue', [], makeHandlers());
     expect(h.runner.last().req.def.id).toBe('codex');
     expect(h.runner.last().req.prepared.args.join(' ')).not.toContain('native-fake-1');
+  });
+
+  it('the session agent wins over the project agent for that session only (S-53 phase 2)', () => {
+    const pi = makeDef({ id: 'pi', name: 'Pi' });
+    const h = build({}, {
+      otherDefs: [codex(), pi],
+      sessionAgentId: (_p, sessionId) => (sessionId === 'sess-x' ? 'pi' : null),
+    });
+    const rec = h.registry.getOrCreate('proj-a');
+    rec.preferredAgentId = 'codex';
+    rec.activeSessionId = 'sess-x';
+    h.uc.execute('proj-a', 'uno', [], makeHandlers());
+    expect(h.runner.last().req.def.id).toBe('pi');
+
+    rec.activeSessionId = 'sess-y';
+    h.uc.execute('proj-b-unused', 'x', [], makeHandlers()); // another project does not interfere
+    const h2 = build({}, { otherDefs: [codex(), pi], sessionAgentId: () => null });
+    const rec2 = h2.registry.getOrCreate('proj-a');
+    rec2.preferredAgentId = 'codex';
+    rec2.activeSessionId = 'sess-y';
+    h2.uc.execute('proj-a', 'dos', [], makeHandlers());
+    expect(h2.runner.last().req.def.id).toBe('codex');
+  });
+
+  it('an additional pane runs its OWN session agent while the primary keeps the project agent', () => {
+    const pi = makeDef({ id: 'pi', name: 'Pi' });
+    const h = build({}, {
+      otherDefs: [codex(), pi],
+      sessionAgentId: (_p, sessionId) => (sessionId === '22222222-2222-4222-8222-222222222222' ? 'pi' : null),
+    });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.uc.execute('proj-a', 'primary', [], makeHandlers());
+    h.uc.execute('proj-a', 'pane', [], makeHandlers(), 'apply', [], 'renderer', false,
+      '22222222-2222-4222-8222-222222222222', '22222222-2222-4222-8222-222222222222');
+    expect(h.runner.captured.map((c) => c.req.def.id)).toEqual(['codex', 'pi']);
   });
 });

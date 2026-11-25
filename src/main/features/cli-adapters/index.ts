@@ -44,6 +44,9 @@ export interface CliAdaptersDeps {
   effectiveAgent?: import('../../shared/effective-agent-resolver').EffectiveAgentResolver;
   projects?: import('../../shared/ports').ProjectRegistry;
   state?: import('../../shared/ports').StateStore;
+  /** Phase 2: per-session agent. */
+  sessions?: import('../../shared/ports').SessionStore;
+  sessionAgents?: { set(projectPath: string, sessionId: string, agentId: string | null): void };
 }
 
 export interface CliAdaptersExports {
@@ -291,6 +294,8 @@ export function buildCliAdaptersFeature(deps: CliAdaptersDeps): CliAdaptersBuilt
         projects: deps.projects,
         state: deps.state,
         effective: deps.effectiveAgent,
+        ...(deps.sessions && { sessions: deps.sessions }),
+        ...(deps.sessionAgents && { sessionAgents: deps.sessionAgents }),
         ...(deps.onAgentSelected && { onSelected: deps.onAgentSelected }),
       })
     : undefined;
