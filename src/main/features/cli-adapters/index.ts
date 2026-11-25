@@ -36,7 +36,8 @@ export interface CliAdaptersDeps {
    */
   describeHarness?: (def: RuntimeAgentDef) => AgentHarnessView | undefined;
   /** S-2 F2.3: fired after a successful agent switch (handoff precompute). */
-  onAgentSelected?: (agentId: string) => void;
+  /** `projectPath` is set when only that project's agent changed (S-53); undefined = the global default. */
+  onAgentSelected?: (agentId: string, projectPath?: string) => void;
 }
 
 export interface CliAdaptersExports {

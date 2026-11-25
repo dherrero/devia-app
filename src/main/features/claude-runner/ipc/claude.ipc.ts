@@ -1,3 +1,4 @@
+import type { EffectiveAgentResolver } from '../../../shared/effective-agent-resolver';
 import type { ConfigChangeBus } from '../../../shared/config-change-bus';
 import { Notification, powerMonitor } from 'electron';
 import type { FeatureContext } from '../../../shared/feature';
@@ -29,6 +30,8 @@ export interface ClaudeRunnerIpcDeps {
   registry: ProcessTrackingRegistry;
   /** Read for `autoContinueSessions` and the active agent when a resume is due. */
   config: ConfigRepository;
+  /** S-53: agent the project/session runs with now; absent → the global agent. */
+  effectiveAgent?: EffectiveAgentResolver;
   /** FR-4: audit log instance used by the `audit:read` IPC handler. */
   auditLog: AgentAuditLog;
   /**
@@ -84,7 +87,10 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       const cfg = deps.config.get();
       // Switching the agent or turning the switch off while waiting must not
       // resume: a different agent would start the session without its context.
-      if (!rc || cfg.agentId !== rc.agentId || cfg.autoContinueSessions?.[rc.agentId] !== true) {
+      const currentAgentId = rc
+        ? deps.effectiveAgent?.forRun(rc.base, rc.sessionId).agentId ?? cfg.agentId
+        : cfg.agentId;
+      if (!rc || currentAgentId !== rc.agentId || cfg.autoContinueSessions?.[rc.agentId] !== true) {
         deps.queue.dispatchNext(key);
         return;
       }

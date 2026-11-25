@@ -58,6 +58,8 @@ import { buildMemoryFeature } from '../features/memory';
 import { buildCodeGraphFeature, codeGraphProtocol } from '../features/code-graph';
 import { buildCodeModeFeature } from '../features/code-mode';
 import { buildStarterKitsFeature } from '../features/starter-kits';
+import { createEffectiveAgentResolver } from '../shared/effective-agent-resolver';
+import { prepareHandoffsAfterAgentChange } from './agent-switch-handoff';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
 import { NativeConfigMcpDelivery, StaticMapperRegistry } from '../features/agents';
@@ -200,10 +202,22 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // The runner's execute() is synchronous, so the summary is precomputed the
   // moment a handoff becomes foreseeable (agent switch / foreign-session
   // switch/adopt) and consumed from this cache with zero added run latency.
+  // S-53: one answer to "which agent runs here" for runs, Telegram, the queue,
+  // auto-continue, handoff and kit detection. `cliAdapters` is built below; the
+  // lookups are lazy so ordering doesn't matter (nothing runs before bootstrap ends).
+  const effectiveAgent = createEffectiveAgentResolver({
+    config,
+    registry,
+    agents: { get: (id) => cliAdapters.exports.registry.get(id) },
+  });
+  // Pane records are keyed by a session UUID whose base project main can't
+  // resolve: those fall back to the global agent until the session agent lands.
+  const agentIdForIdentity = (identity: string): string =>
+    sessionStore.isValidSessionId(identity) ? config.get().agentId : effectiveAgent.forRun(identity).agentId;
   const handoffSummariser = new HandoffSummariser({
-    client: () => selectAuxiliaryClient(config.get().agentId),
-    clientAvailable: () =>
-      !(selectAuxiliaryClient(config.get().agentId) instanceof UnavailableAuxiliaryLLMClient),
+    client: (identity) => selectAuxiliaryClient(agentIdForIdentity(identity)),
+    clientAvailable: (identity) =>
+      !(selectAuxiliaryClient(agentIdForIdentity(identity)) instanceof UnavailableAuxiliaryLLMClient),
   });
   const prepareHandoffIfForeign = (
     identity: string,
@@ -211,7 +225,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     messages: unknown[],
     ownerAgentId: string | null,
   ): void => {
-    if (!ownerAgentId || ownerAgentId === config.get().agentId) return;
+    if (!ownerAgentId || ownerAgentId === agentIdForIdentity(identity)) return;
     handoffSummariser.prepare(identity, sessionId, messages);
   };
 
@@ -232,20 +246,15 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     // session another agent owns. Pane records key by runKey (a session
     // UUID) whose base project main can't resolve here — skipped; their
     // adopt flow already prepares them.
-    onAgentSelected: (newAgentId) => {
-      for (const [identityKey, record] of registry.entries()) {
-        if (!record.agentSessionAgentId || record.agentSessionAgentId === newAgentId) continue;
-        if (!record.activeSessionId) continue;
-        if (sessionStore.isValidSessionId(identityKey)) continue; // pane runKey, not a project path
-        try {
-          const session = sessionStore.load(identityKey, record.activeSessionId);
-          if (session && session.messages.length > 0) {
-            handoffSummariser.prepare(identityKey, record.activeSessionId, session.messages);
-          }
-        } catch {
-          /* best-effort */
-        }
-      }
+    onAgentSelected: (_agentId, projectPath) => {
+      prepareHandoffsAfterAgentChange({
+        projectPath,
+        entries: () => registry.entries(),
+        effectiveAgentId: (p) => effectiveAgent.forRun(p).agentId,
+        isPaneKey: (k) => sessionStore.isValidSessionId(k),
+        loadMessages: (p, sid) => sessionStore.load(p, sid)?.messages ?? null,
+        prepare: (identity, sid, messages) => handoffSummariser.prepare(identity, sid, messages),
+      });
     },
   });
   // REV-AGENT-CORE-003: prompt-packs feature built before the runner so its
@@ -317,6 +326,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // development they are read from the repository's `resources/kits`.
   const starterKitsBuilt = buildStarterKitsFeature({
     config,
+    effectiveAgentId: (projectPath) => effectiveAgent.forRun(projectPath ?? '').agentId,
     bundledKitsDir: () =>
       app.isPackaged ? path.join(process.resourcesPath, 'kits') : path.resolve(__dirname, '..', '..', '..', '..', 'resources', 'kits'),
   });
@@ -392,7 +402,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
         auditSendFile(
           auditLog,
           {
-            agentId: ctx.agentId ?? config.get().agentId,
+            agentId: ctx.agentId ?? agentIdForIdentity(ctx.project),
             project: ctx.project,
             ...(ctx.runId !== undefined && { runId: ctx.runId }),
           },
@@ -422,6 +432,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     buildClaudeRunnerFeature({
       mappers,
       config,
+      effectiveAgent,
       sessions: sessionStore, state: stateStore,
       attachments, outbox, tech, registry,
       agents: cliAdapters.exports.registry,
