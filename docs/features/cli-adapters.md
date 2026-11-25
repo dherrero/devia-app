@@ -17,10 +17,17 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - Child environment (`buildSpawnEnv` in `src/main/features/cli-adapters/infrastructure/spawn-env.ts`): the parent `process.env` is inherited, then the def's env, then the mapper's `prepared.env` (user `agentCliEnv` values filtered by the def's `envOverrideKeys`), then trusted `agentEnv`; `PWD` is forced to the cwd and a stripped `ANTHROPIC_BASE_URL` is logged. User-supplied defs may only override keys matching `SAFE_ENV_KEY_PATTERN` (`*_API_KEY`, `*_BASE_URL`, `*_CONFIG_DIR`, `*_TOKEN`).
 - Raw capture for parser diagnosis: `raw-stream-logger.ts` writes JSONL to `~/.devia-app/logs/agent-cli/<agentId>/` only when `IS_DEV` or `DEVIA_LOG_RAW_CLI=1` (size-capped, 7-day purge).
 - Use cases: list agents, select agent (`SelectAgentUseCase` rejects non-CLI providers), set model/reasoning, set env, test agent.
+- Effective agent (S-53), priority **session > project > global**. `config.agentId` is the global default. `resolveEffectiveAgentId` (`src/shared/domain/effective-agent.ts`) applies the priority and falls back one level, reporting `fellBackFrom`, when a level names an agent that is not an installed CLI provider.
+- `createEffectiveAgentResolver` (`src/main/shared/effective-agent-resolver.ts`) is the single main-process answer. Runs (`RunInstructionUseCase`), Telegram, the queue, auto-continue, the handoff auxiliary client and starter-kit detection use it, so none can disagree with the footer. With no session id it uses the project's active session (the primary pane).
+- `SetContextAgentUseCase` sets or clears (`agentId: null`) the agent of a project (`scope: 'project'`, stored as `ProjectRecord.preferredAgentId`) or of a session (`scope: 'session'`). It refuses unknown or non-CLI agents and any change while that pane runs (`AGENT_RUN_ACTIVE`). `GetEffectiveAgentUseCase` answers the renderer.
+- Footer: the agent chip opens `AgentPickerComponent` (`src/renderer/app/layout/statusbar/agent-picker/`). The target is the project, or the session for an additional split pane or a pane whose session already has its own agent (`AppStateService.agentTarget`). Settings › Execution chooses the global default.
 
 ## Does NOT
 
 - Does NOT let non-CLI providers (API, MCP, local model) be the active agent: they are registered for visibility only.
+- Does NOT pin the global agent onto a project at its first prompt: a project without `preferredAgentId` follows the global default, so changing the default moves every such project.
+- Does NOT keep model, effort or env per project: they stay per agent (`agentModels[agentId]`).
+- Does NOT let the agent change under a running instruction, and does NOT translate the picker texts outside `es` and `en`.
 - Does NOT own prompt/MCP/stream logic any more (moved to the mappers, [agents.md](agents.md)).
 - Does NOT include a `mimo` agent: no def exists in this branch (spec S-23 did not land).
 - Does NOT keep user-defined `env` for custom agent defs (dropped), nor let a custom def re-point a built-in id.
@@ -37,19 +44,25 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - `src/main/features/cli-adapters/infrastructure/parsers/select-parser.ts` — parser selection
 - `src/main/features/cli-adapters/infrastructure/error-classifier.ts` — error classes
 - `src/main/features/cli-adapters/application/select-agent.use-case.ts:SelectAgentUseCase`
+- `src/main/features/cli-adapters/application/set-context-agent.use-case.ts:SetContextAgentUseCase`
+- `src/main/features/cli-adapters/application/get-effective-agent.use-case.ts:GetEffectiveAgentUseCase`
+- `src/main/shared/effective-agent-resolver.ts:createEffectiveAgentResolver`
+- `src/main/shared/session-agent-index.ts:SessionAgentIndex`
+- `src/shared/domain/effective-agent.ts:resolveEffectiveAgentId`
 - `src/main/features/cli-adapters/ipc/cli-adapters.ipc.ts` — IPC
 
 ## IPC / MCP surface
 
-- `agents:list`, `agent:select`, `agent:setModel`, `agent:setEnv`, `agent:test`, `agent:changed`.
+- `agents:list`, `agent:select`, `agent:setModel`, `agent:setEnv`, `agent:test`, `agent:changed`; S-53: `agents:set-context-agent` (invoke), `agents:effective` (invoke), `agents:effective-changed` (event; no fields = the global default changed, every project must ask again).
 
 ## Persistence
 
 - `devia-app.config.json` keys `agentId`, `agentModels`, `agentCliEnv`; user agents in `agent-defs.json`; raw logs under `~/.devia-app/logs/agent-cli/`.
+- Project agent: `state.json` → `projects[<project>].preferredAgentId` (optional; omitted when unset). Session agent: `preferredAgentId` inside `session-<uuid>.json` ([sessions.md](sessions.md)).
 
 ## Config
 
-`agentId`, `agentModels`, `agentCliEnv` (secrets masked in UI), effort per agent, `DEVIA_LOG_RAW_CLI`. See [../reference/config.md](../reference/config.md).
+`agentId` (the global default agent), `agentModels`, `agentCliEnv` (secrets masked in UI), effort per agent, `DEVIA_LOG_RAW_CLI`. See [../reference/config.md](../reference/config.md).
 
 ## Gotchas
 
@@ -57,10 +70,13 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - Grok delivers the system prompt by inlining a `[System]…[User]` header in `-p` (`argv-prepend`), counted against `maxPromptArgBytes` (200 KB).
 - Gemini 0.46 rejects the `__devia_managed` marker key in its MCP settings; the MCP target sets `jsonOmitMarker` (`src/main/features/mcp/domain/agent-targets.ts`).
 - `grok` binary on PATH may be an old v1.0.1 without `--format json`; the parser falls back to plain text.
+- A session agent chosen for a pane that has no session on disk yet is held in memory by `SessionAgentIndex` and written by that session's first save (`SaveChatUseCase`); a pane closed without running leaves nothing behind, and the choice is lost if the app quits before that first save.
+- Handoff summaries precomputed for split-pane keys use the global agent's auxiliary client (the base project is unknown there); the run's own handoff uses the session agent.
+- Changing a project's or session's agent makes its native session foreign: the next run starts a fresh native session with the handoff brief ([session-handoff.md](session-handoff.md)); it never resumes another agent's id.
 
 ## Tests
 
-- `src/main/features/cli-adapters/**/*.test.ts` (defs, parsers, launcher stdin, detection); `tools/agent-e2e/` for real CLIs.
+- `src/main/features/cli-adapters/**/*.test.ts` (defs, parsers, launcher stdin, detection, effective agent use cases); `src/main/shared/effective-agent-resolver.test.ts`, `src/main/shared/session-agent-roundtrip.test.ts`; `tools/agent-e2e/` for real CLIs.
 
 ## Related
 

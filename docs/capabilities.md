@@ -10,6 +10,7 @@ One row per capability: does Devia do it? Status: `implemented`, `partial`, `not
 | Capability | Status | Page | Notes |
 | --- | --- | --- | --- |
 | Drive CLI coding agents headlessly from one window | implemented | [cli-adapters](features/cli-adapters.md) | 13 agent defs: claude, codex, gemini, opencode, cursor-agent, copilot, grok, pi, kimi, hermes, qwen, qoder, deepseek |
+| Agent per project and per session (session > project > global) | implemented | [cli-adapters](features/cli-adapters.md) | `src/main/shared/effective-agent-resolver.ts`; the footer picks the project/session agent, Settings the default; no per-project model/effort/env |
 | Per-agent mappers behind a stable port | partial | [agents](features/agents.md) | dedicated: claude, pi, opencode; ACP: kimi, hermes + user-defined; the other 8 run on `LegacyMapper` |
 | Agent Client Protocol (ACP) agents | implemented | [agents](features/agents.md) | SDK pinned 1.9.0; no `fs`/`terminal` served; kimi profile unverified |
 | User-defined agents | partial | [agents](features/agents.md) | ACP only (`agent-defs.json`) |
