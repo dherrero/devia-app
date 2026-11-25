@@ -877,3 +877,45 @@ describe('MessageBubbleComponent — pure computeds', () => {
     expect(spy).toHaveBeenCalledOnce();
   });
 });
+
+describe('MessageBubbleComponent — agent error card (S-54)', () => {
+  const userError = {
+    code: 'unknown',
+    title: 'The agent failed',
+    cause: 'Devia does not recognise this error.',
+    actions: [{ kind: 'copy_details' as const }],
+    details: 'raw',
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [MessageBubbleComponent, TranslateModule.forRoot()],
+      providers: [{ provide: ElectronApiService, useValue: mockApi }],
+    }).compileComponents();
+  });
+
+  it('a system message with userError renders the card instead of the plain error bubble', () => {
+    const fixture = TestBed.createComponent(MessageBubbleComponent);
+    fixture.componentRef.setInput('msg', makeSystem({ errorClassification: 'unknown', userError }));
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('ds-agent-error-card')).not.toBeNull();
+    expect(root.querySelector('dv-error-bubble')).toBeNull();
+  });
+
+  it('without userError the existing error card is unchanged', () => {
+    const fixture = TestBed.createComponent(MessageBubbleComponent);
+    fixture.componentRef.setInput('msg', makeSystem({ errorClassification: 'auth' }));
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('ds-agent-error-card')).toBeNull();
+    expect(root.querySelector('.msg-error-card')).not.toBeNull();
+  });
+
+  it('an assistant message with userError shows the card under its text', () => {
+    const fixture = TestBed.createComponent(MessageBubbleComponent);
+    fixture.componentRef.setInput('msg', makeAssistant({ text: '[error] The agent failed', userError }));
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('ds-agent-error-card')).not.toBeNull();
+  });
+});

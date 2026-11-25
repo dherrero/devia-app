@@ -21,6 +21,11 @@ export type ErrorActionKind = ErrorAction['kind'];
 export interface UserFacingError {
   /** Stable id, also the i18n key suffix (`agent_error.<code>`). */
   readonly code: string;
+  /**
+   * Picks the translated cause when one code reads differently by state
+   * (`agent_error.<code>.cause_<variant>`); absent = `agent_error.<code>.cause`.
+   */
+  readonly variant?: string;
   /** Values interpolated into the translated text (agent name, time, model…). */
   readonly params?: Readonly<Record<string, string | number>>;
   readonly title: string;
@@ -29,3 +34,28 @@ export interface UserFacingError {
   /** Technical detail for the collapsed section: the provider message, redacted. */
   readonly details: string;
 }
+
+/**
+ * Every `code` an explainer can produce. The renderer needs `agent_error.<code>.title`
+ * for each (tools/agent-error-i18n.test.ts); a new code is added here and in the locales.
+ */
+export const AGENT_ERROR_CODES = [
+  'usage_limit',
+  'auth_required',
+  'image_too_large',
+  'context_too_large',
+  'model_unavailable',
+  'transient',
+  'rate_limited',
+  'provider_quota',
+  'quota_exceeded',
+  'invalid_provider_key',
+  'no_provider',
+  'openrouter_policy',
+  'ollama_down',
+  'codex_mcp_sandbox',
+  'copilot_access',
+  'not_installed',
+  'enterprise_mcp',
+  'unknown',
+] as const;

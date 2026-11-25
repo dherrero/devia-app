@@ -73,9 +73,10 @@ export function explainProviderFailure(
         ? ` La clave heredada de la variable de entorno ${inherited} no es válida: corrígela o quítala.`
         : ` Revisa la clave de ${providerName}.`;
     const actions: ErrorAction[] = model === undefined ? [{ kind: 'pick_model' }, SETTINGS] : [SETTINGS];
-    return make('invalid_provider_key', `La clave de ${providerName} no es válida`, why + key, actions, {
+    const error = make('invalid_provider_key', `La clave de ${providerName} no es válida`, why + key, actions, {
       ...(inherited !== undefined && { envVar: inherited }),
     });
+    return { ...error, variant: `${model === undefined ? 'default' : 'model'}${inherited !== undefined ? '_env' : ''}` };
   }
   if (/insufficient_quota|exceeded your current quota|billing|credit balance|payment required/i.test(text) || status === 402) {
     return make('provider_quota', `Sin saldo o cuota en ${providerName}`, `${providerName} rechaza la petición por cuota o saldo agotado. Revisa tu plan o cambia de modelo.`, [{ kind: 'pick_model' }, SETTINGS]);

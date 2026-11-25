@@ -28,6 +28,7 @@ function usageLimit({ classified, ctx }: ExplainInput): UserFacingError {
   actions.push({ kind: 'copy_details' });
   return {
     code: 'usage_limit',
+    variant: time === undefined ? 'notime' : auto ? 'auto' : 'manual',
     params: {
       ...(ctx.resetsAt !== undefined && { resetsAt: ctx.resetsAt }),
       ...(time !== undefined && { time }),

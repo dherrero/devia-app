@@ -1,3 +1,4 @@
+import type { UserFacingError } from './user-facing-error';
 import type { DiffFile } from './git';
 import type { CancelReason, ErrorClassification, SubagentInfo } from './agent-event';
 import type { RunId } from './agent';
@@ -123,6 +124,13 @@ export interface ChatMessage {
    * can render a "Retry" button and guidance without parsing the text string.
    */
   errorClassification?: ErrorClassification;
+
+  /**
+   * S-54: what to show the user for a failed run (what happened, why, what to do).
+   * Set on the error system message and on an assistant message whose stream
+   * reported an `error`; the raw text stays in `userError.details`.
+   */
+  userError?: UserFacingError;
 
   /**
    * Cross-agent handoff metadata (S-2 F3.1). Present (with `kind: 'handoff'`)

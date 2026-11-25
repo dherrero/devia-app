@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import {
   ButtonComponent,
@@ -105,6 +105,8 @@ function showsQuestionRecord(tc: ToolCallRecord, runStatus: string | undefined):
   return isAnsweredQuestion(tc) || (runStatus !== 'running' && tc.result === undefined);
 }
 
+import { AgentErrorCardComponent } from '../../../agent-error-card/agent-error-card.component';
+
 @Component({
   selector: 'ds-assistant-turn',
   standalone: true,
@@ -117,6 +119,7 @@ function showsQuestionRecord(tc: ToolCallRecord, runStatus: string | undefined):
     ToolCallCardComponent,
     QuestionAnsweredCardComponent,
     TypewriterDirective,
+    AgentErrorCardComponent,
   ],
   templateUrl: './assistant-turn.component.html',
   styleUrl: './assistant-turn.component.scss',
@@ -151,6 +154,8 @@ export class AssistantTurnComponent {
 
   readonly msg = input.required<ChatBubbleMessage>();
   readonly isLatest = input(true);
+  /** S-54: the error card's "Retry" action. */
+  readonly retry = output<void>();
 
   /** Flips to `true` once this bubble watches its message finish streaming, so
    *  the just-completed reply types itself in (see TypewriterDirective). History

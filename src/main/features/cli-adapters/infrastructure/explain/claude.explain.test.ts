@@ -25,19 +25,21 @@ describe('Claude explainer — usage limit', () => {
     expect(String(out.params?.['time'])).toMatch(/\d{1,2}:\d{2}/);
     expect(out.cause).toContain(String(out.params?.['time']));
     expect(kinds(out)).not.toContain('enable_auto_continue');
-    expect(out.code).not.toBe('auto_continue_on');
+    expect(out.variant).toBe('auto');
   });
 
   it('offers to turn auto-continue on when it is off', () => {
     const out = explainError('claude', err("You've hit your session limit"), ctx({ resetsAt: RESETS_AT, autoContinueEnabled: false }));
     expect(out.code).toBe('usage_limit');
     expect(out.actions).toContainEqual({ kind: 'enable_auto_continue', agentId: 'claude' });
+    expect(out.variant).toBe('manual');
   });
 
   it('works without resetsAt: no time, still explains the limit', () => {
     const out = explainError('claude', err('Claude usage limit reached'), ctx());
     expect(out.code).toBe('usage_limit');
     expect(out.params?.['time']).toBeUndefined();
+    expect(out.variant).toBe('notime');
   });
 
   it('recognises the limit from resetsAt alone when the text is unhelpful', () => {

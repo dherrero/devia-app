@@ -2,6 +2,7 @@ import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { ElectronApiService } from './electron-api.service';
 import { ToastService } from './toast.service';
+import { agentErrorText } from '../utils/agent-error-text';
 import { applyStyle, applyTheme, resolveStyle, resolveTheme } from '../theme/accent-palettes';
 import type {
   DeviaConfig, DeviaConfigView, ProjectEntry, ClaudeOutputEvent, ProcessStartEvent,
@@ -1610,7 +1611,7 @@ export class AppStateService implements OnDestroy {
           detail: { feature: e.cancelReason ?? 'agent-quota' },
         }));
       }
-      if (e.error && e.error !== 'busy' && e.error !== 'stopped' && e.failoverReason !== 'quota_exceeded') {
+      if (e.error && e.error !== 'busy' && e.error !== 'stopped' && (e.failoverReason !== 'quota_exceeded' || e.userError !== undefined)) {
         // REV-AGENT-CORE-011: structured cancellation gets a humanised label
         // and stamps `cancelReason` on the system message so the bubble can
         // hide the Retry button for user-initiated cancels.
@@ -1633,6 +1634,7 @@ export class AppStateService implements OnDestroy {
           text: cancelText ?? this.translate.instant('app_state.process_error', { error: e.error }),
           ...(e.cancelReason !== undefined && { cancelReason: e.cancelReason }),
           ...(classification !== undefined && { errorClassification: classification }),
+          ...(e.userError !== undefined && { userError: e.userError }),
         });
       }
       // REV-TS-CLI-05-02: clear any pending question when the process ends so
@@ -1890,8 +1892,15 @@ export class AppStateService implements OnDestroy {
       }
 
       case 'error':
-        // Surface error inline in the stream so the user sees it.
-        updated.text = (updated.text ?? '') + `\n[error] ${event.message}`;
+        // Surface error inline in the stream so the user sees it. S-54: with a
+        // user-facing reading the line is its short title and the card carries
+        // the cause, the actions and the raw message (in its details).
+        if (event.userError !== undefined) {
+          updated.userError = event.userError;
+          updated.text = (updated.text ?? '') + `\n[error] ${agentErrorText(this.translate, event.userError).title}`;
+        } else {
+          updated.text = (updated.text ?? '') + `\n[error] ${event.message}`;
+        }
         changed = true;
         break;
 

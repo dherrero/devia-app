@@ -30,6 +30,7 @@ describe.each([
     expect(out.code).toBe('invalid_provider_key');
     expect(out.params).toMatchObject({ agent: label, provider: 'openai', envVar: 'OPENAI_API_KEY' });
     expect(out.cause).toContain('OPENAI_API_KEY');
+    expect(out.variant).toBe('default_env');
     expect(kinds(out)).toEqual(expect.arrayContaining(['pick_model', 'open_settings', 'copy_details']));
   });
 
@@ -37,6 +38,7 @@ describe.each([
     const out = explainError(cliId, err(cliId, raw), ctx(cliId));
     expect(out.code).toBe('invalid_provider_key');
     expect(out.params?.['envVar']).toBeUndefined();
+    expect(out.variant).toBe('default');
     expect(kinds(out)).toContain('pick_model');
   });
 
@@ -44,6 +46,7 @@ describe.each([
     const out = explainError(cliId, err(cliId, raw), ctx(cliId, { configuredModel: 'openai/gpt-5', inheritedProviderEnv: ['OPENAI_API_KEY'] }));
     expect(out.code).toBe('invalid_provider_key');
     expect(out.params?.['model']).toBe('openai/gpt-5');
+    expect(out.variant).toBe('model_env');
     expect(kinds(out)).not.toContain('pick_model');
   });
 
