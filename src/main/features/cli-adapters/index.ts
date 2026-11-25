@@ -1,3 +1,5 @@
+import { SetContextAgentUseCase } from './application/set-context-agent.use-case';
+import { GetEffectiveAgentUseCase } from './application/get-effective-agent.use-case';
 import type { AgentHarnessView } from '../../../shared/domain/agent';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -38,6 +40,10 @@ export interface CliAdaptersDeps {
   /** S-2 F2.3: fired after a successful agent switch (handoff precompute). */
   /** `projectPath` is set when only that project's agent changed (S-53); undefined = the global default. */
   onAgentSelected?: (agentId: string, projectPath?: string) => void;
+  /** S-53: per-project agent plumbing. */
+  effectiveAgent?: import('../../shared/effective-agent-resolver').EffectiveAgentResolver;
+  projects?: import('../../shared/ports').ProjectRegistry;
+  state?: import('../../shared/ports').StateStore;
 }
 
 export interface CliAdaptersExports {
@@ -278,6 +284,19 @@ export function buildCliAdaptersFeature(deps: CliAdaptersDeps): CliAdaptersBuilt
   const setAgentModel = new SetAgentModelUseCase(registry, deps.config);
   const setAgentEnv   = new SetAgentEnvUseCase(registry, deps.config);
   const testAgent     = new TestAgentUseCase(detector);
+  // S-53: per-project agent. Optional deps keep the feature usable without them (tests).
+  const setContextAgent = deps.effectiveAgent && deps.projects && deps.state
+    ? new SetContextAgentUseCase({
+        agents: registry,
+        projects: deps.projects,
+        state: deps.state,
+        effective: deps.effectiveAgent,
+        ...(deps.onAgentSelected && { onSelected: deps.onAgentSelected }),
+      })
+    : undefined;
+  const getEffectiveAgent = deps.effectiveAgent
+    ? new GetEffectiveAgentUseCase({ effective: deps.effectiveAgent })
+    : undefined;
 
   const describe = (agentId: string): AgentHarnessView | undefined => {
     const def = registry.get(agentId);
@@ -289,6 +308,8 @@ export function buildCliAdaptersFeature(deps: CliAdaptersDeps): CliAdaptersBuilt
     register(ctx: FeatureContext) {
       registerCliAdaptersIpc(ctx, {
         listAgents, selectAgent, setAgentModel, setAgentEnv, testAgent, describe,
+        ...(setContextAgent && { setContextAgent }),
+        ...(getEffectiveAgent && { getEffectiveAgent }),
         onAgentSelected: () => detector.invalidateCache(),
       });
     },

@@ -40,3 +40,26 @@ export function resolveEffectiveAgentId(input: EffectiveAgentInput): EffectiveAg
   }
   return { agentId: input.globalAgentId, source: 'global', ...(fellBackFrom && { fellBackFrom }) };
 }
+
+/** What the user is changing: the project's agent, or one session's (phase 2). */
+export type ContextAgentScope = 'project' | 'session';
+
+export interface SetContextAgentInput {
+  scope: ContextAgentScope;
+  projectPath: string;
+  sessionId?: string;
+  /** null removes the override so the level follows the next one down. */
+  agentId: string | null;
+}
+
+export interface SetContextAgentResult {
+  accepted: boolean;
+  effective: EffectiveAgent;
+  rejectedReason?: string;
+}
+
+/** Pushed when the effective agent may have changed. No fields = the global default changed. */
+export interface EffectiveAgentChangedEvent {
+  projectPath?: string;
+  sessionId?: string;
+}

@@ -237,6 +237,9 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     enterpriseMcpConfigPresent: () => enterpriseMcpConfigPresent(),
   });
   const cliAdapters = buildCliAdaptersFeature({
+    effectiveAgent,
+    projects: registry,
+    state: stateStore,
     describeHarness: (def) => {
       const mapper = mappers.forDef(def);
       return { ...mapper.harnessSupport, isolatesExternalMcp: mapper.isolatesExternalMcp };
