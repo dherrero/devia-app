@@ -440,18 +440,23 @@ export class AppStateService implements OnDestroy {
     if (!project) return null;
     const stream = this.assistantStreams().get(project);
     if (stream?.model) return stream.model;
+    // S-53: a session can change agent mid-way, so a recorded model only counts when
+    // it was produced by the agent that runs NOW; otherwise the footer would keep
+    // showing the previous agent's model.
+    const agentId = this.effectiveAgentId();
+    const isCurrent = (id: string | undefined): boolean => id === undefined || agentId === '' || id === agentId;
     const snap = this.sessionStats().get(project);
-    if (snap?.model) return snap.model;
+    if (snap?.model && isCurrent(snap.agentId)) return snap.model;
     const msgs = this.chats().get(project);
     if (msgs) {
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
-        if (m.role === 'assistant' && m.model) return m.model;
+        if (m.role === 'assistant' && m.model && isCurrent(m.agentId)) return m.model;
       }
     }
     const cfg = this.config();
     if (!cfg) return null;
-    return cfg.agentModels[this.effectiveAgentId()]?.model ?? null;
+    return cfg.agentModels[agentId]?.model ?? null;
   });
 
   readonly contextUsageTokens = computed<number | null>(() => {

@@ -141,6 +141,38 @@ describe('AppStateService — effective agent (S-53)', () => {
     expect(getEffectiveAgent).not.toHaveBeenCalled();
   });
 
+  describe('activeModel after the agent changed mid-session', () => {
+    const stats = (agentId: string, model: string) =>
+      ({ agentId, model, costUsd: 0, turnCount: 1, compactions: [], updatedAt: 1 }) as never;
+
+    beforeEach(async () => {
+      answer = () => ({ agentId: 'codex', source: 'project' });
+      service.selectedProject.set('proj-a');
+      await flush();
+    });
+
+    it("does not show the PREVIOUS agent's model from the session snapshot", () => {
+      service.sessionStats.set(new Map([['proj-a', stats('claude', 'claude-sonnet-5-5')]]));
+      expect(service.activeModel()).toBe('gpt-5-codex'); // codex's configured model
+    });
+
+    it("does not show the PREVIOUS agent's model from the last assistant message", () => {
+      service.chats.set(new Map([['proj-a', [{ id: 'm', role: 'assistant', text: 'hi', agentId: 'claude', model: 'claude-sonnet-5-5' } as never]]]));
+      expect(service.activeModel()).toBe('gpt-5-codex');
+    });
+
+    it('shows no model, rather than a wrong one, when the new agent has none configured', () => {
+      service['config'].set({ ...makeConfig(), agentModels: {} } as never);
+      service.sessionStats.set(new Map([['proj-a', stats('claude', 'claude-sonnet-5-5')]]));
+      expect(service.activeModel()).toBeNull();
+    });
+
+    it("still shows the effective agent's own last model", () => {
+      service.sessionStats.set(new Map([['proj-a', stats('codex', 'gpt-5-codex-high')]]));
+      expect(service.activeModel()).toBe('gpt-5-codex-high');
+    });
+  });
+
   describe('setProjectAgent', () => {
     it('sets the agent of the selected project and asks main for the new effective agent', async () => {
       service.selectedProject.set('proj-a');
