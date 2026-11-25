@@ -131,6 +131,16 @@ describe('AppStateService — effective agent (S-53)', () => {
     expect(service.effectiveAgentId()).toBe('pi');
   });
 
+  it('does not ask again when the session list is refreshed but the active session is the same', async () => {
+    service.selectedProject.set('proj-a');
+    service.availableSessions.set([{ id: 's1', isActive: true } as never]);
+    await flush();
+    getEffectiveAgent.mockClear();
+    service.availableSessions.set([{ id: 's1', isActive: true } as never, { id: 's0', isActive: false } as never]);
+    await flush();
+    expect(getEffectiveAgent).not.toHaveBeenCalled();
+  });
+
   describe('setProjectAgent', () => {
     it('sets the agent of the selected project and asks main for the new effective agent', async () => {
       service.selectedProject.set('proj-a');

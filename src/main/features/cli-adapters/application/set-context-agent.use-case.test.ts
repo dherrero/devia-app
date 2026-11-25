@@ -140,6 +140,26 @@ describe('SetContextAgentUseCase — session scope', () => {
   });
 });
 
+describe('SetContextAgentUseCase — untrusted input (renderer IPC)', () => {
+  it.each([
+    [{ scope: 'project', agentId: 'codex' }],                                  // no projectPath
+    [{ scope: 'project', projectPath: '', agentId: 'codex' }],
+    [{ scope: 'project', projectPath: 42, agentId: 'codex' }],
+    [{ scope: 'galaxy', projectPath: 'a', agentId: 'codex' }],
+    [{ scope: 'project', projectPath: 'a', agentId: 7 }],
+    [{ scope: 'project', projectPath: 'a', agentId: '' }],
+    [{ scope: 'project', projectPath: 'a', agentId: undefined }],
+    [null],
+    ['nope'],
+  ])('refuses %j without touching anything', (bad) => {
+    const t = setup();
+    const r = t.uc.execute(bad as never);
+    expect(r).toMatchObject({ accepted: false, rejectedReason: 'INVALID_INPUT' });
+    expect(t.state.save).not.toHaveBeenCalled();
+    expect([...t.projects.paths()]).toEqual([]);
+  });
+});
+
 describe('GetEffectiveAgentUseCase', () => {
   it('reports global, project and fallback', () => {
     const t = setup('claude');

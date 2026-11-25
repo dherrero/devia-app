@@ -23,6 +23,10 @@ export class SetContextAgentUseCase {
   }) {}
 
   execute(input: SetContextAgentInput): SetContextAgentResult {
+    // The input crosses IPC: never trust its shape.
+    if (!isValidInput(input)) {
+      return { accepted: false, effective: { agentId: '', source: 'global' }, rejectedReason: 'INVALID_INPUT' };
+    }
     const current = (): SetContextAgentResult['effective'] =>
       this.deps.effective.forRun(input.projectPath, input.sessionId);
     const reject = (rejectedReason: string): SetContextAgentResult =>
@@ -66,4 +70,16 @@ export class SetContextAgentUseCase {
     }
     return { accepted: true, effective };
   }
+}
+
+function isValidInput(input: unknown): input is SetContextAgentInput {
+  if (typeof input !== 'object' || input === null) return false;
+  const i = input as Record<string, unknown>;
+  const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+  return (
+    (i['scope'] === 'project' || i['scope'] === 'session')
+    && text(i['projectPath'])
+    && (i['agentId'] === null || text(i['agentId']))
+    && (i['sessionId'] === undefined || typeof i['sessionId'] === 'string')
+  );
 }

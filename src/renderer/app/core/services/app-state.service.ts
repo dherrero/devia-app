@@ -222,9 +222,7 @@ export class AppStateService implements OnDestroy {
     const project = this.selectedProject();
     if (!project) return this.setProjectAgent(agentId); // reports NO_PROJECT
     const pane = this.focusedSessionKey();
-    const sessionId = pane ?? (this.agentTarget() === 'session'
-      ? this.availableSessions().find((x) => x.isActive)?.id
-      : undefined);
+    const sessionId = pane ?? (this.agentTarget() === 'session' ? this.activeSessionId() ?? undefined : undefined);
     if (sessionId === undefined) return this.setProjectAgent(agentId);
     const result = await this.api.setContextAgent({ scope: 'session', projectPath: project, sessionId, agentId });
     if (result.accepted) this.effectiveAgentTick.update((n) => n + 1);
@@ -248,12 +246,14 @@ export class AppStateService implements OnDestroy {
     if (result.accepted) this.effectiveAgentTick.update((n) => n + 1);
     return result;
   }
+  /** The primary pane's active session (a computed, so an unrelated list refresh re-asks nothing). */
+  private readonly activeSessionId = computed(() => this.availableSessions().find((x) => x.isActive)?.id ?? null);
   private readonly effectiveAgentSync = effect(() => {
     const project = this.selectedProject();
     const key = this.focusedKey();
     const sessionId = this.focusedSessionKey();
     // The primary pane's active session can carry its own agent: ask again when it changes.
-    void this.availableSessions().find((x) => x.isActive)?.id;
+    void this.activeSessionId();
     this.effectiveAgentTick();
     if (!project || !key) return;
     const request = ++this.effectiveAgentRequest;

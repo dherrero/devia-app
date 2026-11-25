@@ -199,10 +199,6 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     },
   });
 
-  // S-2 F2.3: background LLM enrichment of the cross-agent handoff brief.
-  // The runner's execute() is synchronous, so the summary is precomputed the
-  // moment a handoff becomes foreseeable (agent switch / foreign-session
-  // switch/adopt) and consumed from this cache with zero added run latency.
   // S-53: one answer to "which agent runs here" for runs, Telegram, the queue,
   // auto-continue, handoff and kit detection. `cliAdapters` is built below; the
   // lookups are lazy so ordering doesn't matter (nothing runs before bootstrap ends).
@@ -217,6 +213,10 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // resolve: those fall back to the global agent until the session agent lands.
   const agentIdForIdentity = (identity: string): string =>
     sessionStore.isValidSessionId(identity) ? config.get().agentId : effectiveAgent.forRun(identity).agentId;
+  // S-2 F2.3: background LLM enrichment of the cross-agent handoff brief.
+  // The runner's execute() is synchronous, so the summary is precomputed the
+  // moment a handoff becomes foreseeable (agent switch / foreign-session
+  // switch/adopt) and consumed from this cache with zero added run latency.
   const handoffSummariser = new HandoffSummariser({
     client: (identity) => selectAuxiliaryClient(agentIdForIdentity(identity)),
     clientAvailable: (identity) =>
@@ -371,10 +371,11 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
         isRunnable: (p) => tech.detect(p) !== 'folder',
         saveAttachment: (payload) => attachments.save(payload).path,
         isRunning: (project) => registry.isRunning(project),
-        agentLabel: () => {
+        agentLabel: (project) => {
           const c = config.get();
-          const model = c.agentModels[c.agentId]?.model;
-          return model ? `${c.agentId} (${model})` : c.agentId;
+          const agentId = project ? effectiveAgent.forRun(project).agentId : c.agentId;
+          const model = c.agentModels[agentId]?.model;
+          return model ? `${agentId} (${model})` : agentId;
         },
         // /status: active project's branch + working-tree state.
         gitInfo: (project) => gitBuilt.exports.inspector.info(project),
