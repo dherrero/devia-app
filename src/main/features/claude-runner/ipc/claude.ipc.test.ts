@@ -267,3 +267,28 @@ describe('claude.ipc — run end on the gateway', () => {
     expect(events.filter((e) => e.type === 'end')).toEqual([{ type: 'end', project: 'proj-a', runId: RUN_ID, code: 0 }]);
   });
 });
+
+describe('claude.ipc — user-facing error forwarding (S-54)', () => {
+  const userError = { code: 'auth_required', title: 't', cause: 'c', actions: [], details: 'HTTP 401' };
+
+  it('forwards userError to the renderer and the run gateway, raw error untouched', () => {
+    const t = setup();
+    const handlers = t.start('proj-a');
+    handlers.onProcessEnd({ runId: RUN_ID, code: 1, error: 'HTTP 401', userError });
+
+    expect(t.send).toHaveBeenCalledWith('process:end', expect.objectContaining({ error: 'HTTP 401', userError }));
+    expect(t.events.find((e) => e.type === 'end')).toMatchObject({ error: 'HTTP 401', userError });
+    t.ipc.dispose();
+  });
+
+  it('a usage limit still schedules the resume while the error is explained', () => {
+    const t = setup({ claude: true });
+    const handlers = t.start('proj-a');
+    handlers.onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: Date.now() + 60_000 });
+    handlers.onProcessEnd({ runId: RUN_ID, code: 1, error: 'limit', userError: { ...userError, code: 'usage_limit' } });
+
+    expect(t.send).toHaveBeenCalledWith('autoresume:scheduled', expect.objectContaining({ project: 'proj-a' }));
+    expect(t.send).toHaveBeenCalledWith('process:end', expect.objectContaining({ userError: expect.objectContaining({ code: 'usage_limit' }) }));
+    t.ipc.dispose();
+  });
+});

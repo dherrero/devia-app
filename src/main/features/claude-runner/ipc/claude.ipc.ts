@@ -284,6 +284,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
         code,
         ...(error !== undefined && { error }),
         ...(cancelReason !== undefined && { cancelReason }),
+        ...(userError !== undefined && { userError }),
       });
       notifyIfBackground(projectName, error);
       // Drain this session's own queue (keyed by identity, T-143). For the

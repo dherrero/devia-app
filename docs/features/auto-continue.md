@@ -17,6 +17,8 @@ When Claude Code hits the account's usage limit, Devia waits for the window to r
 - A user message, Stop, session reset, agent switch, or turning the switch off cancels it (re-checked when it fires).
 - Renderer: `ds-auto-resume-banner` (above the queue panel) fed by `autoresume:scheduled` / `autoresume:cancelled`, with a Cancel button (IPC `autoresume:cancel`); shows the date when the reset is not today.
 
+- Error card (S-54): when a run ends on the limit, the chat card says when it resumes (`resetsAt`) and, if the switch is off, offers "Turn on auto-continue". The card only READS `resetsAt` and the switch (`claude.explain.ts`); scheduling is unchanged and pinned by the tests below.
+
 ## Does NOT
 
 - Does NOT survive closing Devia: a pending resume is in memory only; the app must stay open meanwhile.
@@ -51,7 +53,7 @@ None (memory only).
 
 ## Tests
 
-- `src/main/features/claude-runner/application/auto-resume-scheduler.test.ts`, `src/main/features/agents/claude/decoder.rate-limit.test.ts`, `src/main/features/agents/claude/limit-text.test.ts`.
+- `src/main/features/claude-runner/application/run-instruction.use-case.test.ts` ("usage limit reporting": `onRateLimited` with `resetsAt` before `onProcessEnd`), `src/main/features/claude-runner/ipc/claude.ipc.test.ts` (resume still scheduled while the error is explained), `src/main/features/claude-runner/application/auto-resume-scheduler.test.ts`, `src/main/features/agents/claude/decoder.rate-limit.test.ts`, `src/main/features/agents/claude/limit-text.test.ts`.
 
 ## Related
 
