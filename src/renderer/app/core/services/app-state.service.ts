@@ -18,7 +18,7 @@ import { buildSessionStats } from '../../../../shared/domain/session-stats';
 import type { SessionStats, StatsSourceMessage, CompactionRecord } from '../../../../shared/domain/session-stats';
 import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import type { RunId } from '../../../../shared/domain/agent';
-import type { EffectiveAgent } from '../../../../shared/domain/effective-agent';
+import type { EffectiveAgent, SetContextAgentResult } from '../../../../shared/domain/effective-agent';
 import { isForeignEvent } from '../../../../shared/domain/agent';
 import type { ChatMessage, ContentBlock, ToolCallRecord } from '../../../../shared/domain/chat';
 import { isAskUserTool } from '../../../../shared/domain/question-ask';
@@ -208,6 +208,23 @@ export class AppStateService implements OnDestroy {
   readonly effectiveAgentId = computed<string>(
     () => this.effectiveAgent()?.agentId ?? this.config()?.agentId ?? '',
   );
+  /**
+   * Set (or clear with null) the agent of the SELECTED project; the global
+   * default is changed from Settings. Main refuses it while a run is active.
+   */
+  async setProjectAgent(agentId: string | null): Promise<SetContextAgentResult> {
+    const project = this.selectedProject();
+    if (!project) {
+      return {
+        accepted: false,
+        effective: this.effectiveAgent() ?? { agentId: this.config()?.agentId ?? '', source: 'global' },
+        rejectedReason: 'NO_PROJECT',
+      };
+    }
+    const result = await this.api.setContextAgent({ scope: 'project', projectPath: project, agentId });
+    if (result.accepted) this.effectiveAgentTick.update((n) => n + 1);
+    return result;
+  }
   private readonly effectiveAgentSync = effect(() => {
     const project = this.selectedProject();
     const key = this.focusedKey();

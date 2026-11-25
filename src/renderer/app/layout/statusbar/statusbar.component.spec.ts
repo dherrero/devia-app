@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { TranslateModule } from '@ngx-translate/core';
+import { DialogService } from '@devia/ui';
 import { StatusbarComponent } from './statusbar.component';
+import { AgentPickerComponent } from './agent-picker/agent-picker.component';
 import { AppStateService } from '../../core/services/app-state.service';
 import { KeyboardShortcutsService } from '../../core/layout/keyboard-shortcuts.service';
 import { ElectronApiService } from '../../core/services/electron-api.service';
@@ -60,11 +62,13 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
   let fixture: ComponentFixture<StatusbarComponent>;
   let stub: StatusbarStub;
   const shortcuts = { openSettings: vi.fn() };
+  const dialogs = { open: vi.fn() };
   const api = { getAppVersion: () => Promise.resolve('9.9.9'), setAgentModel: vi.fn(), getConfig: vi.fn() };
 
   beforeEach(async () => {
     stub = makeStub();
     shortcuts.openSettings.mockClear();
+    dialogs.open.mockReset();
     api.setAgentModel.mockReset().mockResolvedValue({});
     api.getConfig.mockReset();
     await TestBed.configureTestingModule({
@@ -73,6 +77,7 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
         { provide: AppStateService, useValue: stub },
         { provide: KeyboardShortcutsService, useValue: shortcuts },
         { provide: ElectronApiService, useValue: api },
+        { provide: DialogService, useValue: dialogs },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(StatusbarComponent);
@@ -127,33 +132,31 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
     expect(fixture.nativeElement.querySelector('.model')).toBeNull();
   });
 
-  it('opens Settings on the execution section when the chip is clicked', () => {
+  it('opens the project agent picker when the chip is clicked (S-53)', () => {
     stub.config.set({ agentId: 'claude' });
     fixture.detectChanges();
     (fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement).click();
-    expect(shortcuts.openSettings).toHaveBeenCalledWith('execution');
+    expect(dialogs.open).toHaveBeenCalledWith(AgentPickerComponent);
+    expect(shortcuts.openSettings).not.toHaveBeenCalled();
   });
 
-  it('shows the PROJECT agent, not the global one, when they differ (S-53)', () => {
+  it('falls back to Settings when there is no project to assign an agent to', () => {
     stub.config.set({ agentId: 'claude' });
-    stub.effectiveOverride.set('codex');
-    stub.detectedAgents.set([
-      { id: 'claude', name: 'Claude Code' },
-      { id: 'codex', name: 'Codex', reasoningOptions: [{ id: 'default', label: 'Default' }, { id: 'high', label: 'High' }] },
-    ]);
+    stub.selectedProject.set(null);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.agent-label')?.textContent?.trim()).toBe('Codex');
-    expect(fixture.nativeElement.querySelector('.effort-select')).not.toBeNull();
+    (fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement).click();
+    expect(shortcuts.openSettings).toHaveBeenCalledWith('execution');
+    expect(dialogs.open).not.toHaveBeenCalled();
   });
 
-  it("changes the effort of the effective agent's own model settings (S-53)", async () => {
-    stub.config.set({ agentId: 'claude', agentModels: { claude: { model: 'opus' }, codex: { model: 'gpt-5-codex' } } });
-    stub.effectiveOverride.set('codex');
-    stub.detectedAgents.set([{ id: 'codex', name: 'Codex', reasoningOptions: [{ id: 'default', label: 'Default' }, { id: 'high', label: 'High' }] }]);
-    api.getConfig.mockResolvedValue({ agentId: 'claude' });
+  it('disables the chip while an instruction runs, so the agent cannot change mid-run', () => {
+    stub.config.set({ agentId: 'claude' });
+    stub.isRunning = () => true;
     fixture.detectChanges();
-    await fixture.componentInstance.onReasoningChange('high');
-    expect(api.setAgentModel).toHaveBeenCalledWith({ agentId: 'codex', model: 'gpt-5-codex', reasoning: 'high' });
+    const chip = fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    chip.click();
+    expect(dialogs.open).not.toHaveBeenCalled();
   });
 
   // ── effort selector ─────────────────────────────────────────────────────

@@ -41,17 +41,20 @@ describe('AppStateService — effective agent (S-53)', () => {
   let answer: (p: { projectPath: string; sessionId?: string }) => EffectiveAgent;
   let changed: ((e: EffectiveAgentChangedEvent) => void) | undefined;
   let getEffectiveAgent: ReturnType<typeof vi.fn>;
+  let setContextAgent: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     changed = undefined;
     answer = () => ({ agentId: 'claude', source: 'global' });
     getEffectiveAgent = vi.fn((p: { projectPath: string; sessionId?: string }) => Promise.resolve(answer(p)));
+    setContextAgent = vi.fn();
     const api: Record<string, unknown> = new Proxy(
       {
         platform: 'linux',
         isWSL: false,
         getRunModes: () => Promise.resolve([]),
         getEffectiveAgent,
+        setContextAgent,
         onEffectiveAgentChanged: (cb: (e: EffectiveAgentChangedEvent) => void) => { changed = cb; },
       } as Record<string, unknown>,
       { get: (t, k: string) => (k in t ? t[k] : noop) },
@@ -114,5 +117,39 @@ describe('AppStateService — effective agent (S-53)', () => {
     release({ agentId: 'codex', source: 'project' }); // answer for proj-a, too late
     await flush();
     expect(service.effectiveAgentId()).toBe('claude');
+  });
+
+  describe('setProjectAgent', () => {
+    it('sets the agent of the selected project and asks main for the new effective agent', async () => {
+      service.selectedProject.set('proj-a');
+      await flush();
+      getEffectiveAgent.mockClear();
+      answer = () => ({ agentId: 'codex', source: 'project' });
+      setContextAgent.mockResolvedValue({ accepted: true, effective: { agentId: 'codex', source: 'project' } });
+
+      const result = await service.setProjectAgent('codex');
+      await flush();
+
+      expect(setContextAgent).toHaveBeenCalledWith({ scope: 'project', projectPath: 'proj-a', agentId: 'codex' });
+      expect(result.accepted).toBe(true);
+      expect(getEffectiveAgent).toHaveBeenCalled();
+      expect(service.effectiveAgentId()).toBe('codex');
+    });
+
+    it('passes null to go back to the default and reports a rejection untouched', async () => {
+      service.selectedProject.set('proj-a');
+      setContextAgent.mockResolvedValue({
+        accepted: false, effective: { agentId: 'claude', source: 'global' }, rejectedReason: 'AGENT_RUN_ACTIVE',
+      });
+      const result = await service.setProjectAgent(null);
+      expect(setContextAgent).toHaveBeenCalledWith({ scope: 'project', projectPath: 'proj-a', agentId: null });
+      expect(result).toMatchObject({ accepted: false, rejectedReason: 'AGENT_RUN_ACTIVE' });
+    });
+
+    it('rejects without calling main when no project is selected', async () => {
+      const result = await service.setProjectAgent('codex');
+      expect(result).toMatchObject({ accepted: false, rejectedReason: 'NO_PROJECT' });
+      expect(setContextAgent).not.toHaveBeenCalled();
+    });
   });
 });

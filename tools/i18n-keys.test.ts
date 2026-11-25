@@ -180,7 +180,8 @@ describe('round trip against the real files', () => {
     // 488: +71 for the graph search, filters and node detail panel (es/en only; T-513 translates).
     // 293: T-513 translated every codeGraph key into the nine locales (-195); what is
     // left is the pre-existing S-27 backlog, none of it under codeGraph.
-    expect(Object.keys(missing).length).toBe(293);
+    // 300: +7 for the footer agent picker (es/en only; S-27 translates).
+    expect(Object.keys(missing).length).toBe(300);
     expect(Object.keys(missing).filter((key) => key.startsWith('codeGraph.'))).toEqual([]);
   });
 

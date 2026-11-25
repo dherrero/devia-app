@@ -1,0 +1,35 @@
+<div class="agent-picker">
+  <header class="ap-header">
+    <dv-icon class="ic" [icon]="LucideBot" size="sm" />
+    <span class="title">{{ 'statusbar.agent_picker_title' | translate }}</span>
+  </header>
+  <p class="ap-hint">{{ 'statusbar.agent_picker_hint' | translate }}</p>
+
+  @if (fellBackFrom(); as lost) {
+    <p class="ap-warn">{{ 'statusbar.agent_fallback_warning' | translate: { agent: lost.agentId } }}</p>
+  }
+
+  <div class="ap-list" role="listbox">
+    @for (a of items(); track a.id) {
+      <button type="button" class="agent-item" role="option"
+              [class.current]="a.current" [attr.aria-selected]="a.current"
+              (click)="pick(a.id)">
+        <dv-icon class="aic" [icon]="LucideBot" size="sm" />
+        <span class="name">{{ a.name }}</span>
+        @if (a.current) { <dv-icon class="check" [icon]="LucideCheck" size="sm" /> }
+      </button>
+    }
+  </div>
+
+  <footer class="ap-footer">
+    @if (hasOwnAgent()) {
+      <button type="button" class="link use-default" (click)="pick(null)">
+        {{ 'statusbar.agent_use_default' | translate }}
+      </button>
+    }
+    <button type="button" class="link open-settings" (click)="openSettings()">
+      <dv-icon class="aic" [icon]="LucideSettings2" size="sm" />
+      {{ 'statusbar.agent_open_settings' | translate }}
+    </button>
+  </footer>
+</div>

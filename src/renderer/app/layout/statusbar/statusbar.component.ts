@@ -14,6 +14,7 @@ import {
 import { AppStateService } from '../../core/services/app-state.service';
 import { ElectronApiService } from '../../core/services/electron-api.service';
 import { KeyboardShortcutsService } from '../../core/layout/keyboard-shortcuts.service';
+import { AgentPickerComponent } from './agent-picker/agent-picker.component';
 import { BranchSwitcherComponent } from '../../features/git/branch-switcher/branch-switcher.component';
 
 @Component({
@@ -132,7 +133,20 @@ export class StatusbarComponent {
     this.state.config.set(await this.api.getConfig());
   }
 
+  /** S-53: with a project, the chip picks THAT project's agent; without one, Settings chooses the default. */
+  readonly canPickAgent = computed(() => !!this.state.selectedProject());
+  /** The agent cannot change under a run that is already working. */
+  readonly agentPickerLocked = computed(() => {
+    const key = this.state.focusedKey();
+    return !!key && this.state.isRunning(key);
+  });
+
   openAgentSettings() {
+    if (this.agentPickerLocked()) return;
+    if (this.canPickAgent()) {
+      this.dialogs.open(AgentPickerComponent);
+      return;
+    }
     this.shortcuts.openSettings('execution');
   }
 
