@@ -13,6 +13,8 @@ interface PersistedProject {
   activeSessionId: string | null;
   agentSessionId?: string | null;
   agentSessionAgentId?: string | null;
+  /** S-53: project-level agent override. Absent = follow the global default. */
+  preferredAgentId?: string | null;
 }
 
 interface PersistedState {
@@ -45,6 +47,7 @@ export class FsStateStore implements StateStore {
         activeSessionId: record.activeSessionId,
         agentSessionId: record.agentSessionId,
         agentSessionAgentId: record.agentSessionAgentId,
+        ...(record.preferredAgentId ? { preferredAgentId: record.preferredAgentId } : {}),
       };
     }
     const payload: PersistedState = {
@@ -99,6 +102,9 @@ export class FsStateStore implements StateStore {
       // which is the safe behaviour (never resume another agent's session).
       record.agentSessionAgentId = typeof info?.agentSessionAgentId === 'string'
         ? info.agentSessionAgentId
+        : null;
+      record.preferredAgentId = typeof info?.preferredAgentId === 'string' && info.preferredAgentId.length > 0
+        ? info.preferredAgentId
         : null;
     }
   }
