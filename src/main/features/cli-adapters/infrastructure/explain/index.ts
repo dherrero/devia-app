@@ -1,13 +1,18 @@
 import type { ClassifiedError } from '../../../../../shared/domain/cli-errors';
 import type { UserFacingError } from '../../../../../shared/domain/user-facing-error';
+import { hermesExplainer, kimiExplainer } from './acp-agents.explain';
 import { claudeExplainer } from './claude.explain';
 import { codexExplainer } from './codex.explain';
 import { copilotExplainer } from './copilot.explain';
+import { deepseekExplainer } from './deepseek.explain';
 import { cursorAgentExplainer } from './cursor-agent.explain';
 import { geminiExplainer } from './gemini.explain';
 import { genericExplain } from './generic';
+import { grokExplainer } from './grok.explain';
 import { opencodeExplainer } from './opencode.explain';
 import { piExplainer } from './pi.explain';
+import { qoderExplainer } from './qoder.explain';
+import { qwenExplainer } from './qwen.explain';
 import { redactSecrets } from './nested-error';
 import type { AgentExplainer, ExplainContext } from './types';
 
@@ -23,6 +28,12 @@ const EXPLAINERS: Readonly<Record<string, AgentExplainer>> = {
   copilot: copilotExplainer,
   opencode: opencodeExplainer,
   pi: piExplainer,
+  qwen: qwenExplainer,
+  deepseek: deepseekExplainer,
+  qoder: qoderExplainer,
+  grok: grokExplainer,
+  kimi: kimiExplainer,
+  hermes: hermesExplainer,
 };
 
 /** Remote (Telegram) runs get the text only: there is no UI to act on. */
