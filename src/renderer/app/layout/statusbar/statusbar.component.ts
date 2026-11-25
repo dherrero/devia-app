@@ -101,30 +101,31 @@ export class StatusbarComponent {
 
   // Active agent's display name (falls back to its id until detection lands).
   readonly agentName = computed<string>(() => {
-    const id = this.state.config()?.agentId;
+    const id = this.state.effectiveAgentId();
     if (!id) return '';
     return this.state.detectedAgents()?.find((a) => a.id === id)?.name ?? id;
   });
 
   // Effort levels the active agent exposes (empty → no selector in the footer).
   readonly reasoningOptions = computed(() => {
-    const id = this.state.config()?.agentId;
+    const id = this.state.effectiveAgentId();
     const agent = this.state.detectedAgents()?.find((a) => a.id === id);
     return (agent?.reasoningOptions ?? []).map((r) => ({ value: r.id, label: r.label }));
   });
 
   readonly activeReasoning = computed<string>(() => {
     const cfg = this.state.config();
-    return (cfg && cfg.agentModels?.[cfg.agentId]?.reasoning) || 'default';
+    return (cfg && cfg.agentModels?.[this.state.effectiveAgentId()]?.reasoning) || 'default';
   });
 
   async onReasoningChange(reasoning: string): Promise<void> {
     const cfg = this.state.config();
     if (!cfg || reasoning === this.activeReasoning()) return;
     // agent:setModel overwrites BOTH fields, so forward the current model.
-    const model = cfg.agentModels?.[cfg.agentId]?.model ?? null;
+    const agentId = this.state.effectiveAgentId();
+    const model = cfg.agentModels?.[agentId]?.model ?? null;
     await this.api.setAgentModel({
-      agentId: cfg.agentId,
+      agentId,
       model,
       reasoning: reasoning === 'default' ? null : reasoning,
     });

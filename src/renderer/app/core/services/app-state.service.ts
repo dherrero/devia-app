@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { ElectronApiService } from './electron-api.service';
 import { ToastService } from './toast.service';
@@ -18,6 +18,7 @@ import { buildSessionStats } from '../../../../shared/domain/session-stats';
 import type { SessionStats, StatsSourceMessage, CompactionRecord } from '../../../../shared/domain/session-stats';
 import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import type { RunId } from '../../../../shared/domain/agent';
+import type { EffectiveAgent } from '../../../../shared/domain/effective-agent';
 import { isForeignEvent } from '../../../../shared/domain/agent';
 import type { ChatMessage, ContentBlock, ToolCallRecord } from '../../../../shared/domain/chat';
 import { isAskUserTool } from '../../../../shared/domain/question-ask';
@@ -190,6 +191,38 @@ export class AppStateService implements OnDestroy {
   // The session key the footer selectors read: the focused pane's key, or the
   // selected project when no split pane is focused.
   readonly focusedKey = computed(() => this.focusedSessionKey() ?? this.selectedProject());
+
+  // ── Effective agent (S-53: session > project > global) ──────────────────
+  // Asked of main for the focused pane — never derived here — so the footer can
+  // not disagree with what Telegram, the queue or auto-continue will run.
+  private readonly effectiveAgentState = signal<{ key: string; agent: EffectiveAgent } | null>(null);
+  /** Bumped when main announces that an effective agent may have changed. */
+  private readonly effectiveAgentTick = signal(0);
+  private effectiveAgentRequest = 0;
+  /** The focused pane's effective agent, once main has answered for it. */
+  readonly effectiveAgent = computed<EffectiveAgent | null>(() => {
+    const s = this.effectiveAgentState();
+    return s && s.key === this.focusedKey() ? s.agent : null;
+  });
+  /** Effective agent id; the global default stands in until main answers. */
+  readonly effectiveAgentId = computed<string>(
+    () => this.effectiveAgent()?.agentId ?? this.config()?.agentId ?? '',
+  );
+  private readonly effectiveAgentSync = effect(() => {
+    const project = this.selectedProject();
+    const key = this.focusedKey();
+    const sessionId = this.focusedSessionKey();
+    this.effectiveAgentTick();
+    if (!project || !key) return;
+    const request = ++this.effectiveAgentRequest;
+    void this.api
+      .getEffectiveAgent({ projectPath: project, ...(sessionId ? { sessionId } : {}) })
+      .then((agent) => {
+        if (request !== this.effectiveAgentRequest) return; // a newer question is in flight
+        this.effectiveAgentState.set({ key, agent });
+      })
+      .catch(() => { /* keep the previous answer; the global agent still stands in */ });
+  });
   // True while a footer-triggered sync is in flight, so the button can show
   // a spinner and disable itself. Cleared on resolve regardless of outcome.
   readonly syncingGit = signal(false);
@@ -376,7 +409,7 @@ export class AppStateService implements OnDestroy {
     }
     const cfg = this.config();
     if (!cfg) return null;
-    return cfg.agentModels[cfg.agentId]?.model ?? null;
+    return cfg.agentModels[this.effectiveAgentId()]?.model ?? null;
   });
 
   readonly contextUsageTokens = computed<number | null>(() => {
@@ -423,9 +456,9 @@ export class AppStateService implements OnDestroy {
         }
       }
     }
-    const cfg = this.config();
-    if (!cfg?.agentId) return null;
-    return getModelContextLength(cfg.agentId, this.activeModel() ?? undefined);
+    const agentId = this.effectiveAgentId();
+    if (!agentId) return null;
+    return getModelContextLength(agentId, this.activeModel() ?? undefined);
   });
 
   readonly contextPct = computed<number | null>(() => {
@@ -504,13 +537,14 @@ export class AppStateService implements OnDestroy {
   readonly currentBillingMode = computed<BillingMode>(() => {
     const cfg = this.config();
     if (!cfg) return 'unknown';
-    const detected = this.detectedAgents()?.find((a) => a.id === cfg.agentId);
+    const agentId = this.effectiveAgentId();
+    const detected = this.detectedAgents()?.find((a) => a.id === agentId);
     const authStatus = detected?.authStatus === 'ok'
       ? { kind: 'logged-in' as const }
       : detected?.authStatus === 'missing'
         ? { kind: 'logged-out' as const }
         : { kind: 'unknown' as const };
-    return deriveBillingMode(cfg.agentId, cfg.agentCliEnv?.[cfg.agentId], authStatus);
+    return deriveBillingMode(agentId, cfg.agentCliEnv?.[agentId], authStatus);
   });
 
   /** Minimum splash duration ms. Internal — adjust here only. */
@@ -958,10 +992,11 @@ export class AppStateService implements OnDestroy {
   private deriveStatsFromMessages(project: string, messages: StatsSourceMessage[]): SessionStats {
     const cfg = this.config();
     const prior = this.sessionStats().get(project);
-    const fallbackModel = cfg ? cfg.agentModels[cfg.agentId]?.model : undefined;
+    const agentId = this.effectiveAgentId();
+    const fallbackModel = cfg ? cfg.agentModels[agentId]?.model : undefined;
     return buildSessionStats({
       messages,
-      fallbackAgentId: cfg?.agentId ?? 'unknown',
+      fallbackAgentId: agentId || (cfg?.agentId ?? 'unknown'),
       ...(fallbackModel !== undefined && { fallbackModel }),
       ...(prior?.compactions && prior.compactions.length > 0 && { priorCompactions: prior.compactions }),
       now: Date.now(),
@@ -1460,6 +1495,8 @@ export class AppStateService implements OnDestroy {
   // ── IPC bridge ────────────────────────────────────────────────────────
   private wireBridgeEvents() {
     this.api.onConfigChanged((cfg) => this.config.set(cfg));
+    // S-53: a project/session agent (or the global default) changed — ask main again.
+    this.api.onEffectiveAgentChanged(() => this.effectiveAgentTick.update((n) => n + 1));
     this.api.onNotificationClick((e) => void this.navigateToProject(e.project));
     // E-DSK-14: Telegram `/use <proyecto>` switches the desktop to that project.
     this.api.onRemoteSelectProject((e) => void this.navigateToProject(e.project));
@@ -1551,7 +1588,7 @@ export class AppStateService implements OnDestroy {
         startedAt: Date.now(),
         // Use the agentId stamped by the main process on this specific run.
         // Fallback to the current config to handle older builds without this field.
-        agentId: e.agentId ?? this.config()?.agentId,
+        agentId: e.agentId ?? (this.effectiveAgentId() || this.config()?.agentId),
         // REV-AGENT-CORE-006: stamp the active run mode so the bubble can
         // render a badge and so loaded chats remember the policy used.
         mode: this.runMode(e.project),

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { signal, type WritableSignal } from '@angular/core';
+import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { TranslateModule } from '@ngx-translate/core';
 import { StatusbarComponent } from './statusbar.component';
@@ -17,6 +17,9 @@ type StatusbarStub = {
   activeModel: WritableSignal<string | null>;
   config: WritableSignal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>;
   detectedAgents: WritableSignal<{ id: string; name: string; reasoningOptions?: { id: string; label: string }[] }[] | null>;
+  /** S-53: the focused pane's effective agent; follows config.agentId unless overridden. */
+  effectiveAgentId: Signal<string>;
+  effectiveOverride: WritableSignal<string | null>;
   contextPct: WritableSignal<number | null>;
   contextUsageTokens: WritableSignal<number | null>;
   contextWindowTokens: WritableSignal<number | null>;
@@ -29,13 +32,17 @@ type StatusbarStub = {
 };
 
 function makeStub(): StatusbarStub {
+  const config = signal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>(null);
+  const effectiveOverride = signal<string | null>(null);
   return {
+    effectiveOverride,
+    effectiveAgentId: computed(() => effectiveOverride() ?? config()?.agentId ?? ''),
     selectedProject: signal<string | null>('/tmp/p'),
     focusedKey: signal<string | null>('/tmp/p'),
     gitInfo: signal<GitInfo | null>(null),
     syncingGit: signal<boolean>(false),
     activeModel: signal<string | null>(null),
-    config: signal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>(null),
+    config,
     detectedAgents: signal<{ id: string; name: string; reasoningOptions?: { id: string; label: string }[] }[] | null>(null),
     contextPct: signal<number | null>(null),
     contextUsageTokens: signal<number | null>(null),
@@ -125,6 +132,28 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
     fixture.detectChanges();
     (fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement).click();
     expect(shortcuts.openSettings).toHaveBeenCalledWith('execution');
+  });
+
+  it('shows the PROJECT agent, not the global one, when they differ (S-53)', () => {
+    stub.config.set({ agentId: 'claude' });
+    stub.effectiveOverride.set('codex');
+    stub.detectedAgents.set([
+      { id: 'claude', name: 'Claude Code' },
+      { id: 'codex', name: 'Codex', reasoningOptions: [{ id: 'default', label: 'Default' }, { id: 'high', label: 'High' }] },
+    ]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.agent-label')?.textContent?.trim()).toBe('Codex');
+    expect(fixture.nativeElement.querySelector('.effort-select')).not.toBeNull();
+  });
+
+  it("changes the effort of the effective agent's own model settings (S-53)", async () => {
+    stub.config.set({ agentId: 'claude', agentModels: { claude: { model: 'opus' }, codex: { model: 'gpt-5-codex' } } });
+    stub.effectiveOverride.set('codex');
+    stub.detectedAgents.set([{ id: 'codex', name: 'Codex', reasoningOptions: [{ id: 'default', label: 'Default' }, { id: 'high', label: 'High' }] }]);
+    api.getConfig.mockResolvedValue({ agentId: 'claude' });
+    fixture.detectChanges();
+    await fixture.componentInstance.onReasoningChange('high');
+    expect(api.setAgentModel).toHaveBeenCalledWith({ agentId: 'codex', model: 'gpt-5-codex', reasoning: 'high' });
   });
 
   // ── effort selector ─────────────────────────────────────────────────────
