@@ -1,0 +1,41 @@
+import type { ClassifiedError } from '../../../../../shared/domain/cli-errors';
+import type { UserFacingError } from '../../../../../shared/domain/user-facing-error';
+import { genericExplain } from './generic';
+import { redactSecrets } from './nested-error';
+import type { AgentExplainer, ExplainContext } from './types';
+
+export type { AgentExplainer, ExplainContext, ExplainInput } from './types';
+export { extractNestedError, redactSecrets } from './nested-error';
+
+/** Per-agent readings, keyed by CLI id. An agent without one uses the generic mapping. */
+const EXPLAINERS: Readonly<Record<string, AgentExplainer>> = {};
+
+/** Remote (Telegram) runs get the text only: there is no UI to act on. */
+function forOrigin(error: UserFacingError, ctx: ExplainContext): UserFacingError {
+  return ctx.origin === 'remote' && error.actions.length > 0 ? { ...error, actions: [] } : error;
+}
+
+/**
+ * Turns a classified agent error into what the user is shown (S-54). Total:
+ * it never throws, and a failing agent explainer falls back to the generic one.
+ */
+export function explainError(cliId: string, classified: ClassifiedError, ctx: ExplainContext): UserFacingError {
+  const input = { classified, ctx };
+  try {
+    const own = EXPLAINERS[cliId]?.(input) ?? null;
+    if (own !== null) return forOrigin(own, ctx);
+  } catch {
+    /* fall through to the generic mapping */
+  }
+  try {
+    return forOrigin(genericExplain(input), ctx);
+  } catch {
+    return {
+      code: 'unknown',
+      title: 'El agente ha fallado',
+      cause: 'Devia no pudo interpretar este error.',
+      actions: [],
+      details: redactSecrets(String(classified?.rawMessage ?? '')),
+    };
+  }
+}
