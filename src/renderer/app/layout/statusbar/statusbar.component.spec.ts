@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { signal, type WritableSignal } from '@angular/core';
+import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { TranslateModule } from '@ngx-translate/core';
+import { DialogService } from '@devia/ui';
 import { StatusbarComponent } from './statusbar.component';
+import { AgentPickerComponent } from './agent-picker/agent-picker.component';
 import { AppStateService } from '../../core/services/app-state.service';
 import { KeyboardShortcutsService } from '../../core/layout/keyboard-shortcuts.service';
 import { ElectronApiService } from '../../core/services/electron-api.service';
@@ -17,6 +19,9 @@ type StatusbarStub = {
   activeModel: WritableSignal<string | null>;
   config: WritableSignal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>;
   detectedAgents: WritableSignal<{ id: string; name: string; reasoningOptions?: { id: string; label: string }[] }[] | null>;
+  /** S-53: the focused pane's effective agent; follows config.agentId unless overridden. */
+  effectiveAgentId: Signal<string>;
+  effectiveOverride: WritableSignal<string | null>;
   contextPct: WritableSignal<number | null>;
   contextUsageTokens: WritableSignal<number | null>;
   contextWindowTokens: WritableSignal<number | null>;
@@ -29,13 +34,17 @@ type StatusbarStub = {
 };
 
 function makeStub(): StatusbarStub {
+  const config = signal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>(null);
+  const effectiveOverride = signal<string | null>(null);
   return {
+    effectiveOverride,
+    effectiveAgentId: computed(() => effectiveOverride() ?? config()?.agentId ?? ''),
     selectedProject: signal<string | null>('/tmp/p'),
     focusedKey: signal<string | null>('/tmp/p'),
     gitInfo: signal<GitInfo | null>(null),
     syncingGit: signal<boolean>(false),
     activeModel: signal<string | null>(null),
-    config: signal<{ agentId: string; agentModels?: Record<string, { model?: string; reasoning?: string }> } | null>(null),
+    config,
     detectedAgents: signal<{ id: string; name: string; reasoningOptions?: { id: string; label: string }[] }[] | null>(null),
     contextPct: signal<number | null>(null),
     contextUsageTokens: signal<number | null>(null),
@@ -53,11 +62,13 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
   let fixture: ComponentFixture<StatusbarComponent>;
   let stub: StatusbarStub;
   const shortcuts = { openSettings: vi.fn() };
+  const dialogs = { open: vi.fn() };
   const api = { getAppVersion: () => Promise.resolve('9.9.9'), setAgentModel: vi.fn(), getConfig: vi.fn() };
 
   beforeEach(async () => {
     stub = makeStub();
     shortcuts.openSettings.mockClear();
+    dialogs.open.mockReset();
     api.setAgentModel.mockReset().mockResolvedValue({});
     api.getConfig.mockReset();
     await TestBed.configureTestingModule({
@@ -66,6 +77,7 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
         { provide: AppStateService, useValue: stub },
         { provide: KeyboardShortcutsService, useValue: shortcuts },
         { provide: ElectronApiService, useValue: api },
+        { provide: DialogService, useValue: dialogs },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(StatusbarComponent);
@@ -120,11 +132,31 @@ describe('StatusbarComponent — centered group (S-1 T-3)', () => {
     expect(fixture.nativeElement.querySelector('.model')).toBeNull();
   });
 
-  it('opens Settings on the execution section when the chip is clicked', () => {
+  it('opens the project agent picker when the chip is clicked (S-53)', () => {
     stub.config.set({ agentId: 'claude' });
     fixture.detectChanges();
     (fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement).click();
+    expect(dialogs.open).toHaveBeenCalledWith(AgentPickerComponent);
+    expect(shortcuts.openSettings).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Settings when there is no project to assign an agent to', () => {
+    stub.config.set({ agentId: 'claude' });
+    stub.selectedProject.set(null);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement).click();
     expect(shortcuts.openSettings).toHaveBeenCalledWith('execution');
+    expect(dialogs.open).not.toHaveBeenCalled();
+  });
+
+  it('disables the chip while an instruction runs, so the agent cannot change mid-run', () => {
+    stub.config.set({ agentId: 'claude' });
+    stub.isRunning = () => true;
+    fixture.detectChanges();
+    const chip = fixture.nativeElement.querySelector('.agent-chip') as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    chip.click();
+    expect(dialogs.open).not.toHaveBeenCalled();
   });
 
   // ── effort selector ─────────────────────────────────────────────────────

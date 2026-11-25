@@ -25,6 +25,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createEffectiveAgentResolver } from '../../../shared/effective-agent-resolver';
 import { RunInstructionUseCase, type RunInstructionHandlers } from './run-instruction.use-case';
 import { REMOTE_PROTOCOL, REMOTE_QUESTION_UNAVAILABLE_ANSWER, REMOTE_SEND_FILE_LINE } from '../infrastructure/remote-protocol';
 import { buildUiFallbackHint } from '../infrastructure/ui-tools-protocol';
@@ -276,9 +277,10 @@ function makeDef(overrides: Partial<RuntimeAgentDef> = {}): RuntimeAgentDef {
 }
 
 class FakeRegistry implements CliAdapterRegistry {
-  constructor(private readonly def: RuntimeAgentDef) {}
-  all(): readonly RuntimeAgentDef[] { return [this.def]; }
-  get(id: string): RuntimeAgentDef | null { return id === this.def.id ? this.def : null; }
+  private readonly defs: RuntimeAgentDef[];
+  constructor(def: RuntimeAgentDef, others: RuntimeAgentDef[] = []) { this.defs = [def, ...others]; }
+  all(): readonly RuntimeAgentDef[] { return this.defs; }
+  get(id: string): RuntimeAgentDef | null { return this.defs.find((d) => d.id === id) ?? null; }
   registerAdditional(): void { /* no-op */ }
   installMetaForAgent(): { installUrl?: string; docsUrl?: string } { return {}; }
 }
@@ -314,6 +316,10 @@ interface Harness {
 
 interface BuildExtras {
   config?: ConfigRepository;
+  /** Extra agents installed next to the main fake one (S-53). */
+  otherDefs?: RuntimeAgentDef[];
+  /** S-53 phase 2: the persisted session's own agent. */
+  sessionAgentId?: (project: string, sessionId: string) => string | null | undefined;
   kanbanMcpServer?: (projectAbs: string) => McpServerConfig;
   memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
   codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
@@ -359,13 +365,19 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
   const registry = new InMemoryProjectRegistry();
   const audit = new RecordingAuditLog();
   const mappers = makeMappers(extras);
+  const config = extras.config ?? new FakeConfig();
+  const agents = new FakeRegistry(def, extras.otherDefs ?? []);
   const uc = new RunInstructionUseCase({
-    config: extras.config ?? new FakeConfig(),
+    config,
+    effectiveAgent: createEffectiveAgentResolver({
+      config, registry, agents,
+      ...(extras.sessionAgentId && { sessionAgentId: extras.sessionAgentId }),
+    }),
     sessions: extras.sessions ?? new FakeSessions(),
     state: new FakeState(),
     registry,
     runner,
-    agents: new FakeRegistry(def),
+    agents,
     mappers,
     attachments: new FakeAttachments(),
     outbox: extras.outbox ?? new FakeOutbox(),
@@ -4019,5 +4031,88 @@ describe('RunInstructionUseCase — code mode events and cleanup (S-50 T-557)', 
     const h = build(claudeStreamDef, { config, mcpServers: makeMcpRegistry([enabledServer('plain')]), codeMode: buildCodeModeFeature({ config }).codeMode });
     h.uc.execute('proj-a', 'x', [], makeHandlers(), 'apply');
     expect(fs.existsSync(path.join(deviaDir(), 'tmp', 'code-mode'))).toBe(false);
+  });
+});
+
+
+describe('RunInstructionUseCase — effective agent per project (S-53)', () => {
+  const codex = () => makeDef({ id: 'codex', name: 'Codex' });
+
+  it('runs the project agent instead of the global one', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.uc.execute('proj-a', 'hola', [], makeHandlers());
+    expect(h.runner.last().req.def.id).toBe('codex');
+  });
+
+  it('keeps two projects on their own agents at the same time', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.registry.getOrCreate('proj-b');
+    h.uc.execute('proj-a', 'a', [], makeHandlers());
+    h.uc.execute('proj-b', 'b', [], makeHandlers());
+    expect(h.runner.captured.map((c) => c.req.def.id)).toEqual(['codex', 'fake-agent']);
+  });
+
+  it('agentIdOverride wins over the project agent', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.uc.execute('proj-a', 'x', [], makeHandlers(), 'apply', [], 'renderer', false, undefined, undefined, 'fake-agent');
+    expect(h.runner.last().req.def.id).toBe('fake-agent');
+  });
+
+  it('falls back to the global agent when the project agent is not installed, without failing the run', () => {
+    const h = build();
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'gone';
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'x', [], handlers);
+    expect(h.runner.last().req.def.id).toBe('fake-agent');
+    expect(handlers.onProcessEnd).not.toHaveBeenCalled();
+  });
+
+  it('a project agent that differs from the session owner never resumes a foreign native id', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    const rec = h.registry.getOrCreate('proj-a');
+    rec.preferredAgentId = 'codex';
+    rec.agentSessionId = 'native-fake-1';
+    rec.agentSessionAgentId = 'fake-agent';
+    h.uc.execute('proj-a', 'sigue', [], makeHandlers());
+    expect(h.runner.last().req.def.id).toBe('codex');
+    expect(h.runner.last().req.prepared.args.join(' ')).not.toContain('native-fake-1');
+  });
+
+  it('the session agent wins over the project agent for that session only (S-53 phase 2)', () => {
+    const pi = makeDef({ id: 'pi', name: 'Pi' });
+    const h = build({}, {
+      otherDefs: [codex(), pi],
+      sessionAgentId: (_p, sessionId) => (sessionId === 'sess-x' ? 'pi' : null),
+    });
+    const rec = h.registry.getOrCreate('proj-a');
+    rec.preferredAgentId = 'codex';
+    rec.activeSessionId = 'sess-x';
+    h.uc.execute('proj-a', 'uno', [], makeHandlers());
+    expect(h.runner.last().req.def.id).toBe('pi');
+
+    rec.activeSessionId = 'sess-y';
+    h.uc.execute('proj-b-unused', 'x', [], makeHandlers()); // another project does not interfere
+    const h2 = build({}, { otherDefs: [codex(), pi], sessionAgentId: () => null });
+    const rec2 = h2.registry.getOrCreate('proj-a');
+    rec2.preferredAgentId = 'codex';
+    rec2.activeSessionId = 'sess-y';
+    h2.uc.execute('proj-a', 'dos', [], makeHandlers());
+    expect(h2.runner.last().req.def.id).toBe('codex');
+  });
+
+  it('an additional pane runs its OWN session agent while the primary keeps the project agent', () => {
+    const pi = makeDef({ id: 'pi', name: 'Pi' });
+    const h = build({}, {
+      otherDefs: [codex(), pi],
+      sessionAgentId: (_p, sessionId) => (sessionId === '22222222-2222-4222-8222-222222222222' ? 'pi' : null),
+    });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.uc.execute('proj-a', 'primary', [], makeHandlers());
+    h.uc.execute('proj-a', 'pane', [], makeHandlers(), 'apply', [], 'renderer', false,
+      '22222222-2222-4222-8222-222222222222', '22222222-2222-4222-8222-222222222222');
+    expect(h.runner.captured.map((c) => c.req.def.id)).toEqual(['codex', 'pi']);
   });
 });

@@ -71,3 +71,18 @@ export function resolveCurrentAgent(
   if (!fallback) throw new Error('cli-adapters registry is empty');
   return fallback;
 }
+
+/**
+ * Def for an already-resolved effective agent id (S-53). Same hard fallback as
+ * `resolveCurrentAgent` when the id is unknown or not a CLI provider, so a run
+ * can never end up with a non-executable def.
+ */
+export function resolveAgentDefById(
+  registry: CliAdapterRegistry,
+  config: ConfigRepository,
+  agentId: string,
+): RuntimeAgentDef {
+  const def = registry.get(agentId);
+  if (def && (def.providerType ?? 'cli') === 'cli') return def;
+  return resolveCurrentAgent(registry, config);
+}

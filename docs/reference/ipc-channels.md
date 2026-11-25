@@ -8,7 +8,7 @@ Generated from `src/shared/contracts/ipc-channels.ts` (`IPC` const, 196 channels
 | Prefix | Channels (constant → name) |
 | --- | --- |
 | `agent` | `agent:select`, `agent:setModel`, `agent:setEnv`, `agent:test`, `agent:changed` |
-| `agents` | `agents:list` |
+| `agents` | `agents:list`, `agents:set-context-agent`, `agents:effective`, `agents:effective-changed` |
 | `app` | `app:version` |
 | `audit` | `audit:read` |
 | `autoresume` | `autoresume:cancel` |

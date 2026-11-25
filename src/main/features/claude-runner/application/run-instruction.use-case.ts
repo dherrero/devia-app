@@ -14,7 +14,8 @@ import type { StarterKitsPort } from '../../../shared/ports';
 import type { AttachmentPayload, OutboxFile, SavedAttachment } from '../../../../shared/domain/attachment';
 import type { CliAdapterRegistry } from '../../cli-adapters';
 import type { AgentRunner } from '../infrastructure/cli-runner-adapter';
-import { resolveCurrentAgent } from '../infrastructure/cli-runner-adapter';
+import { resolveAgentDefById, resolveCurrentAgent } from '../infrastructure/cli-runner-adapter';
+import type { EffectiveAgentResolver } from '../../../shared/effective-agent-resolver';
 import { buildSystemPrompt } from '../infrastructure/system-prompt';
 import { buildMemoryProtocolHint } from '../infrastructure/memory-protocol';
 import { buildRemoteProtocolHint } from '../infrastructure/remote-protocol';
@@ -202,6 +203,11 @@ export class RunInstructionUseCase {
     registry: ProcessTrackingRegistry;
     runner: AgentRunner;
     agents: CliAdapterRegistry;
+    /**
+     * S-53: which agent this project/session runs with (session > project >
+     * global). Absent in legacy callers/tests → the global `config.agentId`.
+     */
+    effectiveAgent?: EffectiveAgentResolver;
     /**
      * Agent id → mapper (S-30 contract B). Everything that depends on WHICH
      * agent runs — MCP delivery, argv, system-prompt channel, stream decoding,
@@ -531,7 +537,13 @@ export class RunInstructionUseCase {
       }
     }
 
-    let def = resolveCurrentAgent(this.deps.agents, this.deps.config);
+    // S-53: the effective agent is resolved against the BASE project (never the
+    // pane runKey) so every entry point — UI, Telegram, queue, auto-continue —
+    // lands on the same agent the footer shows.
+    const effective = this.deps.effectiveAgent?.forRun(projectName, record.activeSessionId ?? undefined);
+    let def = effective
+      ? resolveAgentDefById(this.deps.agents, this.deps.config, effective.agentId)
+      : resolveCurrentAgent(this.deps.agents, this.deps.config);
     if (agentIdOverride !== undefined && agentIdOverride !== def.id) {
       const overrideDef = this.deps.agents.get(agentIdOverride);
       if (!overrideDef || (overrideDef.providerType ?? 'cli') !== 'cli') {

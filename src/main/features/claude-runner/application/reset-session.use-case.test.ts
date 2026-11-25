@@ -10,6 +10,7 @@ function fakeRecord(name: string): ProjectRecord {
     activeSessionId: 'old-session',
     agentSessionId: 'old-agent-session',
     agentSessionAgentId: 'claude',
+    preferredAgentId: null,
   };
 }
 

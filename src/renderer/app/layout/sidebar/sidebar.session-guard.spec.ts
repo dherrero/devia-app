@@ -33,6 +33,8 @@ describe('SidebarComponent — session switch/delete guards (S-2 F0.3)', () => {
     focusedSessionKey: ReturnType<typeof signal<string | null>>;
     running: Set<string>;
     config: ReturnType<typeof signal<{ agentId: string }>>;
+    /** S-53: effective agent of the focused pane. */
+    effectiveAgentId: ReturnType<typeof signal<string>>;
     splitActive: ReturnType<typeof signal<boolean>>;
     isSessionMounted: ReturnType<typeof vi.fn>;
     isSessionFocused: ReturnType<typeof vi.fn>;
@@ -55,6 +57,7 @@ describe('SidebarComponent — session switch/delete guards (S-2 F0.3)', () => {
       focusedSessionKey,
       running,
       config: signal({ agentId: 'claude' }),
+      effectiveAgentId: signal('claude'),
       splitActive: signal(false),
       isSessionMounted: vi.fn(() => false),
       isSessionFocused: vi.fn(() => false),
@@ -208,6 +211,12 @@ describe('SidebarComponent — session switch/delete guards (S-2 F0.3)', () => {
       const claudeSession = makeSession({ agentId: 'claude' });
       expect(component.agentBadge(claudeSession)).toBe('Claude Code');
       expect(component.agentMismatch(claudeSession)).toBe(false);
+    });
+
+    it("compares against the project's effective agent, not the global one (S-53)", () => {
+      state.effectiveAgentId.set('codex'); // global stays 'claude'
+      expect(component.agentMismatch(makeSession({ agentId: 'codex' }))).toBe(false);
+      expect(component.agentMismatch(makeSession({ agentId: 'claude' }))).toBe(true);
     });
 
     it('renders no badge for sessions without identity', () => {

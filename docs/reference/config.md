@@ -9,7 +9,7 @@ File: `~/.devia-app/devia-app.config.json`, type `DeviaConfig` in `src/shared/do
 | --- | --- | --- |
 | `workspaceRoot` | `string`, `''` | root folder holding all projects (empty until the first-run modal) |
 | `ignoreFolders` | `string[]`, `[]` | folders hidden from project listing |
-| `agentId` | `string`, `'claude'` | active CLI agent; validated at startup and on `agent:select`, falls back to `claude` |
+| `agentId` | `string`, `'claude'` | global default CLI agent (projects and sessions may override it, see [cli-adapters](../features/cli-adapters.md)); validated at startup and on `agent:select`, falls back to `claude` |
 | `agentModels` | `Record<agentId, {model?, reasoning?}>`, `{}` | per-agent model and effort |
 | `agentCliEnv` | `Record<agentId, Record<string,string>>`, `{}` | per-agent env overrides; only keys in the def's `envOverrideKeys` reach the child; UI masks values |
 | `agentToolPolicy` | `Record<agentId, {disallow?, allow?}>`, `{}` | per-agent tool restrictions layered on the def's defaults (denylist wins) |

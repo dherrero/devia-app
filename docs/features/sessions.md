@@ -11,7 +11,7 @@ Persists each project's chat history on disk, with a native-agent identity per s
 
 - `FsSessionStore` (`src/main/features/sessions/infrastructure/fs-session-store.ts`) writes `~/.devia-app/sessions/<project>/session-<uuid>.json`; a per-project session index lives under `~/.devia-app/projects/<key>/`.
 - Every read/write goes through `parsePersistedSession()` (`src/shared/domain/session.ts`), which tolerates missing optional fields.
-- `PersistedSession` carries: messages, `agentId` + `agentSessionId` (native conversation id, stamped by `SaveChatUseCase` from the transcript with `extractSessionIdentity()`), `runMode`, `stats`, `workdir` + `worktreeBranch` (isolated panes), title.
+- `PersistedSession` carries: messages, `agentId` + `agentSessionId` (native conversation id, stamped by `SaveChatUseCase` from the transcript with `extractSessionIdentity()`), `runMode`, `stats`, `workdir` + `worktreeBranch` (isolated panes), title, and `preferredAgentId` (S-53: the agent chosen for this session; distinct from `agentId`, the last agent that produced it). Both save paths keep it: `SaveChatUseCase` never erases a stored value, and writes a choice made before the session existed.
 - Use cases: `LoadChatsUseCase`, `SaveChatUseCase` (`chats:save`, and `chats:save-as` for a split pane under its own `sessionId`), `ListSessionsUseCase`, `SwitchSessionUseCase`, `AdoptSessionUseCase` (`session:adopt`, loads a session under an additional pane's identity), `DeleteSessionUseCase`, `LoadActiveStatsUseCase`, `AggregateStatsUseCase`.
 - Busy guards in main (authoritative, also for Telegram/queue races): `SwitchSession`/`AdoptSession` throw `SESSION_BUSY` (a run is active) and `SESSION_QUEUE_PENDING` (parked items would dispatch into the new session); `DeleteSession` throws `SESSION_BUSY` only for the ACTIVE session. Codes are untranslated; the renderer maps them to i18n toasts.
 - Deleting a session that carries `worktreeBranch` also tears down its worktree and branch (best effort, after the history delete).
@@ -41,7 +41,7 @@ Persists each project's chat history on disk, with a native-agent identity per s
 
 ## Persistence
 
-`~/.devia-app/sessions/<project>/session-<uuid>.json`; `~/.devia-app/projects/<key>/` index.
+`~/.devia-app/sessions/<project>/session-<uuid>.json`; `~/.devia-app/projects/<key>/` index. `preferredAgentId` is an optional string inside the session file.
 
 ## Config
 

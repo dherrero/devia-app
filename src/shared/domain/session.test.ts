@@ -129,3 +129,16 @@ describe('parsePersistedSession — runMode', () => {
     expect('runMode' in (parsePersistedSession({ ...BASE }) as object)).toBe(false);
   });
 });
+
+describe('parsePersistedSession — preferredAgentId (S-53)', () => {
+  const base = { id: 's', project: 'p', createdAt: 1, updatedAt: 2, messages: [] };
+  it('keeps a string agent', () => {
+    expect(parsePersistedSession({ ...base, preferredAgentId: 'codex' })?.preferredAgentId).toBe('codex');
+  });
+  it.each([[''], [42], [{}]])('drops a malformed value (%j)', (bad) => {
+    expect(parsePersistedSession({ ...base, preferredAgentId: bad })).not.toHaveProperty('preferredAgentId');
+  });
+  it('loads a session from before the field existed', () => {
+    expect(parsePersistedSession(base)).not.toHaveProperty('preferredAgentId');
+  });
+});

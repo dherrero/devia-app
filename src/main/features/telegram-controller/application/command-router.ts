@@ -72,8 +72,8 @@ export interface RemoteCommandPorts {
    *  Absent → attachments disabled (the feature stays decoupled). */
   saveAttachment?(payload: AttachmentPayload): string;
   isRunning(project: string): boolean;
-  /** Short label of the active agent/model, for `/status`. */
-  agentLabel(): string;
+  /** Short label of the agent/model that runs in `project` (S-53), or the default agent when none. */
+  agentLabel(project?: string): string;
   /** Git branch + working-tree state of a project (relative path), for
    *  `/status`. Absent → git line omitted; `null` → not a git repo. Keeps the
    *  feature decoupled from the git inspector. */
@@ -657,7 +657,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
 
       case '/status': {
         const project = deps.activeProject.get();
-        const agent = deps.ports.agentLabel();
+        const agent = deps.ports.agentLabel(project ?? undefined);
         if (!project) {
           await msg.reply(`Sin proyecto activo.\nAgente: ${agent}`);
           return;
@@ -750,7 +750,8 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
       }
 
       case '/agent': {
-        await msg.reply(`Agente activo: *${deps.ports.agentLabel()}*\nCámbialo desde la app (Ajustes › Agente).`);
+        const project = deps.activeProject.get() ?? undefined;
+        await msg.reply(`Agente activo: *${deps.ports.agentLabel(project)}*\nCámbialo desde el pie de la app (agente del proyecto) o en Ajustes (predeterminado).`);
         return;
       }
 

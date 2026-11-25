@@ -27,6 +27,8 @@ export interface SessionsDeps {
   queue?: QueueInspector;
   /** S-2 F2.3: background handoff-summary precompute on switch/adopt. */
   prepareHandoff?: (identity: string, sessionId: string, messages: unknown[], ownerAgentId: string | null) => void;
+  /** S-53: lets a session agent chosen before the session existed land in its first save. */
+  sessionAgents?: { resolveForSave(projectPath: string, sessionId: string, existing: string | undefined): string | undefined };
   /** S-3 F2.2: worktree validation + recreation for the adopt recovery chain. */
   worktrees?: {
     isLive: (workdir: string) => boolean;
@@ -40,7 +42,10 @@ export function buildSessionsFeature(deps: SessionsDeps): Feature {
   const loadChats       = new LoadChatsUseCase({ registry: deps.registry, sessions: deps.sessions });
   const loadActiveStats = new LoadActiveStatsUseCase({ registry: deps.registry, sessions: deps.sessions });
   const aggregateStats  = new AggregateStatsUseCase({ sessions: deps.sessions });
-  const saveChat        = new SaveChatUseCase({ registry: deps.registry, sessions: deps.sessions, state: deps.state });
+  const saveChat        = new SaveChatUseCase({
+    registry: deps.registry, sessions: deps.sessions, state: deps.state,
+    ...(deps.sessionAgents !== undefined && { sessionAgents: deps.sessionAgents }),
+  });
   const listSessions    = new ListSessionsUseCase({ registry: deps.registry, sessions: deps.sessions });
   const switchSession   = new SwitchSessionUseCase({
     registry: deps.registry,

@@ -38,6 +38,8 @@ export interface ClaudeRunnerDeps {
   registry: ProcessTrackingRegistry;
   /** Catalog of CLI adapters the runner can drive. */
   agents: CliAdapterRegistry;
+  /** S-53: which agent each project/session runs with (session > project > global). */
+  effectiveAgent?: import('../../shared/effective-agent-resolver').EffectiveAgentResolver;
   /** Process launcher provided by the cli-adapters feature. */
   launcher: CliLauncher;
   /** Agent id → mapper (S-30), shared with cli-adapters for capability views. */
@@ -191,6 +193,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     registry: deps.registry,
     runner,
     agents: deps.agents,
+    ...(deps.effectiveAgent !== undefined && { effectiveAgent: deps.effectiveAgent }),
     attachments: deps.attachments,
     outbox: deps.outbox,
     tech: deps.tech,
@@ -240,6 +243,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
         queue: deps.queue,
         registry: deps.registry,
         config: deps.config,
+        ...(deps.effectiveAgent !== undefined && { effectiveAgent: deps.effectiveAgent }),
         auditLog,
         ...(deps.gitInspector !== undefined && { gitInspector: deps.gitInspector }),
         ...(deps.runGateway !== undefined && { runGateway: deps.runGateway }),

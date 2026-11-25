@@ -3,6 +3,7 @@ import type { DiffFile, GitInfo } from '../domain/git';
 import type { OutboxFile } from '../domain/attachment';
 import type { ComposeAction } from '../domain/compose';
 import type { AgentChangedEvent, DetectedAgentView, RunId } from '../domain/agent';
+import type { EffectiveAgentChangedEvent } from '../domain/effective-agent';
 import type { QueueChangedEvent, QueueDispatchedEvent } from '../domain/queue';
 import type { CancelReason, ErrorClassification } from '../domain/agent-event';
 import type { FailoverReason } from '../domain/cli-errors';
@@ -293,6 +294,7 @@ export interface RendererEvents {
   'config:changed': DeviaConfigView;
   'notification:click': NotificationClickEvent;
   'agent:changed': AgentChangedEvent;
+  'agents:effective-changed': EffectiveAgentChangedEvent;
   'queue:changed': QueueChangedEvent;
   'queue:dispatched': QueueDispatchedEvent;
   'terminal:data': TerminalDataEvent;
