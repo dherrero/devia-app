@@ -49,10 +49,13 @@ export class WorkerLimitError extends Error {
 
 export const DISPATCH_CIRCUIT_BREAK_FAILURES = 3;
 
+/** A fixed number, or a getter so a limit changed in Settings applies without a restart. */
+type Limit = number | (() => number);
+
 export interface WorkerRegistryOptions {
   /** Workers running at once across the WHOLE app, not per parent. */
-  maxConcurrent: number;
-  maxPerTurn: number;
+  maxConcurrent: Limit;
+  maxPerTurn: Limit;
   onChange(run: WorkerRun): void;
 }
 
@@ -84,6 +87,7 @@ export function createWorkerRegistry(options: WorkerRegistryOptions): WorkerRegi
   const failures = new Map<string, number>();
   let running = 0;
   let sequence = 0;
+  const limit = (value: Limit): number => (typeof value === 'function' ? value() : value);
 
   const emit = (run: WorkerRun): void => {
     try {
@@ -110,7 +114,7 @@ export function createWorkerRegistry(options: WorkerRegistryOptions): WorkerRegi
   });
 
   const pump = (): void => {
-    while (running < options.maxConcurrent && queue.length > 0) {
+    while (running < limit(options.maxConcurrent) && queue.length > 0) {
       const entry = queue.shift() as Entry;
       running += 1;
       entry.run.state = 'running';
@@ -148,9 +152,10 @@ export function createWorkerRegistry(options: WorkerRegistryOptions): WorkerRegi
     acquire(parentKey, spec) {
       const turnKey = `${parentKey}|${spec.turnId}`;
       const used = turnCounts.get(turnKey) ?? 0;
-      if (used >= options.maxPerTurn) {
+      const perTurn = limit(options.maxPerTurn);
+      if (used >= perTurn) {
         return Promise.reject(
-          new WorkerLimitError('per_turn_limit', `At most ${options.maxPerTurn} workers per turn; this one was not started.`),
+          new WorkerLimitError('per_turn_limit', `At most ${perTurn} workers per turn; this one was not started.`),
         );
       }
       turnCounts.set(turnKey, used + 1);

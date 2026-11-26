@@ -28,7 +28,7 @@ export type WorkerAgentResolution =
   | { ok: false; agentId: string; reason: WorkerAgentFailure; message: string };
 
 /** An unknown auth state counts as usable: it cannot be proven missing. */
-function isUsable(a: DetectedAgentLike): boolean {
+export function isUsableAgent(a: DetectedAgentLike): boolean {
   return a.available && (a.providerType ?? 'cli') === 'cli' && a.authStatus !== 'missing';
 }
 
@@ -66,5 +66,5 @@ export async function resolveWorkerAgent(
 
 /** Agents that can take a worker right now, in detector order (the picker's options). */
 export async function listAvailableAgents(deps: Pick<WorkerAgentDeps, 'detector'>): Promise<string[]> {
-  return (await deps.detector.detectAll()).filter(isUsable).map((a) => a.id);
+  return (await deps.detector.detectAll()).filter(isUsableAgent).map((a) => a.id);
 }

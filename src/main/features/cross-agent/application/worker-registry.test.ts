@@ -198,3 +198,23 @@ describe('run key reuse (fix rounds)', () => {
     expect(again.run.id).not.toBe(first.run.id);
   });
 });
+
+describe('live limits (config can change at runtime)', () => {
+  it('reads maxConcurrent and maxPerTurn on every decision', async () => {
+    let max = 1;
+    const registry = createWorkerRegistry({
+      maxConcurrent: () => max,
+      maxPerTurn: () => 20,
+      onChange: () => undefined,
+    });
+    await registry.acquire('p', spec('T-1'));
+    void registry.acquire('p', spec('T-2'));
+    await flush();
+    expect(registry.list('p').map((r) => r.state)).toEqual(['running', 'queued']);
+
+    max = 2; // the user raised the limit in Settings: the queue moves on the next release/acquire
+    void registry.acquire('p', spec('T-3'));
+    await flush();
+    expect(registry.list('p').filter((r) => r.state === 'running')).toHaveLength(2);
+  });
+});
