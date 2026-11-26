@@ -280,4 +280,78 @@ describe('RunInteraction — devia_assign_agents', () => {
     await tick();
     expect(answerOf('c1')).toContain('detector down');
   });
+
+  describe('on a remote (Telegram) run', () => {
+    const onRemoteAssign = vi.fn();
+    const remote = (assign: NonNullable<RunInteractionContext['assignAgents']>, over: Partial<RunInteractionContext> = {}): RunInteraction =>
+      build(assign, { isRemote: true, handlers: { onRemoteAssign, onUiToolRequest }, timeoutMs: 1_000, ...over });
+
+    beforeEach(() => onRemoteAssign.mockClear());
+
+    it('asks through the remote channel, never the desktop card, and waits for the reply', async () => {
+      const assign = {
+        prepare: vi.fn(async () => ({ kind: 'ask' as const, question, mainAgentId: 'claude' })),
+        finish: vi.fn(async () => 'The user chose: implementer → pi (saved for this project).'),
+      };
+      interaction = remote(assign);
+      interaction.attach(handle);
+      interaction.start();
+      request('c1');
+      await tick();
+
+      expect(onRemoteAssign).toHaveBeenCalledWith('c1', { question, mainAgentId: 'claude' }, 'run-1');
+      expect(onUiToolRequest).not.toHaveBeenCalled();
+
+      interaction.answer('c1', '1. b\n2. a');
+      await tick();
+      expect(assign.finish).toHaveBeenCalledWith(question, '1. b\n2. a');
+      expect(answerOf('c1')).toContain('saved for this project');
+    });
+
+    it('never kills the run for an unanswered question: a phone user may take long', async () => {
+      const assign = { prepare: vi.fn(async () => ({ kind: 'ask' as const, question, mainAgentId: 'claude' })), finish: vi.fn() };
+      interaction = remote(assign);
+      interaction.attach(handle);
+      interaction.start();
+      request('c1');
+      await tick(60_000);
+      expect(handle.kill).not.toHaveBeenCalled();
+    });
+
+    it('still saves a late reply that arrives after the agent moved on', async () => {
+      const assign = {
+        prepare: vi.fn(async () => ({ kind: 'ask' as const, question, mainAgentId: 'claude' })),
+        finish: vi.fn(async () => 'saved'),
+      };
+      interaction = remote(assign);
+      interaction.attach(handle);
+      interaction.start();
+      request('c1');
+      await tick(60_000);
+      interaction.answer('c1', '1. b\n2. a');
+      await tick();
+      expect(assign.finish).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers a cached result directly, with nothing sent to the chat', async () => {
+      const assign = { prepare: vi.fn(async () => ({ kind: 'cached' as const, text: 'Saved for this project: implementer → pi.' })), finish: vi.fn() };
+      interaction = remote(assign);
+      interaction.attach(handle);
+      interaction.start();
+      request('c1');
+      await tick();
+      expect(onRemoteAssign).not.toHaveBeenCalled();
+      expect(answerOf('c1')).toContain('Saved for this project');
+    });
+
+    it('tells the agent to carry on when the relay has no way to ask', async () => {
+      const assign = { prepare: vi.fn(async () => ({ kind: 'ask' as const, question, mainAgentId: 'claude' })), finish: vi.fn() };
+      interaction = remote(assign, { handlers: { onUiToolRequest } });
+      interaction.attach(handle);
+      interaction.start();
+      request('c1');
+      await tick();
+      expect(answerOf('c1')).toMatch(/cannot be asked/i);
+    });
+  });
 });

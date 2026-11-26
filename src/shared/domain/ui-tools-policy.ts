@@ -50,7 +50,7 @@ const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
  * a remote turn then carries three or four schemas in its cached prefix
  * instead of seven.
  */
-const REMOTE_ALLOWED: readonly UiToolName[] = ['todo', 'notify', 'skill', 'send_file', 'spawn_agent'];
+const REMOTE_ALLOWED: readonly UiToolName[] = ['todo', 'notify', 'skill', 'send_file', 'spawn_agent', 'assign_agents'];
 
 /**
  * A cross-agent worker (S-56) has nobody at the keyboard: nobody will click a

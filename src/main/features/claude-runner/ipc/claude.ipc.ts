@@ -258,6 +258,17 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       ctx.send('claude:output', { project: identity, runId, line });
       deps.runGateway?.publish({ type: 'output', project: identity, runId, line });
     },
+    onRemoteAssign: (callId, ask, runId) => {
+      // S-56 T12: the relay (Telegram) asks this as text and answers via `answerTool`.
+      deps.runGateway?.publish({
+        type: 'ask',
+        project: identity,
+        runId,
+        callId,
+        question: ask.question,
+        mainAgentId: ask.mainAgentId,
+      });
+    },
     onRateLimited: ({ agentId, resetsAt }) => {
       if (!extras?.resume || resetsAt === undefined) return;
       if (deps.config.get().autoContinueSessions?.[agentId] !== true) return;
@@ -511,6 +522,11 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
     );
   });
   deps.runGateway?.bindStop((project) => deps.stopProject.execute(project));
+  // S-56 T12: the relay answers a blocked tool call (the assignment question).
+  deps.runGateway?.bindToolResult((project, callId, answer) => {
+    const safe = String(answer ?? '').slice(0, 10_000).replace(/\0/g, '');
+    deps.registry.writeToolResult(project, callId, safe);
+  });
   // Reset the session AND drop its pending queue: a reset starts the
   // conversation from scratch, so any instruction still parked for this
   // session belongs to the old one (e.g. a Telegram `/clean` while a queued

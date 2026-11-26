@@ -5,6 +5,7 @@ import {
   isRoleSplit,
   isWorkerRunKey,
   parseWorkerRunKey,
+  readAssignChoices,
   workerRunKey,
   buildAssignQuestion,
   parseAssignReply,
@@ -181,5 +182,21 @@ describe('Telegram text of the assignment question (S-56 T12)', () => {
     expect(text).not.toContain('Tareas de desarrollo');
     expect(text).toContain('2 Tareas de revisión: a) Agente principal (claude), b) pi, c) opencode');
     expect(text).toMatch(/No entendí/);
+  });
+});
+
+describe('readAssignChoices (S-56 T12: answer a question in several messages)', () => {
+  const q = buildAssignQuestion(['implementer', 'reviewer'], ['claude', 'pi', 'opencode'], 'claude');
+
+  it('returns the valid lines by role index and skips the rest', () => {
+    expect(readAssignChoices('1. b\n2. z', q)).toEqual({ 0: 'b' });
+    expect(readAssignChoices('2. c', q)).toEqual({ 1: 'c' });
+    expect(readAssignChoices('hola', q)).toEqual({});
+  });
+
+  it('lets a second message complete the first', () => {
+    const merged = { ...readAssignChoices('1. b', q), ...readAssignChoices('2. c', q) };
+    const text = Object.entries(merged).map(([i, k]) => `${Number(i) + 1}. ${k}`).join('\n');
+    expect(parseAssignReply(text, q)).toEqual({ ok: true, map: { implementer: 'pi', reviewer: 'opencode' } });
   });
 });

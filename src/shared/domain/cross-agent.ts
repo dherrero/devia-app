@@ -109,21 +109,33 @@ export type AssignReplyResult = { ok: true; map: RoleAgentMap } | { ok: false; r
 const REPLY_TOKEN_RE = /(\d+)\s*[.)]?\s*([a-z])\b/gi;
 
 /**
+ * The valid lines of a reply, by role index → option key. Invalid or out of
+ * range lines are skipped, so a user can answer in several messages and the
+ * caller merges what each one got right.
+ */
+export function readAssignChoices(text: string, question: AssignQuestion): Record<number, string> {
+  const chosen: Record<number, string> = {};
+  for (const m of (text ?? '').matchAll(REPLY_TOKEN_RE)) {
+    const index = Number(m[1]) - 1;
+    const key = (m[2] as string).toLowerCase();
+    if (index < 0 || index >= question.roles.length) continue;
+    if (!question.options.some((o) => o.key === key)) continue;
+    chosen[index] = key;
+  }
+  return chosen;
+}
+
+/**
  * Parse `1. b  2. c` (also `1b 2c`, `1) B`). Deterministic, no LLM. Returns no
  * partial map: when any role is missing or invalid, only those roles come back
  * in `retryRoles`.
  */
 export function parseAssignReply(text: string, question: AssignQuestion): AssignReplyResult {
-  const chosen = new Map<number, string>();
-  for (const m of (text ?? '').matchAll(REPLY_TOKEN_RE)) {
-    const index = Number(m[1]) - 1;
-    if (index < 0 || index >= question.roles.length) continue;
-    chosen.set(index, (m[2] as string).toLowerCase());
-  }
+  const chosen = readAssignChoices(text, question);
   const map: RoleAgentMap = {};
   const retryRoles: WorkerRole[] = [];
   question.roles.forEach((role, index) => {
-    const key = chosen.get(index);
+    const key = chosen[index];
     const option = key === undefined ? undefined : question.options.find((o) => o.key === key);
     if (!option) {
       retryRoles.push(role);

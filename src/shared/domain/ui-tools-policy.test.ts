@@ -45,9 +45,14 @@ describe('resolveAdvertisedUiTools — assign_agents (S-56 T9)', () => {
     expect(resolveAdvertisedUiTools({ ...on, mode: 'apply-yolo' })).not.toContain('assign_agents');
   });
 
-  it('is never offered to a worker, and (until the Telegram flow lands) not to a remote run', () => {
+  it('is never offered to a worker', () => {
     expect(resolveAdvertisedUiTools({ ...on, isWorker: true })).not.toContain('assign_agents');
-    expect(resolveAdvertisedUiTools({ ...on, isRemote: true })).not.toContain('assign_agents');
+  });
+
+  it('survives on a remote run: the relay asks it as text (S-56 T12)', () => {
+    expect(resolveAdvertisedUiTools({ ...on, isRemote: true })).toContain('assign_agents');
+    // …but the interactive tools stay withheld there.
+    expect(resolveAdvertisedUiTools({ ...on, isRemote: true })).not.toContain('ask_user');
   });
 
   it('does not change the rest of the plan set', () => {

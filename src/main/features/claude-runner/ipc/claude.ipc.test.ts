@@ -50,6 +50,7 @@ function setup(
   gateway.subscribe((e) => events.push(e));
 
   const dispatchNext = vi.fn();
+  const writeToolResult = vi.fn();
   const configChanges = new ConfigChangeBus();
   const deps = {
     runInstruction: {
@@ -68,7 +69,7 @@ function setup(
       dispatchNext,
       clear: vi.fn(),
     },
-    registry: {},
+    registry: { writeToolResult },
     config: { get: () => ({ agentId: opts.globalAgentId ?? 'claude', autoContinueSessions: autoContinue }) },
     ...(opts.effective && {
       effectiveAgent: {
@@ -90,7 +91,7 @@ function setup(
     return captured[captured.length - 1]!;
   };
   const fileEvents = () => events.filter((e) => e.type === 'file');
-  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges, captured, gateway, executeCalls };
+  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges, captured, gateway, executeCalls, writeToolResult };
 }
 
 describe('claude.ipc — auto-continue after the usage limit', () => {
@@ -342,6 +343,36 @@ describe('claude.ipc — gateway submit with its own run identity (S-56)', () =>
     t.gateway.submit('proj-a', 'hello', { mode: 'apply', origin: 'remote' });
     const call = t.executeCalls[0] as unknown[];
     expect(call.slice(7, 11)).toEqual([false, undefined, undefined, undefined]);
+    t.ipc.dispose();
+  });
+});
+
+describe('claude.ipc — remote assignment question (S-56 T12)', () => {
+  const QUESTION = {
+    roles: ['implementer'] as Array<'implementer'>,
+    options: [{ key: 'a', agentId: 'main' }, { key: 'b', agentId: 'pi' }],
+  };
+
+  it('publishes the question on the gateway under the run identity, for the relay to ask as text', () => {
+    const t = setup();
+    const handlers = t.start('proj-a');
+    handlers.onRemoteAssign?.('call-1', { question: QUESTION, mainAgentId: 'claude' }, RUN_ID);
+    expect(t.events).toContainEqual({
+      type: 'ask',
+      project: 'proj-a',
+      runId: RUN_ID,
+      callId: 'call-1',
+      question: QUESTION,
+      mainAgentId: 'claude',
+    });
+    t.ipc.dispose();
+  });
+
+  it('routes the relay\'s answer to the blocked tool call, sanitised', () => {
+    const t = setup();
+    t.start('proj-a');
+    expect(t.gateway.answerTool('proj-a', 'call-1', '1. b\0')).toBe(true);
+    expect(t.writeToolResult).toHaveBeenCalledWith('proj-a', 'call-1', '1. b');
     t.ipc.dispose();
   });
 });

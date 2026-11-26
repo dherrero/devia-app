@@ -181,6 +181,16 @@ export interface RunInstructionHandlers {
     expectsAnswer: boolean,
   ): void;
   /**
+   * S-56 T12: a REMOTE run's `devia_assign_agents` needs the user to choose,
+   * but there is no card to click: the relay asks the question as text and
+   * answers back through the gateway.
+   */
+  onRemoteAssign?(
+    callId: string,
+    ask: { question: AssignQuestion; mainAgentId: string },
+    runId: RunId,
+  ): void;
+  /**
    * Called when Claude emits a `tool_result` for a file-editing tool
    * (Edit, Write, MultiEdit). Used by the IPC layer to trigger a non-blocking
    * git diff snapshot. Optional — callers that do not support TS-CLI-10 omit it.

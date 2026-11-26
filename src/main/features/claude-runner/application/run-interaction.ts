@@ -77,7 +77,10 @@ export interface RunInteractionContext {
     >;
     finish(question: AssignQuestion, answerText: string): Promise<string>;
   };
-  readonly handlers: Pick<RunInstructionHandlers, 'onQuestionAsk' | 'onUiToolRequest' | 'onRunFileRejected'>;
+  readonly handlers: Pick<
+    RunInstructionHandlers,
+    'onQuestionAsk' | 'onUiToolRequest' | 'onRunFileRejected' | 'onRemoteAssign'
+  >;
   readonly auditLog?: AgentAuditLog;
   readonly isConfirmationGranted?: (projectAbs: string, action: string) => boolean;
   readonly grantConfirmation?: (projectAbs: string, action: string, agentId: string) => void;
@@ -205,7 +208,20 @@ export class RunInteraction {
           writeUiAnswer(this.ctx.uiDir, callId, prepared.text);
           return;
         }
-        const ask = this.ctx.handlers.onUiToolRequest;
+        // A remote (Telegram) user cannot click a card: the relay asks it as text. No
+        // kill timer — a phone user may take long, the MCP side bounds the agent's wait,
+        // and a late reply still saves the choice while the run lives.
+        if (this.ctx.isRemote && this.ctx.handlers.onRemoteAssign) {
+          this.pendingAssign.set(callId, prepared.question);
+          this.pendingUiCalls.set(callId, 'assign_agents');
+          this.ctx.handlers.onRemoteAssign(
+            callId,
+            { question: prepared.question, mainAgentId: prepared.mainAgentId },
+            this.ctx.runId,
+          );
+          return;
+        }
+        const ask = this.ctx.isRemote ? undefined : this.ctx.handlers.onUiToolRequest;
         if (!ask) {
           writeUiAnswer(this.ctx.uiDir, callId, 'The user cannot be asked here. Continue the plan without splitting roles: every role stays with the main agent.');
           return;
