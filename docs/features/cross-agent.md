@@ -1,6 +1,6 @@
 # Cross-agent workers
 
-Status: partial
+Status: implemented
 Verified: 1ea6c92f5d3745338288023fc88cc0e6f265ea2d
 
 ## Purpose
@@ -76,6 +76,20 @@ MCP tools `devia_spawn_agent` and `devia_assign_agents` of the `devia-ui` server
 - The runner's own worktree ensure uses `worktreeBaseRef` (default branch) and silently falls back to the base checkout, so the worker's worktree is created explicitly first.
 - The idle watchdog of the launcher (5 minutes without stdout/stderr) would kill a controller that waits on a worker, hence `keepAlive`; a controller that is not waiting through this tool is still subject to it.
 - A role absent from `roleAgents` has never been asked about; `main` means it was asked and kept with the main (effective) agent. Both resolve to the effective agent, but only `main` stops the question from being asked again (`isRoleSplit` is false for both).
+
+## Known limits
+
+- A worker inherits the controller's mode and cannot raise it. In `apply`, Claude runs with `acceptEdits` and cannot execute Bash headless (see `docs/features/run-modes.md`), so a Claude worker in `apply` can edit but probably not commit or run tests: use `apply-yolo` for the controller when a Claude worker must do that. Other agents differ; check [run-modes.md](run-modes.md).
+- The implementer record (worktree, session, base commit) is per project + task and lives in memory: two controller panes of one project working on the same task id would share it, and a restart forgets it (the startup sweep of S-3 removes leftover worktree directories; the committed work stays on its `devia/session-*` branch).
+- Branches `devia/session-*` of workers that were never integrated are not deleted automatically.
+
+## Unverified
+
+- UNVERIFIED: a real worker end to end with real CLIs (for example Claude controller → pi implementer → opencode reviewer). Everything above is covered by unit tests with doubles and by a real git repository for the integration, but no run with real agents has been done.
+- UNVERIFIED: that a worker obeys `buildWorkerPrompt` when the Devia Method kit is on (the kit bootstrap tells agents to brainstorm first; the worker brief forbids it).
+- UNVERIFIED: fix rounds on `replay` agents (gemini, opencode): a worker run has no saved session, so the follow-up prompt only points at the task's latest comments.
+- UNVERIFIED: the Telegram flow on a real device and the desktop card on screen.
+- UNVERIFIED: the `A` bubble and the S-55 tool-group edits merge cleanly in `assistant-turn.component.html/.scss`.
 
 ## Tests
 

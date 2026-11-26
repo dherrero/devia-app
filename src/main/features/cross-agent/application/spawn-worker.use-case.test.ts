@@ -292,3 +292,24 @@ describe('SpawnWorkerUseCase — integration, reviewer and fix rounds (S-56 T7)'
     expect(t.integrate).not.toHaveBeenCalled();
   });
 });
+
+describe('SpawnWorkerUseCase — cancelled before it could register its cancel (S-56 final review)', () => {
+  it('does not launch a worker whose controller was cancelled right after it got its slot', async () => {
+    const t = setup();
+    const real = t.registry.acquire.bind(t.registry);
+    // The cancel lands in the gap between "slot granted" and the use case resuming.
+    t.registry.acquire = async (parentKey, spec) => {
+      const slot = await real(parentKey, spec);
+      t.registry.cancelParent(parentKey);
+      return slot;
+    };
+    const r = await t.uc.execute(t.req);
+
+    expect(t.submitted).toHaveLength(0);
+    expect(t.ensureWorktree).not.toHaveBeenCalled();
+    expect(r.report.status).toBe('BLOCKED');
+    expect(r.rendered).toMatch(/cancel/i);
+    // and the slot is free again
+    expect(t.registry.list('proj-a').every((w) => w.state !== 'running' && w.state !== 'queued')).toBe(true);
+  });
+});

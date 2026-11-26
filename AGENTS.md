@@ -84,7 +84,7 @@ One row per feature: a one-line summary and the page that holds the detail. **`d
 | `sub-agents` | Reusable sub-agent definitions synced to each CLI | [sub-agents](docs/features/sub-agents.md) |
 | `prompt-packs` | Prompt packs scanned from disk (no UI yet) | [prompt-packs](docs/features/prompt-packs.md) |
 | `starter-kits` | S-39: the Devia Method kit delivered to every agent | [starter-kits](docs/features/starter-kits.md) |
-| `cross-agent` | S-56: workers of other agents for the method loop (role→agent map per project, run completion, limits) | [cross-agent](docs/features/cross-agent.md) |
+| `cross-agent` | S-56: the Devia Method controller hands an implementer/reviewer job to another detected agent (`devia_assign_agents` in plan, `devia_spawn_agent` in apply): role→agent map per project, worker registry and limits, own worktree from the controller HEAD, `ff-only` integration, worker bubbles in the chat, Telegram flow. Off by default (`crossAgent.enabled`) | [cross-agent](docs/features/cross-agent.md) |
 | `status` | Process/state snapshot for the status modal | [status](docs/features/status.md) |
 | `docker-compose` | deploy / down / logs per project | [docker-compose](docs/features/docker-compose.md) |
 | `outbox` | Files emitted by the agent, archived and optionally relayed to the chat | [outbox](docs/features/outbox.md) |

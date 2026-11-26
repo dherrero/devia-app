@@ -140,6 +140,13 @@ export class SpawnWorkerUseCase {
     }
     const { run } = slot;
 
+    // The controller can be cancelled in the gap between the slot being granted and this line:
+    // nobody had registered a cancel yet, so the worker would start anyway.
+    if (run.state === 'cancelled') {
+      slot.release('cancelled');
+      return blocked('The worker was cancelled before it started.', agentId, run);
+    }
+
     // From here on the slot MUST be released, whatever happens.
     try {
       let work = existing;
