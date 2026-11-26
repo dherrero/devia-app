@@ -21,6 +21,15 @@ export interface RunSubmitOptions {
    *  `queue:dispatched` so the renderer shows the user bubble it didn't type. */
   origin?: RunOrigin;
   mode?: RunMode;
+  /** S-56: run under this identity instead of the project's own, so a worker's
+   *  events, queue and registry entry never mix with the controller's. */
+  runKey?: string;
+  /** S-56: session id the run is seeded with (it fixes the worktree path). */
+  sessionId?: string;
+  /** S-56: run inside the session's own worktree. */
+  isolate?: boolean;
+  /** S-56: run with this agent instead of the effective one. */
+  agentIdOverride?: string;
 }
 
 export type RunSubmitFn = (

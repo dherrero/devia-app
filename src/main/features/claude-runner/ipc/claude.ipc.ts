@@ -492,8 +492,24 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
 
   // E-DSK-14: let the Telegram controller submit / stop / reset through the
   // same use cases the renderer drives.
-  deps.runGateway?.bindSubmit((project, text, opts) =>
-    submitInstruction(project, text, [], opts?.mode ?? 'apply', opts?.origin ?? 'remote'));
+  deps.runGateway?.bindSubmit((project, text, opts) => {
+    // S-56: a cross-agent worker starts through here with its own identity.
+    const runOpts = {
+      ...(opts?.runKey !== undefined && { runKey: opts.runKey }),
+      ...(opts?.isolate !== undefined && { isolate: opts.isolate }),
+      ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
+      ...(opts?.agentIdOverride !== undefined && { agentIdOverride: opts.agentIdOverride }),
+    };
+    return submitInstruction(
+      project,
+      text,
+      [],
+      opts?.mode ?? 'apply',
+      opts?.origin ?? 'remote',
+      undefined,
+      Object.keys(runOpts).length > 0 ? runOpts : undefined,
+    );
+  });
   deps.runGateway?.bindStop((project) => deps.stopProject.execute(project));
   // Reset the session AND drop its pending queue: a reset starts the
   // conversation from scratch, so any instruction still parked for this
