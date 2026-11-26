@@ -4,6 +4,29 @@ import { missingUiCapabilities, resolveAdvertisedUiTools, wiredUiTools } from '.
 
 const base = { mode: 'apply', isRemote: false, delivered: true } as const;
 
+describe('resolveAdvertisedUiTools — cross-agent workers (S-56)', () => {
+  const worker = { mode: 'apply', isRemote: false, delivered: true, isWorker: true } as const;
+
+  it('offers a worker only the non-interactive tools', () => {
+    expect(resolveAdvertisedUiTools({ ...worker, hasSkills: true })).toEqual(['todo', 'skill']);
+  });
+
+  it('never offers ask_user, confirm, pick, review, notify or send_file to a worker', () => {
+    const out = resolveAdvertisedUiTools({ ...worker, mode: 'apply-yolo', hasSkills: true, canSendFiles: true, canNotify: true });
+    for (const name of ['ask_user', 'confirm', 'pick', 'request_review', 'notify', 'send_file', 'plan_approve'] as const) {
+      expect(out).not.toContain(name);
+    }
+  });
+
+  it('drops skill too when there is nothing to serve', () => {
+    expect(resolveAdvertisedUiTools({ ...worker, hasSkills: false })).toEqual(['todo']);
+  });
+
+  it('leaves a normal run untouched', () => {
+    expect(resolveAdvertisedUiTools({ mode: 'apply', isRemote: false, delivered: true })).toContain('ask_user');
+  });
+});
+
 describe('resolveAdvertisedUiTools', () => {
   it('offers the planning set in plan mode', () => {
     expect(resolveAdvertisedUiTools({ ...base, mode: 'plan' })).toEqual([

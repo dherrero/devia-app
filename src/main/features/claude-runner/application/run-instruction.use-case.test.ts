@@ -15,6 +15,7 @@
  * `src/main/features/security/audit-log.test.ts` (FR5), so this file uses a
  * lightweight recording fake instead.
  */
+import { workerRunKey } from '../../../../shared/domain/cross-agent';
 import {
   ASK_USER_MANDATE_TAG,
   REMINDER_TAG,
@@ -1209,6 +1210,25 @@ describe('RunInstructionUseCase — devia-ui delivery (S-25)', () => {
       expect(tools).not.toContain('confirm');
       expect(tools).toContain('todo');
     }
+  });
+
+  it('offers a cross-agent worker run (worker run key) no interactive tool (S-56)', () => {
+    const seen: Array<readonly string[]> = [];
+    const h = build({ id: 'pi', name: 'Pi' }, {
+      config: projectConfig(),
+      uiMcpServer: (_dir, tools) => { seen.push(tools); return enabledServer('devia-ui'); },
+      nativeMcp: nativeDelivery(true),
+    });
+    h.uc.execute(
+      'proj-a', 'implement T-1', [], makeHandlers(), 'apply', [], 'renderer', true,
+      workerRunKey('proj-a', 'T-1', 1), 'worker-session-1', 'pi',
+    );
+
+    expect(seen).toHaveLength(1);
+    for (const name of ['ask_user', 'confirm', 'pick', 'request_review', 'notify', 'send_file']) {
+      expect(seen[0]).not.toContain(name);
+    }
+    expect(seen[0]).toContain('todo');
   });
 
   it('does not deliver devia-ui under an enterprise MCP config', () => {

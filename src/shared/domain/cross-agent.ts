@@ -120,3 +120,17 @@ export function parseAssignReply(text: string, question: AssignQuestion): Assign
   });
   return retryRoles.length > 0 ? { ok: false, retryRoles } : { ok: true, map };
 }
+
+const WORKER_KEY_PREFIX = 'devia-worker:';
+
+/**
+ * The run identity a worker's events are routed by. Deterministic and distinct
+ * per parent, task and attempt, so two panes of the same project never collide.
+ */
+export function workerRunKey(parentKey: string, taskId: string, attempt: number): string {
+  return `${WORKER_KEY_PREFIX}${parentKey}:${taskId}:${attempt}`;
+}
+
+export function isWorkerRunKey(key: string): boolean {
+  return key.startsWith(WORKER_KEY_PREFIX);
+}

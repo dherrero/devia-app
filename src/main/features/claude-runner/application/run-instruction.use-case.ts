@@ -49,6 +49,7 @@ import {
   resolveAdvertisedUiTools,
   wiredUiTools,
 } from '../../../../shared/domain/ui-tools-policy';
+import { isWorkerRunKey } from '../../../../shared/domain/cross-agent';
 import type { McpServerRegistry } from '../../mcp';
 import { CODE_MODE_SERVER_ID, CodeModeEventRelay, codeModeRunDir, removeCodeModeRunDir, type CodeModePlan } from '../../code-mode';
 import type { AgentRunPlan, MapperRegistry } from '../../agents/domain';
@@ -775,6 +776,8 @@ export class RunInstructionUseCase {
         mode: requestedMode,
         isRemote,
         delivered: true,
+        // S-56: a cross-agent worker has nobody to click a card.
+        ...(isWorkerRunKey(identity) && { isWorker: true }),
         // `devia_skill` serves both skills and sub-agents.
         hasSkills: skills.length > 0 || subagents.length > 0 || kit !== null,
         canSendFiles,

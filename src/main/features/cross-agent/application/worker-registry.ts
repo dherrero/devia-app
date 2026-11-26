@@ -1,4 +1,11 @@
-import type { WorkerRole, WorkerStatus } from '../../../../shared/domain/cross-agent';
+import {
+  isWorkerRunKey,
+  workerRunKey,
+  type WorkerRole,
+  type WorkerStatus,
+} from '../../../../shared/domain/cross-agent';
+
+export { isWorkerRunKey, workerRunKey };
 
 export type WorkerState = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'timeout';
 
@@ -36,17 +43,6 @@ export class WorkerLimitError extends Error {
     super(message);
     this.name = 'WorkerLimitError';
   }
-}
-
-const KEY_PREFIX = 'devia-worker:';
-
-/** Deterministic and distinct per parent, task and attempt. */
-export function workerRunKey(parentKey: string, taskId: string, attempt: number): string {
-  return `${KEY_PREFIX}${parentKey}:${taskId}:${attempt}`;
-}
-
-export function isWorkerRunKey(key: string): boolean {
-  return key.startsWith(KEY_PREFIX);
 }
 
 export const DISPATCH_CIRCUIT_BREAK_FAILURES = 3;

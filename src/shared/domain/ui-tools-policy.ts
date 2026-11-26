@@ -51,6 +51,13 @@ const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
  */
 const REMOTE_ALLOWED: readonly UiToolName[] = ['todo', 'notify', 'skill', 'send_file'];
 
+/**
+ * A cross-agent worker (S-56) has nobody at the keyboard: nobody will click a
+ * card of a worker, so every tool that waits for a person is withheld. It keeps
+ * the checklist and the skill index, which need no one.
+ */
+const WORKER_ALLOWED: readonly UiToolName[] = ['todo', 'skill'];
+
 export interface UiToolPolicyInput {
   mode: RunMode;
   /** A run started from the Telegram relay. */
@@ -72,6 +79,8 @@ export interface UiToolPolicyInput {
    * exactly what it did before the tool existed.
    */
   canSendFiles?: boolean;
+  /** A cross-agent worker run (its run key is a worker key): non-interactive tools only. */
+  isWorker?: boolean;
 }
 
 /**
@@ -89,6 +98,7 @@ export function resolveAdvertisedUiTools(input: UiToolPolicyInput): UiToolName[]
   for (const name of UI_TOOL_NAMES) {
     if (!base.has(name)) continue;
     if (input.isRemote && !REMOTE_ALLOWED.includes(name)) continue;
+    if (input.isWorker === true && !WORKER_ALLOWED.includes(name)) continue;
     if (input.preferences?.[name] === false) continue;
     if (name === 'skill' && input.hasSkills === false) continue;
     if (name === 'notify' && input.canNotify === false) continue;
