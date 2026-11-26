@@ -29,7 +29,7 @@ export function createRunCompletion(gateway: RunGateway): RunCompletion {
         };
 
         const unsubscribe = gateway.subscribe((event) => {
-          if (event.project !== runKey) return;
+          if (event.project !== runKey || event.type === 'worker') return;
           if (event.type === 'start') {
             if (runId === undefined) runId = event.runId;
             return;

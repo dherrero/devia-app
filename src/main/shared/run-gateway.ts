@@ -2,6 +2,7 @@ import type { RunId } from '../../shared/domain/agent';
 import type { CancelReason } from '../../shared/domain/agent-event';
 import type { SendInstructionResult } from '../../shared/domain/queue';
 import type { RunMode } from '../../shared/domain/run-capabilities';
+import type { AssignQuestion, WorkerRun } from '../../shared/domain/cross-agent';
 
 /**
  * In-process bridge between the claude-runner and other main-process consumers
@@ -124,12 +125,35 @@ export interface RunFileRejectedEvent {
   reason: string;
   source: RunFileSource;
 }
+/**
+ * S-56 T12: the agent of a REMOTE run asked the user which agent runs each
+ * role. The relay shows the question as text; the user's reply goes back
+ * through {@link RunGateway.answerTool}.
+ */
+export interface RunAskEvent {
+  type: 'ask';
+  project: string;
+  runId?: RunId;
+  callId: string;
+  question: AssignQuestion;
+  mainAgentId: string;
+}
+
+/** S-56 T12: a cross-agent worker of `project`'s controller changed state. */
+export interface RunWorkerEvent {
+  type: 'worker';
+  project: string;
+  worker: WorkerRun;
+}
+
 export type RunGatewayEvent =
   | RunStartEvent
   | RunOutputEvent
   | RunEndEvent
   | RunFileEvent
-  | RunFileRejectedEvent;
+  | RunFileRejectedEvent
+  | RunAskEvent
+  | RunWorkerEvent;
 
 export type RunGatewayListener = (event: RunGatewayEvent) => void;
 
@@ -137,6 +161,7 @@ export class RunGateway {
   private submitFn: RunSubmitFn | null = null;
   private stopFn: ((project: string) => boolean) | null = null;
   private resetFn: ((project: string) => boolean) | null = null;
+  private toolResultFn: ((project: string, callId: string, answer: string) => void) | null = null;
   private readonly listeners = new Set<RunGatewayListener>();
 
   /** Called once by the runner's IPC adapter at registration time. */
@@ -148,6 +173,9 @@ export class RunGateway {
   }
   bindResetSession(fn: (project: string) => boolean): void {
     this.resetFn = fn;
+  }
+  bindToolResult(fn: (project: string, callId: string, answer: string) => void): void {
+    this.toolResultFn = fn;
   }
 
   /** Submit an instruction through the runner's queue-aware path. */
@@ -164,6 +192,13 @@ export class RunGateway {
   /** Reset the agent session for a project (next run starts fresh). */
   resetSession(project: string): boolean {
     return this.resetFn ? this.resetFn(project) : false;
+  }
+
+  /** Answer a blocked `devia-ui` tool call (e.g. the assignment question). False when not bound. */
+  answerTool(project: string, callId: string, answer: string): boolean {
+    if (!this.toolResultFn) return false;
+    this.toolResultFn(project, callId, answer);
+    return true;
   }
 
   /** Subscribe to run lifecycle events. Returns an unsubscribe function. */

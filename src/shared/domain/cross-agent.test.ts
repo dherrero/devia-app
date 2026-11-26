@@ -8,6 +8,8 @@ import {
   workerRunKey,
   buildAssignQuestion,
   parseAssignReply,
+  renderAssignQuestionText,
+  renderAssignRetryText,
   parseWorkerReport,
   renderWorkerReport,
   sanitizeRoleAgents,
@@ -145,5 +147,39 @@ describe('worker run keys (S-56)', () => {
       expect(parseWorkerRunKey(key)).toBeNull();
     }
     expect(isWorkerRunKey('devia-worker:a:T-1:1')).toBe(true);
+  });
+});
+
+describe('Telegram text of the assignment question (S-56 T12)', () => {
+  const q = buildAssignQuestion(['implementer', 'reviewer'], ['claude', 'pi', 'opencode'], 'claude');
+
+  it('lists every role with lettered options, the main agent first', () => {
+    const text = renderAssignQuestionText(q, 'claude');
+    expect(text).toContain('Elige si quieres el desarrollo en multi agente:');
+    expect(text).toContain('1 Tareas de desarrollo: a) Agente principal (claude), b) pi, c) opencode');
+    expect(text).toContain('2 Tareas de revisión: a) Agente principal (claude), b) pi, c) opencode');
+  });
+
+  it('tells the user how to answer, with an example built from the number of roles', () => {
+    expect(renderAssignQuestionText(q, 'claude')).toMatch(/Responde.*1\. b.*2\. a/s);
+    const one = buildAssignQuestion(['reviewer'], ['claude', 'pi'], 'claude');
+    expect(renderAssignQuestionText(one, 'claude')).toContain('1 Tareas de revisión:');
+    expect(renderAssignQuestionText(one, 'claude')).not.toContain('2.');
+  });
+
+  it('is plain text: nothing Telegram Markdown would eat', () => {
+    expect(renderAssignQuestionText(q, 'claude')).not.toMatch(/[*_`\[\]]/);
+  });
+
+  it('a reply the text asks for is the one parseAssignReply reads', () => {
+    expect(parseAssignReply('1. b\n2. c', q)).toEqual({ ok: true, map: { implementer: 'pi', reviewer: 'opencode' } });
+  });
+
+  it('retry text asks again for ONLY the roles that failed, keeping their own numbers', () => {
+    const text = renderAssignRetryText(q, 'claude', ['reviewer']);
+    expect(text).toContain('revisión');
+    expect(text).not.toContain('Tareas de desarrollo');
+    expect(text).toContain('2 Tareas de revisión: a) Agente principal (claude), b) pi, c) opencode');
+    expect(text).toMatch(/No entendí/);
   });
 });

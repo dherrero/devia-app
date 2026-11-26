@@ -134,6 +134,45 @@ export function parseAssignReply(text: string, question: AssignQuestion): Assign
   return retryRoles.length > 0 ? { ok: false, retryRoles } : { ok: true, map };
 }
 
+const ROLE_LABEL_ES: Record<WorkerRole, string> = { implementer: 'desarrollo', reviewer: 'revisión' };
+
+function optionsLine(question: AssignQuestion, mainAgentId: string, role: WorkerRole): string {
+  const index = question.roles.indexOf(role);
+  const options = question.options
+    .map((o) => `${o.key}) ${o.agentId === MAIN_AGENT ? `Agente principal (${mainAgentId})` : o.agentId}`)
+    .join(', ');
+  return `${index + 1} Tareas de ${ROLE_LABEL_ES[role]}: ${options}`;
+}
+
+/**
+ * The assignment question as plain Telegram text (S-56 T12): no Markdown
+ * characters, one numbered line per role, options lettered with the main agent
+ * first. The user answers `1. b  2. a`, which `parseAssignReply` reads.
+ */
+export function renderAssignQuestionText(question: AssignQuestion, mainAgentId: string): string {
+  const lines = question.roles.map((role) => optionsLine(question, mainAgentId, role));
+  const example = question.roles.map((_, i) => `${i + 1}. ${i === 0 ? 'b' : 'a'}`).join('  ');
+  return [
+    'Elige si quieres el desarrollo en multi agente:',
+    ...lines,
+    `Responde con la letra de cada línea, por ejemplo: ${example}`,
+  ].join('\n');
+}
+
+/** Ask again for ONLY the roles that could not be read, keeping their own numbers. */
+export function renderAssignRetryText(
+  question: AssignQuestion,
+  mainAgentId: string,
+  retryRoles: readonly WorkerRole[],
+): string {
+  const labels = retryRoles.map((role) => ROLE_LABEL_ES[role]).join(', ');
+  const first = retryRoles[0] !== undefined ? question.roles.indexOf(retryRoles[0]) + 1 : 1;
+  return [
+    `No entendí tu respuesta para: ${labels}. Responde solo esas líneas, por ejemplo: ${first}. b`,
+    ...retryRoles.map((role) => optionsLine(question, mainAgentId, role)),
+  ].join('\n');
+}
+
 const WORKER_KEY_PREFIX = 'devia-worker:';
 
 /**
