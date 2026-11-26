@@ -4,13 +4,16 @@ import * as path from 'node:path';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { QuestionPrompt } from '../../../../shared/contracts/events';
 import { normalizeAskUserQuestionInput } from '../../../../shared/domain/question-ask';
+import type { AssignQuestion } from '../../../../shared/domain/cross-agent';
 import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import {
   classifyUiDecision,
   isBlockingUiTool,
   isServerHandledUiTool,
+  normalizeAssignAgentsInput,
   normalizeSpawnAgentInput,
   normalizeUiToolInput,
+  type AssignAgentsInput,
   type SpawnAgentInput,
   renderConfirmResult,
   uiToolPublicName,
@@ -64,6 +67,16 @@ export interface RunInteractionContext {
   readonly spawnWorker?: (input: SpawnAgentInput) => Promise<string>;
   /** S-56: how often the idle watchdog is nudged while a worker runs (default 30 s). */
   readonly workerHeartbeatMs?: number;
+  /**
+   * S-56 T9: decides what `devia_assign_agents` asks (or answers from the
+   * project's saved choice) and saves the answer. Absent ⇒ the tool is not served.
+   */
+  readonly assignAgents?: {
+    prepare(input: AssignAgentsInput): Promise<
+      { kind: 'cached'; text: string } | { kind: 'ask'; question: AssignQuestion; mainAgentId: string }
+    >;
+    finish(question: AssignQuestion, answerText: string): Promise<string>;
+  };
   readonly handlers: Pick<RunInstructionHandlers, 'onQuestionAsk' | 'onUiToolRequest' | 'onRunFileRejected'>;
   readonly auditLog?: AgentAuditLog;
   readonly isConfirmationGranted?: (projectAbs: string, action: string) => boolean;
@@ -96,6 +109,8 @@ export class RunInteraction {
   private poller: ReturnType<typeof setInterval> | null = null;
   private handle: AgentProcessHandle | null = null;
   /** `devia_spawn_agent` calls whose worker is still running. */
+  /** `devia_assign_agents` cards waiting for the user, with the question each one asked. */
+  private readonly pendingAssign = new Map<string, AssignQuestion>();
   private pendingWorkers = 0;
   private workerHeartbeat: ReturnType<typeof setInterval> | null = null;
   private ended = false;
@@ -170,6 +185,59 @@ export class RunInteraction {
       .finally(() => {
         this.pendingWorkers = Math.max(0, this.pendingWorkers - 1);
         if (this.pendingWorkers === 0) this.stopWorkerHeartbeat();
+      });
+  }
+
+  /**
+   * `devia_assign_agents` (S-56 T9): answered straight from the project's saved
+   * choice when it already covers the roles, otherwise a card asks the user.
+   */
+  private serveAssignAgents(callId: string, input: unknown): void {
+    const assign = this.ctx.assignAgents;
+    if (!assign || !this.firstSighting(callId)) return;
+    this.audit('assign_agents', callId, 'request');
+    void assign
+      .prepare(normalizeAssignAgentsInput(input))
+      .then((prepared) => {
+        if (this.ended) return;
+        if (prepared.kind === 'cached') {
+          this.audit('assign_agents', callId, 'answered:cached');
+          writeUiAnswer(this.ctx.uiDir, callId, prepared.text);
+          return;
+        }
+        const ask = this.ctx.handlers.onUiToolRequest;
+        if (!ask) {
+          writeUiAnswer(this.ctx.uiDir, callId, 'The user cannot be asked here. Continue the plan without splitting roles: every role stays with the main agent.');
+          return;
+        }
+        this.pendingAssign.set(callId, prepared.question);
+        this.pendingUiCalls.set(callId, 'assign_agents');
+        this.armTimer('devia_assign_agents', () => this.audit('assign_agents', callId, 'timeout'));
+        ask(
+          callId,
+          'assign_agents',
+          { roles: prepared.question.roles, options: prepared.question.options, mainAgentId: prepared.mainAgentId },
+          this.ctx.runId,
+          true,
+        );
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!this.ended) {
+          writeUiAnswer(this.ctx.uiDir, callId, `The assignment could not be prepared: ${message}. Continue the plan without splitting roles.`);
+        }
+      });
+  }
+
+  /** Writes the text a promise resolves to as the call's answer, unless the run is over. */
+  private writeWhenDone(callId: string, text: Promise<string>, failure: string): void {
+    void text
+      .then((answer) => {
+        if (!this.ended) writeUiAnswer(this.ctx.uiDir, callId, answer);
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!this.ended) writeUiAnswer(this.ctx.uiDir, callId, `${failure}: ${message}. Continue without it.`);
       });
   }
 
@@ -265,6 +333,14 @@ export class RunInteraction {
         this.ctx.grantConfirmation?.(this.ctx.projectCheckout, action, this.ctx.agentId);
       }
       this.handle?.answer(toolUseId, toAgentAnswer(native, content));
+      return;
+    }
+    const assignQuestion = this.pendingAssign.get(toolUseId);
+    if (assignQuestion && this.ctx.assignAgents) {
+      this.pendingAssign.delete(toolUseId);
+      this.pendingUiCalls.delete(toolUseId);
+      this.audit('assign_agents', toolUseId, 'answered');
+      this.writeWhenDone(toolUseId, this.ctx.assignAgents.finish(assignQuestion, content), 'The assignment could not be saved');
       return;
     }
     const prompts = this.askUserQuestionPrompts.get(toolUseId);
@@ -379,9 +455,12 @@ export class RunInteraction {
     if (this.ctx.spawnWorker && this.ctx.advertised.includes('spawn_agent')) {
       this.uiToolHandlers.spawn_agent = (callId, input): void => this.serveSpawnAgent(callId, input);
     }
+    if (this.ctx.assignAgents && this.ctx.advertised.includes('assign_agents')) {
+      this.uiToolHandlers.assign_agents = (callId, input): void => this.serveAssignAgents(callId, input);
+    }
     if (!handlers.onUiToolRequest) return;
     for (const tool of this.ctx.advertised) {
-      if (tool === 'ask_user' || isServerHandledUiTool(tool)) continue;
+      if (tool === 'ask_user' || tool === 'assign_agents' || isServerHandledUiTool(tool)) continue;
       this.uiToolHandlers[tool] = (callId, input): void => {
         // A blocking request stays on disk until the server reads its answer,
         // so the poller sees it on many ticks (S-28 T-333).

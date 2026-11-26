@@ -150,3 +150,134 @@ describe('RunInteraction — devia_spawn_agent', () => {
     expect(spawnWorker).not.toHaveBeenCalled();
   });
 });
+
+describe('RunInteraction — devia_assign_agents', () => {
+  let uiDir: string;
+  let interaction: RunInteraction;
+  const handle = { kill: vi.fn(), answer: vi.fn(() => false), keepAlive: vi.fn() };
+  const onUiToolRequest = vi.fn();
+  const question = {
+    roles: ['implementer', 'reviewer'] as Array<'implementer' | 'reviewer'>,
+    options: [
+      { key: 'a', agentId: 'main' },
+      { key: 'b', agentId: 'pi' },
+    ],
+  };
+
+  const build = (assignAgents: RunInteractionContext['assignAgents'], over: Partial<RunInteractionContext> = {}): RunInteraction =>
+    new RunInteraction({
+      runId: 'run-1' as RunId,
+      agentId: 'claude',
+      projectName: 'proj-a',
+      projectCheckout: '/ws/proj-a',
+      cwd: '/ws/proj-a',
+      uiDir,
+      mode: 'plan',
+      isRemote: false,
+      advertised: ['todo', 'assign_agents'],
+      timeoutMs: 1_000,
+      handlers: { onUiToolRequest },
+      ...(assignAgents && { assignAgents }),
+      ...over,
+    });
+  const request = (callId: string, toolInput: unknown = {}): void =>
+    writeUiRequest(uiDir, { callId, tool: 'assign_agents', toolInput, expectsAnswer: true });
+  const answerOf = (callId: string): string | undefined => readUiAnswer(answerFilePath(uiDir, callId))?.answer;
+  const tick = async (ms = 100): Promise<void> => {
+    await vi.advanceTimersByTimeAsync(ms);
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    uiDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-assign-'));
+    onUiToolRequest.mockClear();
+  });
+  afterEach(() => {
+    interaction?.stop();
+    vi.useRealTimers();
+    fs.rmSync(uiDir, { recursive: true, force: true });
+  });
+
+  it('answers straight away, with no card, when the project already has the answer', async () => {
+    const assign = {
+      prepare: vi.fn(async () => ({ kind: 'cached' as const, text: 'Saved for this project: implementer → pi.' })),
+      finish: vi.fn(),
+    };
+    interaction = build(assign);
+    interaction.attach(handle);
+    interaction.start();
+    request('c1', { roles: ['implementer'] });
+    await tick();
+
+    expect(assign.prepare).toHaveBeenCalledWith({ roles: ['implementer'], reassign: false });
+    expect(answerOf('c1')).toContain('Saved for this project');
+    expect(onUiToolRequest).not.toHaveBeenCalled();
+  });
+
+  it('draws a card with the question when something is still unanswered, and waits for the user', async () => {
+    const assign = {
+      prepare: vi.fn(async () => ({ kind: 'ask' as const, question, mainAgentId: 'claude' })),
+      finish: vi.fn(async () => 'The user chose: implementer → pi (saved for this project).'),
+    };
+    interaction = build(assign);
+    interaction.attach(handle);
+    interaction.start();
+    request('c1');
+    await tick();
+
+    expect(onUiToolRequest).toHaveBeenCalledTimes(1);
+    const [callId, tool, payload, , blocking] = onUiToolRequest.mock.calls[0] as unknown[];
+    expect(callId).toBe('c1');
+    expect(tool).toBe('assign_agents');
+    expect(payload).toMatchObject({ roles: ['implementer', 'reviewer'], mainAgentId: 'claude' });
+    expect(blocking).toBe(true);
+    expect(answerOf('c1')).toBeUndefined();
+  });
+
+  it('turns the card answer into the saved result the agent reads', async () => {
+    const assign = {
+      prepare: vi.fn(async () => ({ kind: 'ask' as const, question, mainAgentId: 'claude' })),
+      finish: vi.fn(async () => 'The user chose: implementer → pi (saved for this project).'),
+    };
+    interaction = build(assign);
+    interaction.attach(handle);
+    interaction.start();
+    request('c1');
+    await tick();
+
+    interaction.answer('c1', '1. b\n2. a');
+    await tick();
+    expect(assign.finish).toHaveBeenCalledWith(question, '1. b\n2. a');
+    expect(answerOf('c1')).toContain('saved for this project');
+  });
+
+  it('calls prepare once even though the request is seen on many polls', async () => {
+    const assign = { prepare: vi.fn(async () => ({ kind: 'ask' as const, question, mainAgentId: 'claude' })), finish: vi.fn() };
+    interaction = build(assign);
+    interaction.attach(handle);
+    interaction.start();
+    request('c1');
+    await tick(500);
+    expect(assign.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not served without the capability, or when the run was not given the tool', async () => {
+    const assign = { prepare: vi.fn(), finish: vi.fn() };
+    interaction = build(assign, { advertised: ['todo'] });
+    interaction.attach(handle);
+    interaction.start();
+    request('c1');
+    await tick();
+    expect(assign.prepare).not.toHaveBeenCalled();
+  });
+
+  it('answers with an explanation when preparing fails, instead of hanging', async () => {
+    const assign = { prepare: vi.fn(async () => { throw new Error('detector down'); }), finish: vi.fn() };
+    interaction = build(assign);
+    interaction.attach(handle);
+    interaction.start();
+    request('c1');
+    await tick();
+    expect(answerOf('c1')).toContain('detector down');
+  });
+});
