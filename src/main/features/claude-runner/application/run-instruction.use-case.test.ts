@@ -16,7 +16,7 @@
  * lightweight recording fake instead.
  */
 import { DEFAULT_CROSS_AGENT_CONFIG } from '../../../../shared/domain/cross-agent-config';
-import type { SpawnWorkerCall } from './run-instruction.use-case';
+import type { AssignAgentsPort, SpawnWorkerCall } from './run-instruction.use-case';
 import { workerRunKey } from '../../../../shared/domain/cross-agent';
 import {
   ASK_USER_MANDATE_TAG,
@@ -346,6 +346,7 @@ interface BuildExtras {
   /** S-56: launches a cross-agent worker for devia_spawn_agent. */
   spawnWorker?: (req: SpawnWorkerCall) => Promise<string>;
   usableAgentCount?: () => number;
+  assignAgents?: AssignAgentsPort;
   cancelWorkers?: (parentKey: string) => number;
   isConfirmationGranted?: (project: string, action: string) => boolean;
   remoteRelayConnected?: () => boolean;
@@ -410,6 +411,7 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.implementedUiTools ? { implementedUiTools: extras.implementedUiTools } : {}),
     ...(extras.spawnWorker ? { spawnWorker: extras.spawnWorker } : {}),
     ...(extras.usableAgentCount ? { usableAgentCount: extras.usableAgentCount } : {}),
+    ...(extras.assignAgents ? { assignAgents: extras.assignAgents } : {}),
     ...(extras.cancelWorkers ? { cancelWorkers: extras.cancelWorkers } : {}),
     ...(extras.isConfirmationGranted ? { isConfirmationGranted: extras.isConfirmationGranted } : {}),
     ...(extras.remoteRelayConnected ? { remoteRelayConnected: extras.remoteRelayConnected } : {}),
@@ -1298,6 +1300,50 @@ describe('RunInstructionUseCase — devia-ui delivery (S-25)', () => {
         expect.objectContaining({ project: 'proj-a', parentKey: 'proj-a', turnId: startArg.runId, role: 'implementer', taskId: 'T-1', mode: 'apply' }),
       );
       expect(typeof (spawnWorker.mock.calls[0] as unknown as [SpawnWorkerCall])[0].controllerCwd).toBe('string');
+    });
+
+    describe('devia_assign_agents', () => {
+      const assign: AssignAgentsPort = {
+        prepare: vi.fn(async () => ({ kind: 'cached' as const, text: 'Saved for this project: implementer → pi.' })),
+        finish: vi.fn(async () => 'saved'),
+      };
+      const planTools = (config: FakeConfig, opts: { agents?: number; port?: boolean; mode?: 'plan' | 'apply'; runKey?: string } = {}) => {
+        let tools: readonly string[] | undefined;
+        const h = build({ id: 'claude', name: 'Claude Code' }, {
+          config,
+          uiMcpServer: (_dir, t) => { tools = t; return enabledServer('devia-ui'); },
+          ...(opts.port !== false && { assignAgents: assign }),
+          usableAgentCount: () => opts.agents ?? 2,
+        });
+        h.uc.execute('proj-a', 'plan it', [], makeHandlers(), opts.mode ?? 'plan', [], 'renderer', false, opts.runKey);
+        return tools;
+      };
+
+      it('is offered in plan mode when the feature is on, two agents are usable and the port exists', () => {
+        expect(planTools(crossOn())).toContain('assign_agents');
+      });
+
+      it('is not offered when the feature is off, with one agent, without the port, in apply, or to a worker', () => {
+        expect(planTools(projectConfig())).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { agents: 1 })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { port: false })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { mode: 'apply' })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { runKey: 'devia-worker:proj-a:T-1:1' })).not.toContain('assign_agents');
+      });
+
+      it('serves a request with the project of the run', async () => {
+        const h = build({ id: 'claude', name: 'Claude Code' }, {
+          config: crossOn(),
+          uiMcpServer: () => enabledServer('devia-ui'),
+          assignAgents: assign,
+          usableAgentCount: () => 2,
+        });
+        const handlers = makeHandlers();
+        h.uc.execute('proj-a', 'plan it', [], handlers, 'plan');
+        writeUiRequest(uiDirFor(handlers), { callId: 'as-1', tool: 'assign_agents', toolInput: { roles: ['implementer'] } });
+        await vi.advanceTimersByTimeAsync(150);
+        expect(assign.prepare).toHaveBeenCalledWith('proj-a', { roles: ['implementer'], reassign: false });
+      });
     });
 
     it('cancels the controller\'s workers when its run ends, however it ends', () => {

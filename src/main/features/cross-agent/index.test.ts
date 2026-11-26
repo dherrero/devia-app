@@ -45,13 +45,16 @@ function setup(over: { detected?: DetectedAgentLike[]; roleAgents?: Record<strin
       return { ok: true, stdout: '', stderr: '' };
     },
   };
-  const record = { roleAgents: over.roleAgents ?? {} };
+  const record: { roleAgents: Record<string, string> } = { roleAgents: over.roleAgents ?? {} };
+  const stateSave = vi.fn();
   const deps: CrossAgentBuildDeps = {
     config: {
       get: () => ({ crossAgent: { ...DEFAULT_CROSS_AGENT_CONFIG, enabled: over.enabled ?? true }, workspaceRoot: '/ws', agentId: 'claude' }),
       deviaDir: () => '/dv',
     } as never,
-    registry: { find: () => record as never },
+    registry: { find: () => record as never, getOrCreate: () => record as never },
+    agents: { get: () => ({ providerType: 'cli' }) },
+    state: { save: stateSave } as never,
     effective: { forRun: () => ({ agentId: 'claude', source: 'global' as const }) },
     detector: {
       detectOne: async (id) => (over.detected ?? [agent('claude'), agent('pi')]).find((a) => a.id === id) ?? null,
@@ -64,7 +67,7 @@ function setup(over: { detected?: DetectedAgentLike[]; roleAgents?: Record<strin
     projectDir: (project) => `/ws/${project}`,
   };
   const built = buildCrossAgentFeature(deps);
-  return { built, submitted, stop, gitCalls, gateway };
+  return { built, submitted, stop, gitCalls, gateway, record, stateSave };
 }
 
 const CALL = {
@@ -128,5 +131,32 @@ describe('buildCrossAgentFeature', () => {
     // the run was killed: the gateway reports its end as cancelled
     t.gateway.publish({ type: 'end', project: t.stop.mock.calls[0]?.[0] as string, code: null, cancelReason: 'user' });
     await expect(pending).resolves.toMatch(/cancel/i);
+  });
+});
+
+describe('buildCrossAgentFeature — assignAgents (S-56 T9)', () => {
+  it('asks about the roles the project has not answered, offering the usable agents', async () => {
+    const t = setup({ detected: [agent('claude'), agent('pi'), agent('codex', { available: false })] });
+    const prepared = await t.built.assignAgents.prepare('proj-a', { roles: ['implementer', 'reviewer'], reassign: false });
+    expect(prepared.kind).toBe('ask');
+    if (prepared.kind !== 'ask') return;
+    expect(prepared.question.options.map((o) => o.agentId)).toEqual(['main', 'pi']);
+    expect(prepared.mainAgentId).toBe('claude');
+  });
+
+  it('saves the answer on the project and persists the state', async () => {
+    const t = setup();
+    const prepared = await t.built.assignAgents.prepare('proj-a', { roles: ['implementer', 'reviewer'], reassign: false });
+    if (prepared.kind !== 'ask') throw new Error('expected a question');
+    const text = await t.built.assignAgents.finish('proj-a', prepared.question, '1. b\n2. a');
+    expect(t.record.roleAgents).toEqual({ implementer: 'pi', reviewer: 'main' });
+    expect(t.stateSave).toHaveBeenCalled();
+    expect(text).toContain('implementer → pi');
+  });
+
+  it('does not ask again once saved', async () => {
+    const t = setup({ roleAgents: { implementer: 'pi', reviewer: 'main' } });
+    const prepared = await t.built.assignAgents.prepare('proj-a', { roles: ['implementer', 'reviewer'], reassign: false });
+    expect(prepared.kind).toBe('cached');
   });
 });

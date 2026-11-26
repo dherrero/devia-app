@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeCrossAgentConfig } from '../../../shared/domain/cross-agent-config';
 import { isRoleSplit, type RoleAgentMap, type WorkerRole } from '../../../shared/domain/cross-agent';
-import type { ConfigRepository, ProjectRegistry } from '../../shared/ports';
+import type { ConfigRepository, ProjectRegistry, StateStore } from '../../shared/ports';
 import type { EffectiveAgentResolver } from '../../shared/effective-agent-resolver';
 import type { RunGateway } from '../../shared/run-gateway';
 import { createRunCompletion } from '../../shared/run-completion';
 import type { WorktreeRef } from '../git/domain/worktree-ref';
 import type { EnsureWorktreeResult } from '../git/infrastructure/cli-git-worktree-manager';
+import { AssignAgentsUseCase } from './application/assign-agents.use-case';
+import { SetRoleAgentsUseCase } from './application/set-role-agents.use-case';
 import { integrateWorker } from './application/integrate-worker';
 import {
   listAvailableAgents,
@@ -19,7 +21,10 @@ import type { GitRunner } from './infrastructure/git-runner';
 
 export interface CrossAgentBuildDeps {
   config: Pick<ConfigRepository, 'get' | 'deviaDir'>;
-  registry: Pick<ProjectRegistry, 'find'>;
+  registry: Pick<ProjectRegistry, 'find' | 'getOrCreate'>;
+  /** The agent catalog: a role may only be mapped to a known CLI agent. */
+  agents: { get(id: string): { providerType?: string | undefined } | null | undefined };
+  state: StateStore;
   effective: Pick<EffectiveAgentResolver, 'forRun'>;
   detector: WorkerAgentDeps['detector'];
   /** The run gateway: workers are started and observed through it. */
@@ -42,7 +47,8 @@ export interface CrossAgentBuilt {
   /** Cancels every worker the controller started; returns how many. */
   cancelWorkers: (parentKey: string) => number;
   registry: WorkerRegistry;
-  /** Saves the per-project role → agent map (the question tool and the settings use it). */
+  /** `devia_assign_agents`: what to ask per project, and what to save. */
+  assignAgents: AssignAgentsUseCase;
   roleAgentsOf: (project: string) => RoleAgentMap;
 }
 
@@ -94,12 +100,21 @@ export function buildCrossAgentFeature(deps: CrossAgentBuildDeps): CrossAgentBui
     roleIsSplit: (project, role) => isRoleSplit(deps.registry.find(project)?.roleAgents, role),
   });
 
+  const assignAgents = new AssignAgentsUseCase({
+    available: () => listAvailableAgents(deps),
+    mainAgentId: (project) => deps.effective.forRun(project).agentId,
+    current: (project) => deps.registry.find(project)?.roleAgents ?? {},
+    save: (project, map) =>
+      new SetRoleAgentsUseCase({ agents: deps.agents, projects: deps.registry, state: deps.state }).execute(project, map),
+  });
+
   return {
     spawnWorker: async (call) => (await useCase.execute(call)).rendered,
     usableAgentCount: () => usable,
     refreshAgents,
     cancelWorkers: (parentKey) => registry.cancelParent(parentKey),
     registry,
+    assignAgents,
     roleAgentsOf: (project) => deps.registry.find(project)?.roleAgents ?? {},
   };
 }

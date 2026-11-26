@@ -433,6 +433,8 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   const crossAgent = buildCrossAgentFeature({
     config,
     registry,
+    agents: { get: (id) => cliAdapters.exports.registry.get(id) },
+    state: stateStore,
     effective: effectiveAgent,
     detector: cliAdapters.exports.detector,
     gateway: runGateway,
@@ -527,6 +529,10 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // Telegram controller can drive and mirror runs.
       runGateway,
       spawnWorker: crossAgent.spawnWorker,
+      assignAgents: {
+        prepare: (project, input) => crossAgent.assignAgents.prepare(project, input),
+        finish: (project, question, text) => crossAgent.assignAgents.finish(project, question, text),
+      },
       usableAgentCount: crossAgent.usableAgentCount,
       cancelWorkers: crossAgent.cancelWorkers,
       // A reset session starts over in plan mode.

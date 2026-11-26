@@ -49,7 +49,8 @@ import {
   resolveAdvertisedUiTools,
   wiredUiTools,
 } from '../../../../shared/domain/ui-tools-policy';
-import { isWorkerRunKey } from '../../../../shared/domain/cross-agent';
+import { isWorkerRunKey, type AssignQuestion } from '../../../../shared/domain/cross-agent';
+import type { AssignAgentsInput } from '../../../../shared/domain/ui-tools';
 import { normalizeCrossAgentConfig } from '../../../../shared/domain/cross-agent-config';
 import type { McpServerRegistry } from '../../mcp';
 import { CODE_MODE_SERVER_ID, CodeModeEventRelay, codeModeRunDir, removeCodeModeRunDir, type CodeModePlan } from '../../code-mode';
@@ -208,6 +209,22 @@ export interface SpawnWorkerCall {
   mode: RunMode;
   /** Where the controller works: the worker starts from its HEAD. */
   controllerCwd: string;
+}
+
+/** S-56 T9: the per-project "which agent runs which role" question, as `execute()` sees it. */
+export interface AssignAgentsPort {
+  prepare(
+    project: string,
+    input: import('../../../../shared/domain/ui-tools').AssignAgentsInput,
+  ): Promise<
+    | { kind: 'cached'; text: string }
+    | { kind: 'ask'; question: import('../../../../shared/domain/cross-agent').AssignQuestion; mainAgentId: string }
+  >;
+  finish(
+    project: string,
+    question: import('../../../../shared/domain/cross-agent').AssignQuestion,
+    answerText: string,
+  ): Promise<string>;
 }
 
 export class RunInstructionUseCase {
@@ -388,6 +405,8 @@ export class RunInstructionUseCase {
      * `devia_spawn_agent` is never offered.
      */
     spawnWorker?: (call: SpawnWorkerCall) => Promise<string>;
+    /** S-56 T9: the role → agent question of plan mode; absent ⇒ `devia_assign_agents` is never offered. */
+    assignAgents?: AssignAgentsPort;
     /** S-56: how many agents can take a worker right now (a cached snapshot, sync). */
     usableAgentCount?: () => number;
     /** S-56: cancels every worker the controller `parentKey` started; returns how many. */
@@ -803,6 +822,10 @@ export class RunInstructionUseCase {
       crossAgentCfg.enabled
       && this.deps.spawnWorker !== undefined
       && (this.deps.usableAgentCount?.() ?? 0) >= 2;
+    const canAssignAgents =
+      crossAgentCfg.enabled
+      && this.deps.assignAgents !== undefined
+      && (this.deps.usableAgentCount?.() ?? 0) >= 2;
     const uiCandidate = wiredUiTools(
       resolveAdvertisedUiTools({
         mode: requestedMode,
@@ -811,6 +834,7 @@ export class RunInstructionUseCase {
         // S-56: a cross-agent worker has nobody to click a card.
         ...(isWorkerRunKey(identity) && { isWorker: true }),
         ...(canSpawnAgents && { canSpawnAgents: true }),
+        ...(canAssignAgents && { canAssignAgents: true }),
         // `devia_skill` serves both skills and sub-agents.
         hasSkills: skills.length > 0 || subagents.length > 0 || kit !== null,
         canSendFiles,
@@ -1121,6 +1145,12 @@ export class RunInstructionUseCase {
             mode: capabilities.mode,
             controllerCwd: cwd,
           }),
+      }),
+      ...(this.deps.assignAgents !== undefined && uiAdvertised.includes('assign_agents') && {
+        assignAgents: {
+          prepare: (input: AssignAgentsInput) => this.deps.assignAgents!.prepare(projectName, input),
+          finish: (question: AssignQuestion, text: string) => this.deps.assignAgents!.finish(projectName, question, text),
+        },
       }),
       handlers,
       ...(this.deps.auditLog !== undefined && { auditLog: this.deps.auditLog }),
