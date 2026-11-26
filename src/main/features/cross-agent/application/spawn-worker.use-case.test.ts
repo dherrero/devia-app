@@ -5,12 +5,14 @@ import { DEFAULT_CROSS_AGENT_CONFIG } from '../../../../shared/domain/cross-agen
 import type { RunOutcome } from '../../../shared/ports/run-completion.port';
 import type { RunSubmitOptions } from '../../../shared/run-gateway';
 
-function setup(over: Partial<SpawnWorkerDeps> & { outcome?: RunOutcome } = {}) {
+function setup(over: Partial<SpawnWorkerDeps> & { outcome?: RunOutcome; outcomes?: RunOutcome[] } = {}) {
   const registry = createWorkerRegistry({ maxConcurrent: 3, maxPerTurn: 8, onChange: () => undefined });
   const submitted: Array<{ project: string; text: string; opts: RunSubmitOptions }> = [];
   const stop = vi.fn(() => true);
   const ensureWorktree = vi.fn(() => ({ ok: true as const, created: true }));
   let timeoutCb: (() => void) | undefined;
+  const queue = [...(over.outcomes ?? [])];
+  const integrate = vi.fn(async () => ({ ok: true as const, commits: ['abc1234'] }));
   const deps: SpawnWorkerDeps = {
     config: () => ({ ...DEFAULT_CROSS_AGENT_CONFIG, enabled: true }),
     resolveAgent: async () => ({ ok: true, agentId: 'pi' }),
@@ -18,7 +20,7 @@ function setup(over: Partial<SpawnWorkerDeps> & { outcome?: RunOutcome } = {}) {
     completion: {
       await: async (_key, opts) => {
         timeoutCb = opts?.onTimeout;
-        return over.outcome ?? { status: 'done', finalText: 'STATUS: DONE\nImplemented.\ncommit abc1234' };
+        return queue.shift() ?? over.outcome ?? { status: 'done', finalText: 'STATUS: DONE\nImplemented.\ncommit abc1234' };
       },
     },
     submit: (project, text, opts) => {
@@ -31,7 +33,10 @@ function setup(over: Partial<SpawnWorkerDeps> & { outcome?: RunOutcome } = {}) {
     headOf: () => 'deadbeef',
     ensureWorktree,
     newId: () => '11111111-2222-3333-4444-555555555555',
-    ...over,
+    integrate,
+    inspect: () => ({ head: 'h1', dirty: false }),
+    roleIsSplit: () => false,
+    ...Object.fromEntries(Object.entries(over).filter(([k]) => k !== 'outcome' && k !== 'outcomes')),
   };
   const uc = new SpawnWorkerUseCase(deps);
   const req = {
@@ -43,7 +48,7 @@ function setup(over: Partial<SpawnWorkerDeps> & { outcome?: RunOutcome } = {}) {
     mode: 'apply' as const,
     controllerCwd: '/ws/proj-a',
   };
-  return { uc, req, registry, submitted, stop, ensureWorktree, fireTimeout: () => timeoutCb?.() };
+  return { uc, req, registry, submitted, stop, ensureWorktree, integrate, fireTimeout: () => timeoutCb?.() };
 }
 
 describe('SpawnWorkerUseCase', () => {
@@ -178,5 +183,112 @@ describe('SpawnWorkerUseCase', () => {
     await t.uc.execute(t.req);
     cancelFn?.();
     expect(t.stop).toHaveBeenCalledWith(expect.stringMatching(/^devia-worker:proj-a:T-1:/));
+  });
+});
+
+const REVIEWER_OK = { status: 'done', finalText: 'STATUS: DONE\nClean review.' } as const;
+const REVIEWER_FINDINGS = { status: 'done', finalText: 'STATUS: DONE_WITH_CONCERNS\n1 Important finding.' } as const;
+const IMPLEMENTER_OK = { status: 'done', finalText: 'STATUS: DONE\nImplemented.\ncommit abc1234' } as const;
+
+describe('SpawnWorkerUseCase — integration, reviewer and fix rounds (S-56 T7)', () => {
+  it('integrates an implementer DONE into the controller branch when the reviewer role is not split', async () => {
+    const t = setup();
+    const r = await t.uc.execute(t.req);
+    expect(t.integrate).toHaveBeenCalledTimes(1);
+    const input = (t.integrate.mock.calls[0] as unknown as [Record<string, string>])[0];
+    expect(input).toMatchObject({ controllerCwd: '/ws/proj-a', baseProject: '/ws/proj-a' });
+    expect(input['branch']).toMatch(/^devia\/session-/);
+    expect(r.rendered).toMatch(/integrated/i);
+    expect(r.rendered).toContain('abc1234');
+  });
+
+  it('keeps the work on its branch for the reviewer when the reviewer role is split', async () => {
+    const t = setup({ roleIsSplit: (_p, role) => role === 'reviewer' });
+    await t.uc.execute(t.req);
+    expect(t.integrate).not.toHaveBeenCalled();
+  });
+
+  it('blocks a reviewer when there is no implementer worker on record for the task', async () => {
+    const t = setup();
+    const r = await t.uc.execute({ ...t.req, role: 'reviewer' });
+    expect(r.report.status).toBe('BLOCKED');
+    expect(r.rendered).toMatch(/implementer/i);
+    expect(t.submitted).toHaveLength(0);
+  });
+
+  it('runs the reviewer in the implementer worktree (same session) under its own run key, with the commit range', async () => {
+    const t = setup({ roleIsSplit: () => true, outcomes: [IMPLEMENTER_OK, REVIEWER_OK] });
+    await t.uc.execute(t.req);
+    await t.uc.execute({ ...t.req, turnId: 'turn-2', role: 'reviewer' });
+
+    expect(t.submitted).toHaveLength(2);
+    const [impl, rev] = t.submitted;
+    expect(rev?.opts.sessionId).toBe(impl?.opts.sessionId);
+    expect(rev?.opts.runKey).not.toBe(impl?.opts.runKey);
+    expect(rev?.text).toContain('deadbeef..HEAD');
+    expect(t.ensureWorktree).toHaveBeenCalledTimes(1); // the reviewer reuses the existing worktree
+  });
+
+  it('integrates after a clean reviewer DONE, but not after findings', async () => {
+    const clean = setup({ roleIsSplit: () => true, outcomes: [IMPLEMENTER_OK, REVIEWER_OK] });
+    await clean.uc.execute(clean.req);
+    await clean.uc.execute({ ...clean.req, turnId: 'turn-2', role: 'reviewer' });
+    expect(clean.integrate).toHaveBeenCalledTimes(1);
+
+    const findings = setup({ roleIsSplit: () => true, outcomes: [IMPLEMENTER_OK, REVIEWER_FINDINGS] });
+    await findings.uc.execute(findings.req);
+    await findings.uc.execute({ ...findings.req, turnId: 'turn-2', role: 'reviewer' });
+    expect(findings.integrate).not.toHaveBeenCalled();
+  });
+
+  it('a fix round reuses the run key and session of the first implementer run', async () => {
+    const t = setup({ roleIsSplit: () => true, outcomes: [IMPLEMENTER_OK, REVIEWER_FINDINGS, IMPLEMENTER_OK] });
+    await t.uc.execute(t.req);
+    await t.uc.execute({ ...t.req, turnId: 'turn-2', role: 'reviewer' });
+    await t.uc.execute({ ...t.req, turnId: 'turn-3' });
+
+    const [first, , fix] = t.submitted;
+    expect(fix?.opts.runKey).toBe(first?.opts.runKey);
+    expect(fix?.opts.sessionId).toBe(first?.opts.sessionId);
+    expect(fix?.text).toMatch(/follow-up round/i);
+    expect(first?.text).not.toMatch(/follow-up round/i);
+  });
+
+  it('downgrades a DONE that could not be integrated and keeps the work for a retry', async () => {
+    const t = setup({ roleIsSplit: () => true, outcomes: [IMPLEMENTER_OK, REVIEWER_OK, REVIEWER_OK] });
+    t.integrate.mockResolvedValueOnce({ ok: false, reason: 'not_ff', detail: 'The controller branch moved on.' } as never);
+    await t.uc.execute(t.req);
+    const r = await t.uc.execute({ ...t.req, turnId: 'turn-2', role: 'reviewer' });
+    expect(r.report.status).toBe('DONE_WITH_CONCERNS');
+    expect(r.rendered).toContain('The controller branch moved on.');
+    // still on record: a second review can try to integrate again
+    const again = await t.uc.execute({ ...t.req, turnId: 'turn-3', role: 'reviewer' });
+    expect(again.report.status).toBe('DONE');
+    expect(t.integrate).toHaveBeenCalledTimes(2);
+  });
+
+  it('forgets the work once integrated: the next implementer of that task starts a fresh worktree', async () => {
+    let n = 0;
+    const t = setup({ newId: () => `session-${++n}` });
+    await t.uc.execute(t.req);
+    await t.uc.execute({ ...t.req, turnId: 'turn-2' });
+    expect(t.submitted[0]?.opts.sessionId).toBe('session-1');
+    expect(t.submitted[1]?.opts.sessionId).toBe('session-2');
+    expect(t.ensureWorktree).toHaveBeenCalledTimes(2);
+  });
+
+  it('warns the controller when a reviewer changed the worktree', async () => {
+    let calls = 0;
+    const t = setup({
+      roleIsSplit: () => true,
+      outcomes: [IMPLEMENTER_OK, REVIEWER_OK],
+      // before the reviewer: clean at h1; after: a new commit h2 appeared
+      inspect: () => ({ head: calls++ < 1 ? 'h1' : 'h2', dirty: false }),
+    });
+    await t.uc.execute(t.req);
+    const r = await t.uc.execute({ ...t.req, turnId: 'turn-2', role: 'reviewer' });
+    expect(r.rendered).toMatch(/modified the worktree/i);
+    expect(r.report.status).toBe('DONE_WITH_CONCERNS');
+    expect(t.integrate).not.toHaveBeenCalled();
   });
 });

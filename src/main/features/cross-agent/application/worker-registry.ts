@@ -30,6 +30,8 @@ export interface WorkerSpec {
   agentId: string;
   /** The controller's turn (its run id): the per-turn cap counts per parent + turn. */
   turnId: string;
+  /** Reuse a run key (a fix round of the same task keeps its native session). */
+  runKey?: string;
 }
 
 export interface WorkerSlot {
@@ -160,7 +162,7 @@ export function createWorkerRegistry(options: WorkerRegistryOptions): WorkerRegi
         taskId: spec.taskId,
         role: spec.role,
         agentId: spec.agentId,
-        runKey: workerRunKey(parentKey, spec.taskId, sequence),
+        runKey: spec.runKey ?? workerRunKey(parentKey, spec.taskId, sequence),
         state: 'queued',
       };
       return new Promise<WorkerSlot>((resolve, reject) => {

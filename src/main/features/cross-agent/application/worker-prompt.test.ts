@@ -31,4 +31,11 @@ describe('buildWorkerPrompt', () => {
     expect(p).toMatch(/git log/);
     expect(p).not.toContain('undefined');
   });
+
+  it('marks a follow-up round and points the implementer at the review findings on the task', () => {
+    const p = buildWorkerPrompt({ role: 'implementer', taskId: 'T-9', round: 2 });
+    expect(p).toMatch(/follow-up round/i);
+    expect(p).toMatch(/latest comments/i);
+    expect(buildWorkerPrompt({ role: 'implementer', taskId: 'T-9' })).not.toMatch(/follow-up round/i);
+  });
 });

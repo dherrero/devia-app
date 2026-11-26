@@ -187,3 +187,14 @@ describe('circuit breaker', () => {
     expect(registry.recordFailure('T-2')).toBe('retry');
   });
 });
+
+describe('run key reuse (fix rounds)', () => {
+  it('lets a follow-up round of the same task reuse the first run key', async () => {
+    const { registry } = build();
+    const first = await registry.acquire('p', spec('T-1'));
+    first.release('done');
+    const again = await registry.acquire('p', { ...spec('T-1', 'turn-2'), runKey: first.run.runKey });
+    expect(again.run.runKey).toBe(first.run.runKey);
+    expect(again.run.id).not.toBe(first.run.id);
+  });
+});

@@ -5,6 +5,8 @@ export interface WorkerPromptInput {
   taskId: string;
   /** Reviewer only: the commit the implementer started from, so `base..HEAD` is its work. */
   baseSha?: string;
+  /** Implementer only: 1 (default) is the first run; 2+ is a fix round after a review. */
+  round?: number;
 }
 
 const REPORT_CONTRACT = `Your final message is your report, in exactly this shape:
@@ -27,11 +29,17 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
   return input.role === 'implementer' ? implementerPrompt(input) : reviewerPrompt(input);
 }
 
-function implementerPrompt({ taskId }: WorkerPromptInput): string {
+function implementerPrompt({ taskId, round }: WorkerPromptInput): string {
+  const followUp =
+    round !== undefined && round > 1
+      ? `
+This is a follow-up round for the same task: your earlier work is already on this branch (see git log). A review found problems. Read the latest comments of the task with kanban_get_task for "${taskId}" to get the findings, and fix only those.
+`
+      : '';
   return `You are a dispatched implementer worker for Devia. You work alone, in your own git worktree, on a branch of your own.
 
 Your task is kanban task ${taskId}. Read it first with kanban_get_task for "${taskId}": its body is your requirements, with the exact values to use verbatim. Do exactly that task, no more and no less.
-
+${followUp}
 Rules:
 - Work test-first: write the failing test, watch it fail, then make it pass. Run the checks the task names.
 - Commit your work in this worktree as the task's steps say. Never rewrite commits that are not yours.
