@@ -452,7 +452,7 @@ export class AppStateService implements OnDestroy {
     if (msgs) {
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
-        if (m.role === 'assistant' && m.model && isCurrent(m.agentId)) return m.model;
+        if (m.role === 'assistant' && !m.worker && m.model && isCurrent(m.agentId)) return m.model;
       }
     }
     const cfg = this.config();
@@ -475,7 +475,7 @@ export class AppStateService implements OnDestroy {
     if (msgs) {
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
-        if (m.role === 'assistant' && m.usage?.inputTokens !== undefined) {
+        if (m.role === 'assistant' && !m.worker && m.usage?.inputTokens !== undefined) {
           const { inputTokens, cachedInputTokens } = m.usage;
           return (inputTokens ?? 0) + (cachedInputTokens ?? 0);
         }
@@ -499,7 +499,7 @@ export class AppStateService implements OnDestroy {
       const msgs = this.chats().get(project);
       if (msgs) {
         for (let i = msgs.length - 1; i >= 0; i--) {
-          const w = msgs[i]?.usage?.contextWindow;
+          const w = msgs[i]?.worker ? undefined : msgs[i]?.usage?.contextWindow;
           if (typeof w === 'number' && w > 0) return w;
         }
       }

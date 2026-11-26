@@ -179,4 +179,26 @@ describe('AppStateService — cross-agent workers (S-56 T11)', () => {
     expect(messages('proj-a')).toHaveLength(1);
     expect(messages('proj-a')[0]?.worker).toBeUndefined();
   });
+
+  it('the footer ignores a worker message for model and context, even when the worker runs the same agent', () => {
+    service.selectedProject.set('proj-a');
+    service.addMessage('proj-a', {
+      id: 'c',
+      role: 'assistant',
+      agentId: 'claude',
+      model: 'opus',
+      usage: { inputTokens: 1_000, contextWindow: 200_000 },
+    });
+    service.addMessage('proj-a', {
+      id: 'w',
+      role: 'assistant',
+      agentId: 'claude',
+      model: 'small-model',
+      worker: worker(),
+      usage: { inputTokens: 50_000, contextWindow: 32_000 },
+    });
+    expect(service.activeModel()).toBe('opus');
+    expect(service.contextUsageTokens()).toBe(1_000);
+    expect(service.contextWindowTokens()).toBe(200_000);
+  });
 });

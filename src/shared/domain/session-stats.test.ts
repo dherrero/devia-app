@@ -196,3 +196,44 @@ describe('buildSessionStats (S-7)', () => {
     expect(s.model).toBe('claude-haiku-4-5'); // last turn
   });
 });
+
+describe('buildSessionStats — cross-agent worker messages (S-56)', () => {
+  const base = { fallbackAgentId: 'claude', now: 1 };
+  const controller = {
+    role: 'assistant',
+    agentId: 'claude',
+    model: 'opus',
+    usage: { inputTokens: 1_000, costUsd: 0.1, contextWindow: 200_000 },
+  };
+  const workerMsg = {
+    role: 'assistant',
+    agentId: 'pi',
+    model: 'small-model',
+    worker: { id: 'W-1' },
+    usage: { inputTokens: 50_000, costUsd: 0.05, contextWindow: 32_000 },
+  };
+
+  it('adds the worker cost to the session, attributed to the worker model', () => {
+    const stats = buildSessionStats({ ...base, messages: [{ role: 'user' }, controller, workerMsg] });
+    expect(stats.costUsd).toBe(0.15);
+    expect(stats.costByModel).toEqual({ opus: 0.1, 'small-model': 0.05 });
+  });
+
+  it('never lets a worker drive the agent, the model or the context figure of the controller', () => {
+    const stats = buildSessionStats({ ...base, messages: [controller, workerMsg] });
+    expect(stats.agentId).toBe('claude');
+    expect(stats.model).toBe('opus');
+    expect(stats.contextTokens).toBe(1_000);
+    expect(stats.contextWindow).toBe(200_000);
+  });
+
+  it('does not count a worker as a turn of the controller', () => {
+    expect(buildSessionStats({ ...base, messages: [controller, workerMsg] }).turnCount).toBe(1);
+  });
+
+  it('a thread of only worker messages falls back to the given agent', () => {
+    const stats = buildSessionStats({ ...base, messages: [workerMsg] });
+    expect(stats.agentId).toBe('claude');
+    expect(stats.contextTokens).toBeUndefined();
+  });
+});
