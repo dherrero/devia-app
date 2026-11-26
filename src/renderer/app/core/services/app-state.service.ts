@@ -20,6 +20,7 @@ import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { EffectiveAgent, SetContextAgentResult } from '../../../../shared/domain/effective-agent';
 import { isForeignEvent } from '../../../../shared/domain/agent';
+import { parseWorkerRunKey, type WorkerRun } from '../../../../shared/domain/cross-agent';
 import type { ChatMessage, ContentBlock, ToolCallRecord } from '../../../../shared/domain/chat';
 import { isAskUserTool } from '../../../../shared/domain/question-ask';
 import { planRecordText, type PlanRecord, type TodoItem } from '../../../../shared/domain/ui-tools';
@@ -1604,7 +1605,8 @@ export class AppStateService implements OnDestroy {
     });
 
     this.api.onProcessStart((e: ProcessStartEvent) => {
-      this.markRunning(e.project, true);
+      // A cross-agent worker is not a project: it must not light up the "running" state of one.
+      if (parseWorkerRunKey(e.project) === null) this.markRunning(e.project, true);
       // REV-TS-CLI-05-02: clear any stale pendingQuestion from a previous run
       // before starting a new one so the question card never shows stale state.
       // REV-TS-CLI-05-04: delete from Map rather than null-setting a single signal.
@@ -1650,7 +1652,14 @@ export class AppStateService implements OnDestroy {
 
     this.api.onClaudeOutput((e: ClaudeOutputEvent) => this.consumeAgentEvent(e));
 
+    this.api.onWorkerChanged((e) => this.onWorkerChanged(e.parentKey, e.worker));
+
     this.api.onProcessEnd((e: ProcessEndEvent) => {
+      // S-56: a worker's run is folded into its controller's thread, with none of the project-run side effects.
+      if (parseWorkerRunKey(e.project) !== null) {
+        this.finishWorkerRun(e);
+        return;
+      }
       this.flushPendingTextDelta(e.project);
       this.markRunning(e.project, false);
       const streams = new Map(this.assistantStreams());
@@ -1685,6 +1694,8 @@ export class AppStateService implements OnDestroy {
           expiresAt: Date.now() + AppStateService.GRACE_MS,
         });
       }
+      // Workers that finished while this controller was still streaming join the thread now, after it.
+      this.flushHeldWorkerMessages(e.project);
       // E-DSK-09 #262 — quota_exceeded routes through the upgrade toast
       // (ticket #258 listens on `paywall-requested`). The renderer also
       // suppresses the generic error toast in that case so the user only
@@ -2089,6 +2100,103 @@ export class AppStateService implements OnDestroy {
       next.set(project, updated);
       this.assistantStreams.set(next);
     }
+  }
+
+  // ── Cross-agent workers (S-56) ────────────────────────────────────────
+  /** Every worker the main process announced, by run key. */
+  private readonly workerRuns = signal<Record<string, WorkerRun>>({});
+  /** Finished worker messages waiting for their controller's turn to end. */
+  private readonly heldWorkerMessages = signal<Map<SessionKey, ChatMessage[]>>(new Map());
+
+  /**
+   * The worker bubbles of one controller that are NOT in its thread yet: the
+   * finished ones held back and the ones still streaming. The feed draws them
+   * below the controller's own live message.
+   */
+  workerMessagesFor(parentKey: SessionKey): ChatMessage[] {
+    const runs = this.workerRuns();
+    const live: ChatMessage[] = [];
+    for (const [key, stream] of this.assistantStreams()) {
+      const parsed = parseWorkerRunKey(key);
+      if (parsed?.parentKey !== parentKey) continue;
+      live.push({ ...stream, worker: runs[key] ?? this.workerStub(key, stream) });
+    }
+    return [...(this.heldWorkerMessages().get(parentKey) ?? []), ...live];
+  }
+
+  /** What the bubble shows before main's `worker:changed` has arrived. */
+  private workerStub(runKey: string, stream: ChatMessage): WorkerRun {
+    const parsed = parseWorkerRunKey(runKey);
+    return {
+      id: runKey,
+      parentKey: parsed?.parentKey ?? '',
+      turnId: '',
+      taskId: parsed?.taskId ?? '',
+      role: 'implementer',
+      agentId: stream.agentId ?? '',
+      runKey,
+      state: 'running',
+    };
+  }
+
+  private onWorkerChanged(parentKey: SessionKey, worker: WorkerRun): void {
+    this.workerRuns.set({ ...this.workerRuns(), [worker.runKey]: worker });
+
+    const patch = (list: readonly ChatMessage[]): ChatMessage[] =>
+      list.map((m) => (m.worker?.id === worker.id ? { ...m, worker } : m));
+    const thread = this.chats().get(parentKey);
+    if (thread?.some((m) => m.worker?.id === worker.id)) {
+      const map = new Map(this.chats());
+      map.set(parentKey, patch(thread));
+      this.chats.set(map);
+      this.scheduleSave(parentKey);
+    }
+    const held = this.heldWorkerMessages().get(parentKey);
+    if (held?.some((m) => m.worker?.id === worker.id)) {
+      const map = new Map(this.heldWorkerMessages());
+      map.set(parentKey, patch(held));
+      this.heldWorkerMessages.set(map);
+    }
+  }
+
+  private finishWorkerRun(e: ProcessEndEvent): void {
+    const parsed = parseWorkerRunKey(e.project);
+    if (!parsed) return;
+    this.flushPendingTextDelta(e.project);
+    const streams = new Map(this.assistantStreams());
+    const stream = streams.get(e.project);
+    if (!stream) return;
+    streams.delete(e.project);
+    this.assistantStreams.set(streams);
+
+    const canceled = e.cancelReason !== undefined || e.error === 'stopped' || e.signal === 'SIGTERM';
+    const finalised: ChatMessage = {
+      ...stream,
+      streaming: false,
+      runStatus: canceled ? 'canceled' : e.error ? 'failed' : 'succeeded',
+      endedAt: Date.now(),
+      events: (stream.events ?? []).slice(-AppStateService.MAX_EVENTS),
+      worker: this.workerRuns()[e.project] ?? this.workerStub(e.project, stream),
+      ...(e.cancelReason !== undefined && { cancelReason: e.cancelReason }),
+    };
+    if (!finalised.id) finalised.id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    if (this.assistantStreams().has(parsed.parentKey)) {
+      const held = new Map(this.heldWorkerMessages());
+      held.set(parsed.parentKey, [...(held.get(parsed.parentKey) ?? []), finalised]);
+      this.heldWorkerMessages.set(held);
+    } else {
+      this.addMessage(parsed.parentKey, finalised);
+    }
+  }
+
+  private flushHeldWorkerMessages(parentKey: SessionKey): void {
+    const held = this.heldWorkerMessages().get(parentKey);
+    if (!held || held.length === 0) return;
+    const map = new Map(this.heldWorkerMessages());
+    map.delete(parentKey);
+    this.heldWorkerMessages.set(map);
+    for (const message of held) this.addMessage(parentKey, message);
   }
 
   private markRunning(projectPath: string, running: boolean) {

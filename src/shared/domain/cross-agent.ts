@@ -148,6 +148,15 @@ export function isWorkerRunKey(key: string): boolean {
   return key.startsWith(WORKER_KEY_PREFIX);
 }
 
+const WORKER_KEY_RE = /^devia-worker:(.+):([A-Za-z0-9][A-Za-z0-9._-]*):(\d+)$/;
+
+/** The parts of a worker run key, or null when it is not one. The parent may contain colons. */
+export function parseWorkerRunKey(key: string): { parentKey: string; taskId: string; attempt: number } | null {
+  const match = WORKER_KEY_RE.exec(key);
+  if (!match) return null;
+  return { parentKey: match[1] as string, taskId: match[2] as string, attempt: Number(match[3]) };
+}
+
 export type WorkerState = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'timeout';
 
 /** One worker as the registry tracks it and the renderer draws it. */

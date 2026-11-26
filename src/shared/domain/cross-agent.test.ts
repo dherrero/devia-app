@@ -3,6 +3,9 @@ import {
   MAIN_AGENT,
   WORKER_ROLES,
   isRoleSplit,
+  isWorkerRunKey,
+  parseWorkerRunKey,
+  workerRunKey,
   buildAssignQuestion,
   parseAssignReply,
   parseWorkerReport,
@@ -122,5 +125,25 @@ describe('explicit main agent in the role map (S-56 T9)', () => {
 
   it('sanitizeRoleAgents keeps the explicit main marker', () => {
     expect(sanitizeRoleAgents({ implementer: MAIN_AGENT, reviewer: 'pi' })).toEqual({ implementer: MAIN_AGENT, reviewer: 'pi' });
+  });
+});
+
+describe('worker run keys (S-56)', () => {
+  it('round-trips parent, task and attempt', () => {
+    expect(parseWorkerRunKey(workerRunKey('proj-a', 'T-12', 3))).toEqual({ parentKey: 'proj-a', taskId: 'T-12', attempt: 3 });
+  });
+
+  it('keeps a parent that contains colons or slashes intact', () => {
+    expect(parseWorkerRunKey(workerRunKey('apps/web:v2', 'T-1', 1))?.parentKey).toBe('apps/web:v2');
+    expect(parseWorkerRunKey(workerRunKey('9f1c2d3e-aaaa-bbbb-cccc-111122223333', 'T-1', 1))?.parentKey).toBe(
+      '9f1c2d3e-aaaa-bbbb-cccc-111122223333',
+    );
+  });
+
+  it('returns null for anything that is not a worker key', () => {
+    for (const key of ['proj-a', '', 'devia-worker:', 'devia-worker:proj-a', 'devia-worker:proj-a:T-1', 'x:devia-worker:a:T-1:1']) {
+      expect(parseWorkerRunKey(key)).toBeNull();
+    }
+    expect(isWorkerRunKey('devia-worker:a:T-1:1')).toBe(true);
   });
 });
