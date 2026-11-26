@@ -58,6 +58,13 @@ describe('resolveWorkerAgent', () => {
     expect(await resolveWorkerAgent(d, 'proj', 'implementer')).toEqual({ ok: true, agentId: 'pi' });
   });
 
+  it('treats an explicit "main" like no mapping: it follows the effective agent', async () => {
+    const d = deps({ roleAgents: { implementer: 'main' }, detected: [agent('claude')], effective: 'claude' });
+    expect(await resolveWorkerAgent(d, 'proj', 'implementer')).toEqual({ ok: true, agentId: 'claude' });
+    const down = deps({ roleAgents: { implementer: 'main' }, detected: [agent('claude', { available: false })] });
+    expect(await resolveWorkerAgent(down, 'proj', 'implementer')).toMatchObject({ ok: false, agentId: 'claude', reason: 'not_installed' });
+  });
+
   it('blocks an agent id the detector does not know', async () => {
     const d = deps({ roleAgents: { implementer: 'ghost' }, detected: [agent('claude')] });
     expect(await resolveWorkerAgent(d, 'proj', 'implementer')).toMatchObject({ ok: false, agentId: 'ghost', reason: 'unknown_agent' });

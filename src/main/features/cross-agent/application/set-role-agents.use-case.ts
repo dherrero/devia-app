@@ -1,5 +1,5 @@
 import type { ProjectRegistry, StateStore } from '../../../shared/ports';
-import { WORKER_ROLES, type RoleAgentMap } from '../../../../shared/domain/cross-agent';
+import { MAIN_AGENT, WORKER_ROLES, type RoleAgentMap } from '../../../../shared/domain/cross-agent';
 
 export type SetRoleAgentsResult =
   | { accepted: true; map: RoleAgentMap }
@@ -31,6 +31,10 @@ export class SetRoleAgentsUseCase {
       }
       if (typeof agentId !== 'string' || agentId.length === 0) {
         return { accepted: false, reason: `Invalid agent for role "${role}".` };
+      }
+      if (agentId === MAIN_AGENT) {
+        clean[role as keyof RoleAgentMap] = MAIN_AGENT;
+        continue;
       }
       const def = this.deps.agents.get(agentId);
       if (!def) return { accepted: false, reason: `Unknown agent id "${agentId}".` };

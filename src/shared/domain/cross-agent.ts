@@ -11,8 +11,21 @@ export const WORKER_ROLES: readonly WorkerRole[] = ['implementer', 'reviewer'];
 /** Report statuses of the Devia Method's implementer/reviewer contract. */
 export type WorkerStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'NEEDS_CONTEXT' | 'BLOCKED';
 
-/** Role → agentId. A missing role means "the main (effective) agent". */
+/** The value of a role the user chose NOT to split: "the main (effective) agent". */
+export const MAIN_AGENT = 'main';
+
+/**
+ * Role → agentId, or {@link MAIN_AGENT}. A role absent from the map has never
+ * been asked about; one set to `main` was asked and the user kept it with the
+ * main agent, so it is not asked again.
+ */
 export type RoleAgentMap = Partial<Record<WorkerRole, string>>;
+
+/** True when the role runs on an agent other than the main one. */
+export function isRoleSplit(map: RoleAgentMap | undefined, role: WorkerRole): boolean {
+  const value = map?.[role];
+  return value !== undefined && value !== MAIN_AGENT;
+}
 
 /** Repair a persisted role map: known roles only, each with a non-empty agent id. */
 export function sanitizeRoleAgents(raw: unknown): RoleAgentMap {
@@ -68,7 +81,7 @@ export function renderWorkerReport(report: RenderableWorkerReport, maxChars = 80
 
 export interface AssignOption {
   key: string;
-  /** `'main'` = the main (effective) agent, i.e. do not split this role. */
+  /** {@link MAIN_AGENT} = the main (effective) agent, i.e. do not split this role. */
   agentId: string;
 }
 
@@ -86,7 +99,7 @@ export function buildAssignQuestion(
   mainAgentId: string,
 ): AssignQuestion {
   const others = availableAgentIds.filter((id) => id !== mainAgentId).slice(0, OPTION_KEYS.length - 1);
-  const options: AssignOption[] = [{ key: 'a', agentId: 'main' }];
+  const options: AssignOption[] = [{ key: 'a', agentId: MAIN_AGENT }];
   others.forEach((agentId, i) => options.push({ key: OPTION_KEYS[i + 1] as string, agentId }));
   return { roles: [...roles], options };
 }
@@ -116,7 +129,7 @@ export function parseAssignReply(text: string, question: AssignQuestion): Assign
       retryRoles.push(role);
       return;
     }
-    if (option.agentId !== 'main') map[role] = option.agentId;
+    map[role] = option.agentId;
   });
   return retryRoles.length > 0 ? { ok: false, retryRoles } : { ok: true, map };
 }

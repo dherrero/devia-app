@@ -177,6 +177,14 @@ const spawnAgentSchema: Record<string, unknown> = {
   required: ['role', 'taskId'],
 };
 
+const assignAgentsSchema: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    roles: { type: 'array', items: { type: 'string', enum: ['implementer', 'reviewer'] } },
+    reassign: { type: 'boolean', description: 'Ask again even if this project already has an answer.' },
+  },
+};
+
 const DEFS: Record<UiToolName, Omit<UiToolDef, 'publicName' | 'kind'>> = {
   ask_user: {
     name: 'ask_user',
@@ -255,6 +263,14 @@ const DEFS: Record<UiToolName, Omit<UiToolDef, 'publicName' | 'kind'>> = {
       'The worker has no context of this conversation and works in its own worktree: the task on the board is its whole brief. ' +
       'Returns a report that starts with STATUS.',
     inputSchema: spawnAgentSchema,
+  },
+  assign_agents: {
+    name: 'assign_agents',
+    description:
+      'Ask the user which agent should implement and which should review the tasks of your plan, and WAIT. ' +
+      'Call it once, before devia_plan_approve, with the roles your plan uses. ' +
+      'The answer is saved for this project, so it asks only about what is not answered yet.',
+    inputSchema: assignAgentsSchema,
   },
 };
 

@@ -1,4 +1,4 @@
-import type { RoleAgentMap, WorkerRole } from '../../../../shared/domain/cross-agent';
+import { MAIN_AGENT, type RoleAgentMap, type WorkerRole } from '../../../../shared/domain/cross-agent';
 import type { ProjectRegistry } from '../../../shared/ports';
 import type { EffectiveAgentResolver } from '../../../shared/effective-agent-resolver';
 
@@ -45,7 +45,8 @@ export async function resolveWorkerAgent(
   sessionId?: string,
 ): Promise<WorkerAgentResolution> {
   const mapped = (deps.registry.find(projectPath)?.roleAgents as RoleAgentMap | undefined)?.[role];
-  const agentId = mapped ?? deps.effective.forRun(projectPath, sessionId).agentId;
+  const agentId =
+    mapped !== undefined && mapped !== MAIN_AGENT ? mapped : deps.effective.forRun(projectPath, sessionId).agentId;
   const detected = await deps.detector.detectOne(agentId);
   if (!detected) {
     return { ok: false, agentId, reason: 'unknown_agent', message: `The agent "${agentId}" is not known to Devia.` };

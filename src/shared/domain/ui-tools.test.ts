@@ -10,6 +10,7 @@ import {
   isBlockingUiTool,
   isPlanRunDecision,
   isServerHandledUiTool,
+  normalizeAssignAgentsInput,
   normalizeConfirmInput,
   normalizeNotifyInput,
   normalizePickInput,
@@ -383,5 +384,32 @@ describe('devia_spawn_agent (S-56)', () => {
     for (const input of GARBAGE) expect(() => normalizeSpawnAgentInput(input)).not.toThrow();
     expect(normalizeUiToolInput('spawn_agent', { role: 'reviewer', taskId: 'T-3' })).toEqual({ role: 'reviewer', taskId: 'T-3' });
     expect(normalizeUiToolInput('spawn_agent', {})).toBeNull();
+  });
+});
+
+describe('devia_assign_agents (S-56 T9)', () => {
+  it('is a blocking card tool, not served by main alone', () => {
+    expect(uiToolPublicName('assign_agents')).toBe('devia_assign_agents');
+    expect(isBlockingUiTool('assign_agents')).toBe(true);
+    expect(isServerHandledUiTool('assign_agents')).toBe(false);
+  });
+
+  it('keeps the known roles, once each, and defaults to both', () => {
+    expect(normalizeAssignAgentsInput({ roles: ['reviewer', 'reviewer', 'architect'] })).toEqual({ roles: ['reviewer'], reassign: false });
+    expect(normalizeAssignAgentsInput({})).toEqual({ roles: ['implementer', 'reviewer'], reassign: false });
+    expect(normalizeAssignAgentsInput({ roles: [] })).toEqual({ roles: ['implementer', 'reviewer'], reassign: false });
+  });
+
+  it('reads reassign only when it is literally true', () => {
+    expect(normalizeAssignAgentsInput({ reassign: true }).reassign).toBe(true);
+    expect(normalizeAssignAgentsInput({ reassign: 'yes' }).reassign).toBe(false);
+  });
+
+  it('never throws and never returns null: garbage means "both roles"', () => {
+    for (const input of GARBAGE) {
+      expect(() => normalizeAssignAgentsInput(input)).not.toThrow();
+      expect(normalizeAssignAgentsInput(input).roles).toEqual(['implementer', 'reviewer']);
+    }
+    expect(normalizeUiToolInput('assign_agents', { roles: ['implementer'] })).toEqual({ roles: ['implementer'], reassign: false });
   });
 });

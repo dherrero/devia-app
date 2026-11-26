@@ -90,6 +90,12 @@ describe('buildCrossAgentFeature', () => {
     expect(t.gitCalls.some((a) => a[0] === 'merge' && a.includes('--ff-only'))).toBe(true);
   });
 
+  it('an explicit main reviewer is not a split: the implementer is integrated right away', async () => {
+    const t = setup({ roleAgents: { implementer: 'pi', reviewer: 'main' } });
+    await t.built.spawnWorker(CALL);
+    expect(t.gitCalls.some((a) => a[0] === 'merge' && a.includes('--ff-only'))).toBe(true);
+  });
+
   it('refuses without launching when the feature is off', async () => {
     const t = setup({ enabled: false });
     const text = await t.built.spawnWorker(CALL);

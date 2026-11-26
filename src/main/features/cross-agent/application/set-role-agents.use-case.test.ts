@@ -30,6 +30,15 @@ describe('SetRoleAgentsUseCase', () => {
     expect(record.roleAgents).toEqual({});
   });
 
+  it('accepts the explicit main agent without looking it up as an agent id', () => {
+    const { uc, record } = build();
+    expect(uc.execute('proj', { implementer: 'main', reviewer: 'pi' })).toEqual({
+      accepted: true,
+      map: { implementer: 'main', reviewer: 'pi' },
+    });
+    expect(record.roleAgents).toEqual({ implementer: 'main', reviewer: 'pi' });
+  });
+
   it('rejects an unknown agent without saving anything', () => {
     const { uc, record, save } = build();
     const r = uc.execute('proj', { implementer: 'ghost' });

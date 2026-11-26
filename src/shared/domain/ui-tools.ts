@@ -22,7 +22,8 @@ export type UiToolName =
   | 'notify'
   | 'skill'
   | 'send_file'
-  | 'spawn_agent';
+  | 'spawn_agent'
+  | 'assign_agents';
 
 export const UI_TOOL_NAMES: readonly UiToolName[] = [
   'ask_user',
@@ -35,6 +36,7 @@ export const UI_TOOL_NAMES: readonly UiToolName[] = [
   'skill',
   'send_file',
   'spawn_agent',
+  'assign_agents',
 ] as const;
 
 /**
@@ -56,6 +58,8 @@ export const UI_TOOL_KIND: Record<UiToolName, UiToolKind> = {
   send_file: 'fire_and_forget',
   // Blocking, but nobody clicks: the main process runs a worker and answers when it ends.
   spawn_agent: 'blocking',
+  // Blocking, drawn as a card in the desktop app (S-56): which agent runs which role.
+  assign_agents: 'blocking',
 };
 
 /**
@@ -514,6 +518,29 @@ export function normalizeSpawnAgentInput(input: unknown): SpawnAgentInput | null
   return { role, taskId };
 }
 
+// ---------------------------------------------------------------------------
+// devia_assign_agents (S-56)
+// ---------------------------------------------------------------------------
+
+export interface AssignAgentsInput {
+  roles: Array<'implementer' | 'reviewer'>;
+  /** Ask again even for roles the project already has an answer for. */
+  reassign: boolean;
+}
+
+const ASSIGNABLE_ROLES = ['implementer', 'reviewer'] as const;
+
+/** Never null: anything unusable means "ask about both roles". */
+export function normalizeAssignAgentsInput(input: unknown): AssignAgentsInput {
+  const record = input !== null && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const wanted = Array.isArray(record['roles']) ? record['roles'] : [];
+  const roles = ASSIGNABLE_ROLES.filter((role) => wanted.includes(role));
+  return {
+    roles: roles.length > 0 ? roles : [...ASSIGNABLE_ROLES],
+    reassign: record['reassign'] === true,
+  };
+}
+
 export function normalizeUiToolInput(tool: UiToolName, input: unknown): unknown | null {
   switch (tool) {
     case 'todo':
@@ -534,6 +561,8 @@ export function normalizeUiToolInput(tool: UiToolName, input: unknown): unknown 
       return normalizeSendFileInput(input);
     case 'spawn_agent':
       return normalizeSpawnAgentInput(input);
+    case 'assign_agents':
+      return normalizeAssignAgentsInput(input);
     case 'ask_user':
       return input;
   }

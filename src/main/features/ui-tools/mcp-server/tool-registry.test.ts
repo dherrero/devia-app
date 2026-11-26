@@ -31,3 +31,19 @@ describe('spawn_agent tool definition (S-56)', () => {
     expect(def.description).toMatch(/STATUS/);
   });
 });
+
+describe('assign_agents tool definition (S-56 T9)', () => {
+  const def = UI_TOOL_REGISTRY.assign_agents;
+
+  it('is a blocking tool with optional roles and reassign', () => {
+    expect(def.kind).toBe('blocking');
+    expect(def.publicName).toBe('devia_assign_agents');
+    const schema = def.inputSchema as { required?: string[]; properties?: Record<string, unknown> };
+    expect(schema.required ?? []).toEqual([]);
+    expect(Object.keys(schema.properties ?? {})).toEqual(['roles', 'reassign']);
+  });
+
+  it('says it asks the user once and that the answer is saved for the project', () => {
+    expect(def.description).toMatch(/saved for this project/i);
+  });
+});

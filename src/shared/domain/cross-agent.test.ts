@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  MAIN_AGENT,
   WORKER_ROLES,
+  isRoleSplit,
   buildAssignQuestion,
   parseAssignReply,
   parseWorkerReport,
@@ -74,7 +76,7 @@ describe('parseAssignReply', () => {
 
   it('parses compact and uppercase forms', () => {
     expect(parseAssignReply('1b 2c', q)).toEqual({ ok: true, map: { implementer: 'pi', reviewer: 'opencode' } });
-    expect(parseAssignReply('1) B  2) A', q)).toEqual({ ok: true, map: { implementer: 'pi' } });
+    expect(parseAssignReply('1) B  2) A', q)).toEqual({ ok: true, map: { implementer: 'pi', reviewer: MAIN_AGENT } });
   });
 
   it('asks again only for the invalid role and returns no partial map', () => {
@@ -102,5 +104,23 @@ describe('sanitizeRoleAgents', () => {
 
   it('returns an empty map for anything that is not a plain object', () => {
     for (const bad of [null, undefined, 'pi', 3, ['pi']]) expect(sanitizeRoleAgents(bad)).toEqual({});
+  });
+});
+
+describe('explicit main agent in the role map (S-56 T9)', () => {
+  const q = buildAssignQuestion(['implementer', 'reviewer'], ['claude', 'pi'], 'claude');
+
+  it('records a choice of "a" as the main agent, so it is not asked again', () => {
+    expect(parseAssignReply('1. a\n2. a', q)).toEqual({ ok: true, map: { implementer: MAIN_AGENT, reviewer: MAIN_AGENT } });
+  });
+
+  it('isRoleSplit is true only for a real agent', () => {
+    expect(isRoleSplit({ implementer: 'pi' }, 'implementer')).toBe(true);
+    expect(isRoleSplit({ implementer: MAIN_AGENT }, 'implementer')).toBe(false);
+    expect(isRoleSplit({}, 'implementer')).toBe(false);
+  });
+
+  it('sanitizeRoleAgents keeps the explicit main marker', () => {
+    expect(sanitizeRoleAgents({ implementer: MAIN_AGENT, reviewer: 'pi' })).toEqual({ implementer: MAIN_AGENT, reviewer: 'pi' });
   });
 });

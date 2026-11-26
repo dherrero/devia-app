@@ -22,7 +22,7 @@ import { UI_TOOL_NAMES, type UiToolName } from './ui-tools';
  * file-writers, so there is nothing to confirm, review or pick a target for.
  */
 const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
-  plan: ['ask_user', 'todo', 'plan_approve', 'skill', 'send_file'],
+  plan: ['ask_user', 'todo', 'plan_approve', 'skill', 'send_file', 'assign_agents'],
   apply: ['ask_user', 'todo', 'request_review', 'confirm', 'pick', 'notify', 'skill', 'send_file', 'spawn_agent'],
   'apply-yolo': [
     'ask_user',
@@ -88,6 +88,11 @@ export interface UiToolPolicyInput {
    * without it advertises exactly what it did before the tool existed.
    */
   canSpawnAgents?: boolean;
+  /**
+   * `assign_agents` (plan mode) needs the feature on and two or more usable
+   * agents to choose between. Opt-in: absent means OFF.
+   */
+  canAssignAgents?: boolean;
 }
 
 /**
@@ -111,6 +116,7 @@ export function resolveAdvertisedUiTools(input: UiToolPolicyInput): UiToolName[]
     if (name === 'notify' && input.canNotify === false) continue;
     if (name === 'send_file' && input.canSendFiles !== true) continue;
     if (name === 'spawn_agent' && input.canSpawnAgents !== true) continue;
+    if (name === 'assign_agents' && input.canAssignAgents !== true) continue;
     out.push(name);
   }
   return out;
@@ -136,6 +142,7 @@ export const IMPLEMENTED_UI_TOOLS: readonly UiToolName[] = [
   'request_review',
   'send_file',
   'spawn_agent',
+  'assign_agents',
 ];
 
 /** Narrow an advertised set to the tools this build can actually serve. */

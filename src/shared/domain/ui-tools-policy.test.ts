@@ -32,6 +32,30 @@ describe('resolveAdvertisedUiTools — spawn_agent (S-56)', () => {
   });
 });
 
+describe('resolveAdvertisedUiTools — assign_agents (S-56 T9)', () => {
+  const on = { mode: 'plan', isRemote: false, delivered: true, canAssignAgents: true } as const;
+
+  it('is opt-in: absent unless the run can assign agents', () => {
+    expect(resolveAdvertisedUiTools({ mode: 'plan', isRemote: false, delivered: true })).not.toContain('assign_agents');
+  });
+
+  it('is offered in plan mode only', () => {
+    expect(resolveAdvertisedUiTools(on)).toContain('assign_agents');
+    expect(resolveAdvertisedUiTools({ ...on, mode: 'apply' })).not.toContain('assign_agents');
+    expect(resolveAdvertisedUiTools({ ...on, mode: 'apply-yolo' })).not.toContain('assign_agents');
+  });
+
+  it('is never offered to a worker, and (until the Telegram flow lands) not to a remote run', () => {
+    expect(resolveAdvertisedUiTools({ ...on, isWorker: true })).not.toContain('assign_agents');
+    expect(resolveAdvertisedUiTools({ ...on, isRemote: true })).not.toContain('assign_agents');
+  });
+
+  it('does not change the rest of the plan set', () => {
+    const plain = resolveAdvertisedUiTools({ mode: 'plan', isRemote: false, delivered: true });
+    expect(resolveAdvertisedUiTools(on).filter((n) => n !== 'assign_agents')).toEqual(plain);
+  });
+});
+
 describe('resolveAdvertisedUiTools — cross-agent workers (S-56)', () => {
   const worker = { mode: 'apply', isRemote: false, delivered: true, isWorker: true } as const;
 

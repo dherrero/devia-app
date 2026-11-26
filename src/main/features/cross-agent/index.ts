@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeCrossAgentConfig } from '../../../shared/domain/cross-agent-config';
-import type { RoleAgentMap, WorkerRole } from '../../../shared/domain/cross-agent';
+import { isRoleSplit, type RoleAgentMap, type WorkerRole } from '../../../shared/domain/cross-agent';
 import type { ConfigRepository, ProjectRegistry } from '../../shared/ports';
 import type { EffectiveAgentResolver } from '../../shared/effective-agent-resolver';
 import type { RunGateway } from '../../shared/run-gateway';
@@ -91,7 +91,7 @@ export function buildCrossAgentFeature(deps: CrossAgentBuildDeps): CrossAgentBui
       head: headOf(cwd),
       dirty: deps.git.run(cwd, ['status', '--porcelain']).stdout.length > 0,
     }),
-    roleIsSplit: (project, role) => deps.registry.find(project)?.roleAgents?.[role] !== undefined,
+    roleIsSplit: (project, role) => isRoleSplit(deps.registry.find(project)?.roleAgents, role),
   });
 
   return {
