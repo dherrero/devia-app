@@ -20,11 +20,14 @@ Lets the agent that follows the Devia Method (the controller) hand an implemente
 - The reviewer runs in the implementer's worktree and branch under its own run key, with the range `baseSha..HEAD` in its prompt; a fix round of the implementer reuses its run key and session. A reviewer that changes the worktree is flagged and nothing is integrated.
 - `integrateWorker` runs `merge --ff-only` of the worker branch into the controller's checkout and, on success, removes the worktree and branch. When the controller moved on (`not_ff`) or uncommitted edits would be overwritten (`dirty`) nothing changes, the work stays on its branch and the report is downgraded to `DONE_WITH_CONCERNS` with the reason.
 - Integration happens on an implementer `DONE`/`DONE_WITH_CONCERNS` when the project does not split the reviewer role, otherwise on a clean reviewer `DONE`.
+- `devia_spawn_agent({ role, taskId })` (UI tool `spawn_agent`, blocking): offered only in apply/apply-yolo, to a run that is not a worker, when `crossAgent.enabled` is on, a runner exists and two or more agents are usable (`usableAgentCount`, a cached scan refreshed every 60 s and at startup). It is served by the main process (`RunInteraction.serveSpawnAgent`), not drawn as a card: it never arms the question kill timer, nudges the idle watchdog (`handle.keepAlive`) every 30 s while the worker runs, and the MCP server waits up to `defaultTimeoutSec + 120 s` (`--worker-timeout-ms`) instead of 5 minutes. Its answer is the worker's rendered report. It is also offered to remote (Telegram) runs: it needs no click.
+- When the controller run ends (done or error) `cancelWorkers(parentKey)` cancels its workers.
+- `buildCrossAgentFeature` (`index.ts`) composes the registry and the spawn use case from the run gateway, the detector, git and the worktree creator; it is wired in `composition-root.ts` and passed to the runner as `spawnWorker`, `usableAgentCount` and `cancelWorkers`. Limits are read from the config on every decision.
 - Config `DeviaConfig.crossAgent` (`enabled` false, `maxConcurrent` 3 up to 8, `maxPerTurn` 8, `defaultTimeoutSec` 1800) with a block in Settings › Execution.
 
 ## Does NOT
 
-- Does NOT expose any of this to an agent yet: the `devia_spawn_agent` and `devia_assign_agents` tools, the composition-root wiring, the chat bubbles and the Telegram flow are later tasks of S-56.
+- Does NOT offer `devia_assign_agents` yet, nor draw worker bubbles in the chat, nor have a Telegram flow: later tasks of S-56.
 - Does NOT keep the implementer record across an app restart (in memory): a reviewer after a restart is told to dispatch the implementer again.
 - Does NOT aggregate the workers' cost into the parent session stats yet.
 - Does NOT use `explainError` for the failure messages: S-54 is not on `dev` yet, so they are plain strings.
@@ -46,7 +49,7 @@ Lets the agent that follows the Devia Method (the controller) hand an implemente
 
 ## IPC / MCP surface
 
-None yet.
+MCP tool `devia_spawn_agent` of the `devia-ui` server (`src/main/features/ui-tools/mcp-server/tool-registry.ts`). No IPC channel yet.
 
 ## Persistence
 
@@ -63,6 +66,7 @@ None yet.
 - Gateway events carry `project: runKey ?? projectName`, so completion is keyed by run key. An `end` with no previous `start` (busy, early exit) resolves as `failed`.
 - `RunGateway.submit` accepts `runKey`, `sessionId`, `isolate` and `agentIdOverride` (forwarded by `claude.ipc.ts` to `submitInstruction`); a worker is submitted with origin `renderer`, there is no `subagent` origin: the run key identifies it.
 - The runner's own worktree ensure uses `worktreeBaseRef` (default branch) and silently falls back to the base checkout, so the worker's worktree is created explicitly first.
+- The idle watchdog of the launcher (5 minutes without stdout/stderr) would kill a controller that waits on a worker, hence `keepAlive`; a controller that is not waiting through this tool is still subject to it.
 - A role absent from `roleAgents` means "the main (effective) agent", i.e. do not split that role.
 
 ## Tests

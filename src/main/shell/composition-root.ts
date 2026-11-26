@@ -73,6 +73,10 @@ import {
   createShellRunner,
 } from '../features/telegram-controller';
 import { RunGateway } from '../shared/run-gateway';
+import { buildCrossAgentFeature } from '../features/cross-agent';
+import { createGitRunner } from '../features/cross-agent/infrastructure/git-runner';
+import { ensureWorktreeSync } from '../features/git/infrastructure/cli-git-worktree-manager';
+import { resolveAndValidateCwd } from '../features/cli-adapters/infrastructure/resolve-cwd';
 import { RunModeStore } from '../shared/run-mode-store';
 import { ConfigChangeBus } from '../shared/config-change-bus';
 import { seedRunModes } from '../shared/seed-run-modes';
@@ -424,6 +428,26 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     }),
   });
 
+  // S-56: workers of other agents for the Devia Method loop. Off by default (config);
+  // `execute()` offers `devia_spawn_agent` only when it is on and 2+ agents are usable.
+  const crossAgent = buildCrossAgentFeature({
+    config,
+    registry,
+    effective: effectiveAgent,
+    detector: cliAdapters.exports.detector,
+    gateway: runGateway,
+    stopRun: (runKey) => runGateway.stop(runKey),
+    git: createGitRunner(),
+    // A worker starts from the controller's HEAD, not from the configured base ref.
+    ensureWorktree: (ref, baseRef) => ensureWorktreeSync(ref, undefined, baseRef),
+    projectDir: (project, workspaceRoot) => {
+      const resolved = resolveAndValidateCwd(project, workspaceRoot);
+      return resolved.ok ? resolved.resolvedPath : null;
+    },
+  });
+  void crossAgent.refreshAgents();
+  setInterval(() => void crossAgent.refreshAgents(), 60_000).unref();
+
   const features: Feature[] = [
     // S-25 F3.3: read-only catalog + the confirm grants the settings panel manages.
     uiToolsBuilt.feature,
@@ -502,6 +526,9 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // E-DSK-14: bind the queue-aware submit + republish run events so the
       // Telegram controller can drive and mirror runs.
       runGateway,
+      spawnWorker: crossAgent.spawnWorker,
+      usableAgentCount: crossAgent.usableAgentCount,
+      cancelWorkers: crossAgent.cancelWorkers,
       // A reset session starts over in plan mode.
       onSessionReset: (project) => runModes.reset(project),
       // S-32: `devia_send_file` is only offered while the relay is connected.

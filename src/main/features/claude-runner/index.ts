@@ -173,6 +173,12 @@ export interface ClaudeRunnerDeps {
    * mirror runs.
    */
   runGateway?: import('../../shared/run-gateway').RunGateway;
+  /** S-56: runs one cross-agent worker for `devia_spawn_agent`; absent ⇒ the tool is never offered. */
+  spawnWorker?: (call: import('./application/run-instruction.use-case').SpawnWorkerCall) => Promise<string>;
+  /** S-56: how many agents can take a worker right now (cached snapshot). */
+  usableAgentCount?: () => number;
+  /** S-56: cancels the workers of a controller run when it ends. */
+  cancelWorkers?: (parentKey: string) => number;
   /** Notified after a session reset (the run mode goes back to its default). */
   onSessionReset?: (project: string) => void;
   /** S-32: whether the chat relay is connected (gates `devia_send_file`). */
@@ -225,6 +231,9 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     ...(deps.consumeMemoryReinjection !== undefined && { consumeMemoryReinjection: deps.consumeMemoryReinjection }),
     ...(deps.ensureSessionWorktree !== undefined && { ensureSessionWorktree: deps.ensureSessionWorktree }),
     ...(deps.remoteRelayConnected !== undefined && { remoteRelayConnected: deps.remoteRelayConnected }),
+    ...(deps.spawnWorker !== undefined && { spawnWorker: deps.spawnWorker }),
+    ...(deps.usableAgentCount !== undefined && { usableAgentCount: deps.usableAgentCount }),
+    ...(deps.cancelWorkers !== undefined && { cancelWorkers: deps.cancelWorkers }),
     ...(deps.isLiveSessionWorktree !== undefined && { isLiveSessionWorktree: deps.isLiveSessionWorktree }),
     mappers,
   });
