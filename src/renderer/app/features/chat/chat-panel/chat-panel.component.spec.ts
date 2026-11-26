@@ -88,6 +88,7 @@ function createMockState() {
     selectedProject: _selectedProject.asReadonly(),
     chats: _chats.asReadonly(),
     assistantStreams: _assistantStreams.asReadonly(),
+    workerMessagesFor: () => [],
     pendingQuestions: _pendingQuestions.asReadonly(),
     gitInfo: _gitInfo.asReadonly(),
     focusedDiffFile: _focusedDiffFile.asReadonly(),

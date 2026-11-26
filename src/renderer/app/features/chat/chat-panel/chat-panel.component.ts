@@ -348,6 +348,12 @@ export class ChatPanelComponent {
     return k ? this.state.assistantStreams().get(k) ?? null : null;
   });
 
+  /** S-56: workers of other agents talking in this controller's thread, not yet part of it. */
+  readonly currentWorkerMessages = computed<ChatMessage[]>(() => {
+    const k = this.sessionKey();
+    return k ? this.state.workerMessagesFor(k) : [];
+  });
+
   // Stop button + "ejecutando" header chip. Reads the shared
   // runningPaths signal (via state.isRunning) so it can never disagree
   // with the sidebar dots or the statusbar pill — they all derive from

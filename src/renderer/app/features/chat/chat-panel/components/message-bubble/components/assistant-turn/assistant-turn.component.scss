@@ -502,3 +502,35 @@
   font-size: var(--dv-fs-xs);
   padding: 0.0625rem 0.25rem;
 }
+
+// ── Cross-agent worker (S-56 T11) ─────────────────────────────────────────
+.worker-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 6px;
+  font-size: 12px;
+  color: var(--dv-muted);
+}
+
+.worker-who {
+  color: var(--dv-fg);
+  font-weight: 600;
+}
+
+.worker-state[data-state='running'],
+.worker-state[data-state='queued'] {
+  color: var(--dv-acc);
+}
+
+.worker-state[data-state='failed'],
+.worker-state[data-state='timeout'],
+.worker-state[data-state='cancelled'] {
+  color: var(--dv-danger);
+}
+
+// A finished worker folds to its header line; the toggle brings the body back.
+.body-col.worker-collapsed > :not(.worker-head) {
+  display: none;
+}

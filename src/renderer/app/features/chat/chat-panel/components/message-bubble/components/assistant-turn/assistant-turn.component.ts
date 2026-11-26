@@ -15,6 +15,7 @@ import {
 import type { ToolCallRecord } from '../../../../../../../../../shared/domain/chat';
 import { summarizeToolCall } from '../../../../../../../../../shared/domain/tool-summary';
 import { isAskUserTool } from '../../../../../../../../../shared/domain/question-ask';
+import { ElectronApiService } from '../../../../../../../core/services/electron-api.service';
 import { ToolCallCardComponent } from '../../../tool-call-card/tool-call-card.component';
 import { QuestionAnsweredCardComponent } from '../../../question-answered-card/question-answered-card.component';
 import type { ChatBubbleMessage } from '../../../../models/chat-bubble-contract.model';
@@ -151,6 +152,35 @@ export class AssistantTurnComponent {
 
   readonly msg = input.required<ChatBubbleMessage>();
   readonly isLatest = input(true);
+
+  // ── Cross-agent worker bubble (S-56 T11) ──────────────────────────────
+  private readonly api = inject(ElectronApiService);
+
+  /** Set when a worker of another agent wrote this message into the thread. */
+  readonly worker = computed(() => this.msg().worker ?? null);
+  readonly workerActive = computed(() => {
+    const state = this.worker()?.state;
+    return state === 'queued' || state === 'running';
+  });
+  /** `null` = follow the state (open while it runs, folded once it ends); a click overrides it. */
+  private readonly workerOpenOverride = signal<boolean | null>(null);
+  readonly workerOpen = computed(() => this.workerOpenOverride() ?? this.workerActive());
+  readonly workerDuration = computed(() => {
+    const w = this.worker();
+    if (!w || w.startedAt === undefined || w.endedAt === undefined || w.endedAt < w.startedAt) return null;
+    const seconds = Math.round((w.endedAt - w.startedAt) / 1000);
+    const minutes = Math.floor(seconds / 60);
+    return minutes > 0 ? `${minutes}m ${String(seconds % 60).padStart(2, '0')}s` : `${seconds}s`;
+  });
+
+  toggleWorker(): void {
+    this.workerOpenOverride.set(!this.workerOpen());
+  }
+
+  cancelWorker(): void {
+    const w = this.worker();
+    if (w) void this.api.cancelWorker(w.id);
+  }
 
   /** Flips to `true` once this bubble watches its message finish streaming, so
    *  the just-completed reply types itself in (see TypewriterDirective). History

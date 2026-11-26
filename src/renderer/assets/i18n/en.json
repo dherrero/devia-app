@@ -1067,6 +1067,20 @@
       "note_assigned": "✓ Assigned: {{detail}}"
     }
   },
+  "worker_bubble": {
+    "role_implementer": "implementer",
+    "role_reviewer": "reviewer",
+    "state_queued": "Waiting",
+    "state_running": "Working",
+    "state_done": "Done",
+    "state_failed": "Failed",
+    "state_cancelled": "Cancelled",
+    "state_timeout": "Timed out",
+    "cancel": "Cancel",
+    "cancel_aria": "Cancel this worker",
+    "expand": "Show",
+    "collapse": "Hide"
+  },
   "starter_kit": {
     "intro": {
       "title_on": "Devia Method is on",

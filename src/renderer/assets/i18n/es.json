@@ -1067,6 +1067,20 @@
       "note_assigned": "✓ Asignado: {{detail}}"
     }
   },
+  "worker_bubble": {
+    "role_implementer": "implementador",
+    "role_reviewer": "revisor",
+    "state_queued": "En cola",
+    "state_running": "Trabajando",
+    "state_done": "Terminado",
+    "state_failed": "Falló",
+    "state_cancelled": "Cancelado",
+    "state_timeout": "Tiempo agotado",
+    "cancel": "Cancelar",
+    "cancel_aria": "Cancelar este worker",
+    "expand": "Ver",
+    "collapse": "Ocultar"
+  },
   "starter_kit": {
     "intro": {
       "title_on": "El método Devia está activado",
