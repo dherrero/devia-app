@@ -14,6 +14,17 @@ export type WorkerStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'NEEDS_CONTEXT' | 'BL
 /** Role → agentId. A missing role means "the main (effective) agent". */
 export type RoleAgentMap = Partial<Record<WorkerRole, string>>;
 
+/** Repair a persisted role map: known roles only, each with a non-empty agent id. */
+export function sanitizeRoleAgents(raw: unknown): RoleAgentMap {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: RoleAgentMap = {};
+  for (const role of WORKER_ROLES) {
+    const value = (raw as Record<string, unknown>)[role];
+    if (typeof value === 'string' && value.length > 0) out[role] = value;
+  }
+  return out;
+}
+
 export interface WorkerReport {
   status: WorkerStatus;
   summary: string;

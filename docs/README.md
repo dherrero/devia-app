@@ -65,6 +65,7 @@ Status values: `implemented`, `partial`, `deprecated`. Group = the area it belon
 | [features/sub-agents.md](features/sub-agents.md) | Reusable sub-agent definitions synced to each CLI |
 | [features/prompt-packs.md](features/prompt-packs.md) | Per-project system-prompt packs |
 | [features/starter-kits.md](features/starter-kits.md) | The Devia Method kit and its delivery |
+| [features/cross-agent.md](features/cross-agent.md) | Workers of other agents for the method loop (S-56, in progress) |
 | [features/code-graph.md](features/code-graph.md) | Own code graph, `devia-code-graph` server, `/graph` view |
 | [features/code-mode.md](features/code-mode.md) | Sandboxed TypeScript scripts over the user's MCP servers |
 

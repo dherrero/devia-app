@@ -5,6 +5,7 @@ import {
   parseAssignReply,
   parseWorkerReport,
   renderWorkerReport,
+  sanitizeRoleAgents,
 } from './cross-agent';
 
 describe('parseWorkerReport', () => {
@@ -86,5 +87,20 @@ describe('parseAssignReply', () => {
 
   it('asks again for everything on garbage', () => {
     expect(parseAssignReply('whatever', q)).toEqual({ ok: false, retryRoles: ['implementer', 'reviewer'] });
+  });
+});
+
+describe('sanitizeRoleAgents', () => {
+  it('keeps known roles with a non-empty string agent', () => {
+    expect(sanitizeRoleAgents({ implementer: 'pi', reviewer: 'opencode' })).toEqual({ implementer: 'pi', reviewer: 'opencode' });
+  });
+
+  it('drops unknown roles, empty and non-string values', () => {
+    expect(sanitizeRoleAgents({ implementer: 'pi', architect: 'x', reviewer: 7 })).toEqual({ implementer: 'pi' });
+    expect(sanitizeRoleAgents({ implementer: '' })).toEqual({});
+  });
+
+  it('returns an empty map for anything that is not a plain object', () => {
+    for (const bad of [null, undefined, 'pi', 3, ['pi']]) expect(sanitizeRoleAgents(bad)).toEqual({});
   });
 });
