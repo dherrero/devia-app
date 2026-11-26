@@ -702,6 +702,16 @@
       "cancel": "取消",
       "send": "选择"
     },
+    "assign": {
+      "aria": "代理请求的代理分配",
+      "badge": "分配",
+      "title": "计划的每一部分应由哪个代理来完成？",
+      "role_implementer": "实现任务",
+      "role_reviewer": "审查任务",
+      "main": "主代理（{{agent}}）",
+      "cost": "每个 worker 都是该代理的一次完整运行，会消耗它自己的配额。已为此项目保存。",
+      "confirm": "保存"
+    },
     "review": {
       "requested": "智能体请你复查这些变更"
     },
@@ -714,7 +724,8 @@
       "note_always": "✓ 始终允许：{{detail}}",
       "note_declined": "✕ 已拒绝：{{detail}}",
       "note_picked": "✓ 已选择：{{detail}}",
-      "note_pick_cancelled": "✕ 未选择任何内容"
+      "note_pick_cancelled": "✕ 未选择任何内容",
+      "note_assigned": "✓ 已分配：{{detail}}"
     }
   },
   "codeGraph": {

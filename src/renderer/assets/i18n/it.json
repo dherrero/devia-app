@@ -702,6 +702,16 @@
       "cancel": "Annulla",
       "send": "Scegli"
     },
+    "assign": {
+      "aria": "Assegnazione degli agenti richiesta dall'agente",
+      "badge": "Assegna",
+      "title": "Quale agente deve occuparsi di ogni parte del piano?",
+      "role_implementer": "Implementare i task",
+      "role_reviewer": "Revisionare i task",
+      "main": "Agente principale ({{agent}})",
+      "cost": "Ogni worker è un'esecuzione completa di quell'agente e consuma la sua quota. Salvato per questo progetto.",
+      "confirm": "Salva"
+    },
     "review": {
       "requested": "L'agente ti chiede di rivedere le modifiche"
     },
@@ -714,7 +724,8 @@
       "note_always": "✓ Sempre consentito: {{detail}}",
       "note_declined": "✕ Rifiutato: {{detail}}",
       "note_picked": "✓ Scelto: {{detail}}",
-      "note_pick_cancelled": "✕ Nessuna scelta"
+      "note_pick_cancelled": "✕ Nessuna scelta",
+      "note_assigned": "✓ Assegnato: {{detail}}"
     }
   },
   "codeGraph": {

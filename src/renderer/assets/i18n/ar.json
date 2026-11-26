@@ -706,6 +706,16 @@
       "cancel": "إلغاء",
       "send": "اختيار"
     },
+    "assign": {
+      "aria": "توزيع الوكلاء الذي طلبه الوكيل",
+      "badge": "تعيين",
+      "title": "أي وكيل يجب أن ينفّذ كل جزء من الخطة؟",
+      "role_implementer": "تنفيذ المهام",
+      "role_reviewer": "مراجعة المهام",
+      "main": "الوكيل الرئيسي ({{agent}})",
+      "cost": "كل عامل هو تشغيل كامل لذلك الوكيل ويستهلك حصته الخاصة. يُحفظ لهذا المشروع.",
+      "confirm": "حفظ"
+    },
     "review": {
       "requested": "يطلب منك الوكيل مراجعة التغييرات"
     },
@@ -718,7 +728,8 @@
       "note_always": "✓ مسموح دائمًا: {{detail}}",
       "note_declined": "✕ تم الرفض: {{detail}}",
       "note_picked": "✓ تم الاختيار: {{detail}}",
-      "note_pick_cancelled": "✕ لم يتم اختيار شيء"
+      "note_pick_cancelled": "✕ لم يتم اختيار شيء",
+      "note_assigned": "✓ تم التعيين: {{detail}}"
     }
   },
   "codeGraph": {

@@ -1041,6 +1041,16 @@
       "cancel": "Cancelar",
       "send": "Elegir"
     },
+    "assign": {
+      "aria": "Reparto de agentes pedido por el agente",
+      "badge": "Asignar",
+      "title": "¿Qué agente debe hacer cada parte del plan?",
+      "role_implementer": "Implementar las tareas",
+      "role_reviewer": "Revisar las tareas",
+      "main": "Agente principal ({{agent}})",
+      "cost": "Cada worker es una ejecución completa de ese agente y gasta su propia cuota. Se guarda para este proyecto.",
+      "confirm": "Guardar"
+    },
     "review": {
       "requested": "El agente pide que revises los cambios"
     },
@@ -1053,7 +1063,8 @@
       "note_always": "✓ Permitido siempre: {{detail}}",
       "note_declined": "✕ Rechazado: {{detail}}",
       "note_picked": "✓ Elegido: {{detail}}",
-      "note_pick_cancelled": "✕ No se eligió nada"
+      "note_pick_cancelled": "✕ No se eligió nada",
+      "note_assigned": "✓ Asignado: {{detail}}"
     }
   },
   "starter_kit": {

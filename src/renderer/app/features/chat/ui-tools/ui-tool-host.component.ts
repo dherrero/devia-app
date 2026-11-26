@@ -13,6 +13,7 @@ import {
   type PickResult,
   type PlanApproveResult,
 } from '../../../../../shared/domain/ui-tools';
+import { UiAssignCardComponent, type AssignDecision } from './cards/ui-assign-card.component';
 import { UiConfirmCardComponent } from './cards/ui-confirm-card.component';
 import { UiPickCardComponent } from './cards/ui-pick-card.component';
 import { UiPlanCardComponent } from './cards/ui-plan-card.component';
@@ -34,7 +35,7 @@ export interface UiFollowUpRun {
 }
 
 /** Tools whose card this host draws. `request_review` is the Cambios view. */
-const CARD_TOOLS = new Set(['confirm', 'pick']);
+const CARD_TOOLS = new Set(['confirm', 'pick', 'assign_agents']);
 
 /**
  * The execution panel above the composer (S-28 T-339; S-25 F2.0 before it).
@@ -62,6 +63,7 @@ const CARD_TOOLS = new Set(['confirm', 'pick']);
     UiPlanCardComponent,
     UiConfirmCardComponent,
     UiPickCardComponent,
+    UiAssignCardComponent,
   ],
   templateUrl: './ui-tool-host.component.html',
   styleUrl: './ui-tool-host.component.scss',
@@ -133,6 +135,13 @@ export class UiToolHostComponent {
         ? { kind: 'picked', detail: result.paths.join(', ') }
         : { kind: 'pick_cancelled', detail: '' };
     this.uiTools.resolve(this.sessionKey(), request.callId, renderPickResult(result), note);
+  }
+
+  protected onAssignDecided(request: PendingUiTool, decision: AssignDecision): void {
+    this.uiTools.resolve(this.sessionKey(), request.callId, decision.reply, {
+      kind: 'assigned',
+      detail: decision.summary,
+    });
   }
 
   protected onConfirmDecided(request: PendingUiTool, result: ConfirmResult): void {

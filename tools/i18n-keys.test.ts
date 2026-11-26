@@ -183,6 +183,7 @@ describe('round trip against the real files', () => {
     // 300: +7 for the footer agent picker (es/en only; S-27 translates).
     // 302: +2 for the pane-scoped wording of the agent picker (es/en only; S-27 translates).
     // 308: +6 for the cross-agent workers block in Settings (es/en only; S-27 translates).
+    // 308: the assign-agents card's 9 keys (ui_tools is a protected namespace) are translated in every language.
     expect(Object.keys(missing).length).toBe(308);
     expect(Object.keys(missing).filter((key) => key.startsWith('codeGraph.'))).toEqual([]);
   });

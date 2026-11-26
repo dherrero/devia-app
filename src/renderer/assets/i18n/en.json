@@ -1041,6 +1041,16 @@
       "cancel": "Cancel",
       "send": "Choose"
     },
+    "assign": {
+      "aria": "Agent assignment requested by the agent",
+      "badge": "Assign",
+      "title": "Which agent should do each part of the plan?",
+      "role_implementer": "Implement the tasks",
+      "role_reviewer": "Review the tasks",
+      "main": "Main agent ({{agent}})",
+      "cost": "Each worker is a full run of that agent and spends its own quota. Saved for this project.",
+      "confirm": "Save"
+    },
     "review": {
       "requested": "The agent is asking you to review the changes"
     },
@@ -1053,7 +1063,8 @@
       "note_always": "✓ Always allowed: {{detail}}",
       "note_declined": "✕ Declined: {{detail}}",
       "note_picked": "✓ Picked: {{detail}}",
-      "note_pick_cancelled": "✕ Nothing picked"
+      "note_pick_cancelled": "✕ Nothing picked",
+      "note_assigned": "✓ Assigned: {{detail}}"
     }
   },
   "starter_kit": {

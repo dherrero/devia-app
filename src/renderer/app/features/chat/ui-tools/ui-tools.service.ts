@@ -38,7 +38,7 @@ export interface PendingUiTool {
 }
 
 /** What the user answered inside a step, kept as a one-line note on it. */
-export type StepNoteKind = 'confirmed' | 'always' | 'declined' | 'picked' | 'pick_cancelled';
+export type StepNoteKind = 'confirmed' | 'always' | 'declined' | 'picked' | 'pick_cancelled' | 'assigned';
 
 export interface StepNote {
   kind: StepNoteKind;
