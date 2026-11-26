@@ -1,4 +1,5 @@
 import type { DetectedAgentView } from '../../../../../../types/devia';
+import { normalizeCrossAgentConfig, type CrossAgentConfig } from '../../../../../../../shared/domain/cross-agent-config';
 
 export interface AgentPanelState {
   expandedAgentId: string | null;
@@ -51,4 +52,23 @@ function matchesAgentQuery(agent: DetectedAgentView, query: string): boolean {
     agent.path,
     agent.version ?? '',
   ].some((value) => value?.toLowerCase().includes(query));
+}
+
+type CrossAgentNumericKey = 'maxConcurrent' | 'maxPerTurn' | 'defaultTimeoutSec';
+export type CrossAgentPatch = { enabled?: boolean } & Partial<Record<CrossAgentNumericKey, unknown>>;
+
+/**
+ * Apply one edit of the cross-agent block. A number box can hand back a string
+ * or an empty value mid-typing: anything that is not a positive number keeps the
+ * current value instead of resetting the field to its default.
+ */
+export function patchCrossAgent(current: CrossAgentConfig, patch: CrossAgentPatch): CrossAgentConfig {
+  const next: Record<string, unknown> = { ...current };
+  if (typeof patch.enabled === 'boolean') next['enabled'] = patch.enabled;
+  for (const key of ['maxConcurrent', 'maxPerTurn', 'defaultTimeoutSec'] as const) {
+    if (!(key in patch)) continue;
+    const n = Number(patch[key]);
+    if (Number.isFinite(n) && Math.floor(n) >= 1) next[key] = n;
+  }
+  return normalizeCrossAgentConfig(next);
 }

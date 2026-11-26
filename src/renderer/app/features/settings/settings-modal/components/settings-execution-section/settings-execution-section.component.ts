@@ -7,7 +7,8 @@ import { TranslateModule } from '@ngx-translate/core';
 import type { DetectedAgentView } from '../../../../../../types/devia';
 import { ElectronApiService } from '../../../../../core/services/electron-api.service';
 import type { AgentForm } from '../../models/settings-forms.model';
-import { filterVisibleAgents, getNextAgentPanelState } from './settings-execution-section.utils';
+import { DEFAULT_CROSS_AGENT_CONFIG, type CrossAgentConfig } from '../../../../../../../shared/domain/cross-agent-config';
+import { filterVisibleAgents, getNextAgentPanelState, patchCrossAgent, type CrossAgentPatch } from './settings-execution-section.utils';
 
 @Component({
   selector: 'ds-settings-execution-section',
@@ -28,6 +29,8 @@ export class SettingsExecutionSectionComponent implements OnDestroy {
   readonly selectedAgentId = input(DEFAULT_AGENT_ID);
   readonly agentForm = model.required<AgentForm>();
   readonly autoContinueSessions = model<Record<string, boolean>>({});
+  /** S-56: workers of other agents. Two-way with the modal, saved by its Save button. */
+  readonly crossAgent = model<CrossAgentConfig>({ ...DEFAULT_CROSS_AGENT_CONFIG });
   /** Emits the clicked agent id; the parent owns the selection (guards +
    *  re-hydration of the agent form). */
   readonly agentSelected = output<string>();
@@ -108,6 +111,10 @@ export class SettingsExecutionSectionComponent implements OnDestroy {
 
   updateAgentForm<K extends keyof Omit<AgentForm, 'env'>>(key: K, value: AgentForm[K]): void {
     this.agentForm.update((form) => ({ ...form, [key]: value }));
+  }
+
+  setCrossAgent(patch: CrossAgentPatch): void {
+    this.crossAgent.update((current) => patchCrossAgent(current, patch));
   }
 
   setAutoContinue(agentId: string, enabled: boolean): void {
