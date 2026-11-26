@@ -62,6 +62,8 @@ export interface AgentProcessHandle {
   kill(reason?: CancelReason): void;
   /** Answer through the agent's native channel; false when nothing was pending. */
   answer(callId: string, answer: AgentAnswer): boolean;
+  /** Postpone the idle watchdog while Devia works on the agent's behalf (S-56). */
+  keepAlive?(): void;
 }
 
 /**
