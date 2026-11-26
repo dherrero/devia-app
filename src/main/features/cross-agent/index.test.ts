@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { IPC } from '../../../shared/contracts/ipc-channels';
+import type { FeatureContext } from '../../shared/feature';
 import { buildCrossAgentFeature, type CrossAgentBuildDeps } from './index';
 import { RunGateway } from '../../shared/run-gateway';
 import { DEFAULT_CROSS_AGENT_CONFIG } from '../../../shared/domain/cross-agent-config';
@@ -158,5 +160,63 @@ describe('buildCrossAgentFeature — assignAgents (S-56 T9)', () => {
     const t = setup({ roleAgents: { implementer: 'pi', reviewer: 'main' } });
     const prepared = await t.built.assignAgents.prepare('proj-a', { roles: ['implementer', 'reviewer'], reassign: false });
     expect(prepared.kind).toBe('cached');
+  });
+});
+
+describe('buildCrossAgentFeature — renderer surface (S-56 T10)', () => {
+  function register(t: ReturnType<typeof setup>) {
+    const handles = new Map<string, (...args: unknown[]) => unknown>();
+    const send = vi.fn();
+    const ctx = {
+      ipc: { handle: (channel: string, fn: (...args: unknown[]) => unknown) => handles.set(channel, fn) },
+      send,
+      getMainWindow: () => null,
+    } as unknown as FeatureContext;
+    t.built.feature.register(ctx);
+    return { handles, send };
+  }
+
+  it('announces each state change of a worker to the renderer, tagged with its controller', async () => {
+    const t = setup({ roleAgents: { implementer: 'pi' } });
+    const { send } = register(t);
+    await t.built.spawnWorker(CALL);
+
+    const states = send.mock.calls
+      .filter(([channel]) => channel === 'worker:changed')
+      .map(([, payload]) => (payload as { parentKey: string; worker: { state: string; taskId: string; role: string; agentId: string } }));
+    expect(states.map((e) => e.worker.state)).toEqual(['queued', 'running', 'done']);
+    expect(states.every((e) => e.parentKey === 'proj-a' && e.worker.taskId === 'T-1' && e.worker.role === 'implementer')).toBe(true);
+    expect(states[0]?.worker.agentId).toBe('pi');
+  });
+
+  it('cancels one worker, or all of a controller, from the renderer', async () => {
+    const t = setup({ roleAgents: { implementer: 'pi' } });
+    const { handles } = register(t);
+    t.gateway.bindSubmit(() => ({ queued: false })); // the worker never ends by itself
+    const pending = t.built.spawnWorker(CALL);
+    await new Promise((r) => setImmediate(r));
+
+    const [worker] = t.built.registry.list('proj-a');
+    expect(handles.get(IPC.workerCancel)?.({}, worker?.id)).toBe(true);
+    expect(t.stop).toHaveBeenCalledWith(worker?.runKey);
+    expect(handles.get(IPC.workerCancelAll)?.({}, 'proj-a')).toBe(0); // already cancelled
+    t.gateway.publish({ type: 'end', project: worker?.runKey as string, code: null, cancelReason: 'user' });
+    await pending;
+  });
+
+  it('lists the workers of a controller so a reloaded window can redraw them', async () => {
+    const t = setup({ roleAgents: { implementer: 'pi' } });
+    const { handles } = register(t);
+    await t.built.spawnWorker(CALL);
+    const listed = handles.get(IPC.workerList)?.({}, 'proj-a') as Array<{ taskId: string; state: string }>;
+    expect(listed).toEqual([expect.objectContaining({ taskId: 'T-1', state: 'done' })]);
+    expect(handles.get(IPC.workerList)?.({}, 42)).toEqual([]);
+  });
+
+  it('ignores a malformed cancel instead of throwing', () => {
+    const t = setup();
+    const { handles } = register(t);
+    expect(handles.get(IPC.workerCancel)?.({}, { not: 'a string' })).toBe(false);
+    expect(handles.get(IPC.workerCancelAll)?.({}, null)).toBe(0);
   });
 });

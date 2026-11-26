@@ -2,27 +2,13 @@ import {
   isWorkerRunKey,
   workerRunKey,
   type WorkerRole,
+  type WorkerRun,
+  type WorkerState,
   type WorkerStatus,
 } from '../../../../shared/domain/cross-agent';
 
 export { isWorkerRunKey, workerRunKey };
-
-export type WorkerState = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'timeout';
-
-export interface WorkerRun {
-  id: string;
-  parentKey: string;
-  turnId: string;
-  taskId: string;
-  role: WorkerRole;
-  agentId: string;
-  /** The run identity the worker's events are routed by (see {@link workerRunKey}). */
-  runKey: string;
-  state: WorkerState;
-  status?: WorkerStatus;
-  startedAt?: number;
-  endedAt?: number;
-}
+export type { WorkerRun, WorkerState };
 
 export interface WorkerSpec {
   taskId: string;

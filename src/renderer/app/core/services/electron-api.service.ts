@@ -182,6 +182,10 @@ export class ElectronApiService {
   onNotificationClick = this.api.onNotificationClick.bind(this.api);
   onAgentChanged   = this.api.onAgentChanged.bind(this.api);
   onEffectiveAgentChanged = this.api.onEffectiveAgentChanged.bind(this.api);
+  onWorkerChanged  = this.api.onWorkerChanged.bind(this.api);
+  cancelWorker(workerId: string) { return this.api.cancelWorker(workerId); }
+  cancelAllWorkers(parentKey: string) { return this.api.cancelAllWorkers(parentKey); }
+  listWorkers(parentKey: string) { return this.api.listWorkers(parentKey); }
   onQueueChanged   = this.api.onQueueChanged.bind(this.api);
   onQueueDispatched = this.api.onQueueDispatched.bind(this.api);
   onTerminalData   = this.api.onTerminalData.bind(this.api);

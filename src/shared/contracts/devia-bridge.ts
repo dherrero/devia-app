@@ -64,6 +64,7 @@ import type {
   UiToolRequestEvent,
   DiffSnapshotEvent,
   AgentsDetectedEvent,
+  WorkerChangedEvent,
 } from './events';
 import type { OutboxFile } from '../domain/attachment';
 import type {
@@ -459,6 +460,12 @@ export interface DeviaBridge {
   onAgentChanged(cb: (e: AgentChangedEvent) => void): void;
   /** S-53: the effective agent of a project/session (or of every project, when no fields) may have changed. */
   onEffectiveAgentChanged(cb: (e: EffectiveAgentChangedEvent) => void): void;
+  /** S-56: a cross-agent worker was queued, started or ended. */
+  onWorkerChanged(cb: (e: WorkerChangedEvent) => void): void;
+  cancelWorker(workerId: string): Promise<boolean>;
+  /** Cancels every worker of a controller; resolves with how many were cancelled. */
+  cancelAllWorkers(parentKey: string): Promise<number>;
+  listWorkers(parentKey: string): Promise<import('../domain/cross-agent').WorkerRun[]>;
   onQueueChanged(cb: (e: QueueChangedEvent) => void): void;
   onQueueDispatched(cb: (e: QueueDispatchedEvent) => void): void;
   onTerminalData(cb: (e: TerminalDataEvent) => void): void;

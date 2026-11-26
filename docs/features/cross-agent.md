@@ -24,11 +24,12 @@ Lets the agent that follows the Devia Method (the controller) hand an implemente
 - When the controller run ends (done or error) `cancelWorkers(parentKey)` cancels its workers.
 - `buildCrossAgentFeature` (`index.ts`) composes the registry and the spawn use case from the run gateway, the detector, git and the worktree creator; it is wired in `composition-root.ts` and passed to the runner as `spawnWorker`, `usableAgentCount` and `cancelWorkers`. Limits are read from the config on every decision.
 - `devia_assign_agents({ roles?, reassign? })` (UI tool `assign_agents`, blocking, plan mode only): offered when `crossAgent.enabled`, two or more agents are usable and the run is not a worker or remote. `AssignAgentsUseCase.prepare` answers straight from the project's saved map when it already covers the requested roles with usable agents (no card); otherwise it asks ONLY about what is missing or no longer usable (`reassign: true` asks about all). The desktop card (`ds-ui-assign-card`, one selector per role, first option = main agent) answers with the numbered text `1. b\n2. a`, which `finish` parses with `parseAssignReply` and saves through `SetRoleAgentsUseCase`. Choosing the main agent is saved as `main` so it is not asked again.
+- Renderer surface: `worker:changed` (`{ parentKey, worker }`) on every state change (queued, running, done/failed/cancelled/timeout; rare, so not throttled) and the channels `worker:cancel` (one worker id), `worker:cancel-all` (a controller's run key) and `worker:list`, bridged as `onWorkerChanged`, `cancelWorker`, `cancelAllWorkers`, `listWorkers`. `ChatMessage.worker` carries a worker's `WorkerRun` in the thread; messages are persisted verbatim by the renderer's own save, so no second writer touches the session file.
 - Config `DeviaConfig.crossAgent` (`enabled` false, `maxConcurrent` 3 up to 8, `maxPerTurn` 8, `defaultTimeoutSec` 1800) with a block in Settings › Execution.
 
 ## Does NOT
 
-- Does NOT draw worker bubbles in the chat, nor have a Telegram flow (`devia_assign_agents` is not offered to remote runs yet): later tasks of S-56.
+- Does NOT draw worker bubbles in the chat yet (the renderer half of S-56 T11), nor have a Telegram flow (`devia_assign_agents` is not offered to remote runs yet): later tasks of S-56.
 - Does NOT keep the implementer record across an app restart (in memory): a reviewer after a restart is told to dispatch the implementer again.
 - Does NOT aggregate the workers' cost into the parent session stats yet.
 - Does NOT use `explainError` for the failure messages: S-54 is not on `dev` yet, so they are plain strings.
@@ -50,7 +51,9 @@ Lets the agent that follows the Devia Method (the controller) hand an implemente
 
 ## IPC / MCP surface
 
-MCP tools `devia_spawn_agent` and `devia_assign_agents` of the `devia-ui` server (`src/main/features/ui-tools/mcp-server/tool-registry.ts`). No IPC channel yet.
+IPC: `worker:changed` (event), `worker:cancel`, `worker:cancel-all`, `worker:list` (`src/shared/contracts/ipc-channels.ts`).
+
+MCP tools `devia_spawn_agent` and `devia_assign_agents` of the `devia-ui` server (`src/main/features/ui-tools/mcp-server/tool-registry.ts`). 
 
 ## Persistence
 
@@ -65,6 +68,7 @@ MCP tools `devia_spawn_agent` and `devia_assign_agents` of the `devia-ui` server
 
 - `foldAssistantText` lives in `src/main/shared/stream-text.ts` so features do not import each other; `telegram-controller/application/stream-text.ts` only re-exports it.
 - Gateway events carry `project: runKey ?? projectName`, so completion is keyed by run key. An `end` with no previous `start` (busy, early exit) resolves as `failed`.
+- A worker run's own events (`process:start`, `claude:output`, `process:end`) reach the renderer keyed by its worker run key, exactly like any run; the renderer must fold them into the controller's thread instead of leaving a ghost session state (T11).
 - `RunGateway.submit` accepts `runKey`, `sessionId`, `isolate` and `agentIdOverride` (forwarded by `claude.ipc.ts` to `submitInstruction`); a worker is submitted with origin `renderer`, there is no `subagent` origin: the run key identifies it.
 - The runner's own worktree ensure uses `worktreeBaseRef` (default branch) and silently falls back to the base checkout, so the worker's worktree is created explicitly first.
 - The idle watchdog of the launcher (5 minutes without stdout/stderr) would kill a controller that waits on a worker, hence `keepAlive`; a controller that is not waiting through this tool is still subject to it.

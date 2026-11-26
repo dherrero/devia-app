@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { IPC } from '../../../shared/contracts/ipc-channels';
+import type { Feature, FeatureContext } from '../../shared/feature';
 import { normalizeCrossAgentConfig } from '../../../shared/domain/cross-agent-config';
-import { isRoleSplit, type RoleAgentMap, type WorkerRole } from '../../../shared/domain/cross-agent';
+import { isRoleSplit, type RoleAgentMap, type WorkerRole, type WorkerRun } from '../../../shared/domain/cross-agent';
 import type { ConfigRepository, ProjectRegistry, StateStore } from '../../shared/ports';
 import type { EffectiveAgentResolver } from '../../shared/effective-agent-resolver';
 import type { RunGateway } from '../../shared/run-gateway';
@@ -47,6 +49,8 @@ export interface CrossAgentBuilt {
   /** Cancels every worker the controller started; returns how many. */
   cancelWorkers: (parentKey: string) => number;
   registry: WorkerRegistry;
+  /** Registers the renderer surface: `worker:changed` events and the cancel/list channels. */
+  feature: Feature;
   /** `devia_assign_agents`: what to ask per project, and what to save. */
   assignAgents: AssignAgentsUseCase;
   roleAgentsOf: (project: string) => RoleAgentMap;
@@ -59,10 +63,12 @@ export interface CrossAgentBuilt {
  */
 export function buildCrossAgentFeature(deps: CrossAgentBuildDeps): CrossAgentBuilt {
   const cfg = () => normalizeCrossAgentConfig(deps.config.get().crossAgent);
+  // Set once the feature registers: before that nobody is listening.
+  let announce: ((run: WorkerRun) => void) | null = null;
   const registry = createWorkerRegistry({
     maxConcurrent: () => cfg().maxConcurrent,
     maxPerTurn: () => cfg().maxPerTurn,
-    onChange: () => undefined,
+    onChange: (run) => announce?.(run),
   });
 
   let usable = 0;
@@ -108,12 +114,30 @@ export function buildCrossAgentFeature(deps: CrossAgentBuildDeps): CrossAgentBui
       new SetRoleAgentsUseCase({ agents: deps.agents, projects: deps.registry, state: deps.state }).execute(project, map),
   });
 
+  const feature: Feature = {
+    id: 'cross-agent',
+    register(ctx: FeatureContext): void {
+      // A state change is rare (queued, running, done), so no throttle is needed.
+      announce = (run) => ctx.send('worker:changed', { parentKey: run.parentKey, worker: run });
+      ctx.ipc.handle(IPC.workerCancel, (_e, workerId: unknown) =>
+        typeof workerId === 'string' ? registry.cancel(workerId) : false);
+      ctx.ipc.handle(IPC.workerCancelAll, (_e, parentKey: unknown) =>
+        typeof parentKey === 'string' ? registry.cancelParent(parentKey) : 0);
+      ctx.ipc.handle(IPC.workerList, (_e, parentKey: unknown) =>
+        typeof parentKey === 'string' ? registry.list(parentKey) : []);
+    },
+    onBeforeQuit(): void {
+      announce = null;
+    },
+  };
+
   return {
     spawnWorker: async (call) => (await useCase.execute(call)).rendered,
     usableAgentCount: () => usable,
     refreshAgents,
     cancelWorkers: (parentKey) => registry.cancelParent(parentKey),
     registry,
+    feature,
     assignAgents,
     roleAgentsOf: (project) => deps.registry.find(project)?.roleAgents ?? {},
   };

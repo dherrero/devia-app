@@ -461,6 +461,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       configChanges,
     }),
     cliAdapters.feature,
+    crossAgent.feature,
     promptPacksBuilt.feature,
     mcpBuilt.feature,
     queueBuilt.feature,

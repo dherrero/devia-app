@@ -147,3 +147,21 @@ export function workerRunKey(parentKey: string, taskId: string, attempt: number)
 export function isWorkerRunKey(key: string): boolean {
   return key.startsWith(WORKER_KEY_PREFIX);
 }
+
+export type WorkerState = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'timeout';
+
+/** One worker as the registry tracks it and the renderer draws it. */
+export interface WorkerRun {
+  id: string;
+  parentKey: string;
+  turnId: string;
+  taskId: string;
+  role: WorkerRole;
+  agentId: string;
+  /** The run identity the worker's own events are routed by. */
+  runKey: string;
+  state: WorkerState;
+  status?: WorkerStatus;
+  startedAt?: number;
+  endedAt?: number;
+}
