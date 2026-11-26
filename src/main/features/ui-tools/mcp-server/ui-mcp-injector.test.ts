@@ -64,6 +64,14 @@ describe('serverConfig', () => {
     ]);
   });
 
+  it('emits --worker-timeout-ms only when spawn_agent is advertised (S-56)', () => {
+    const harness = { workerToolTimeoutMs: 1_920_000 };
+    expect(injector.serverConfig(UI_DIR, TOOLS, harness).args).toEqual(injector.serverConfig(UI_DIR, TOOLS).args);
+    const config = injector.serverConfig(UI_DIR, [...TOOLS, 'spawn_agent'], harness);
+    expect(config.args.slice(5)).toEqual(['--worker-timeout-ms', '1920000']);
+    expect(injector.serverConfig(UI_DIR, ['spawn_agent']).args).not.toContain('--worker-timeout-ms');
+  });
+
   it('omits the send argv it was not given even with send_file advertised', () => {
     expect(injector.serverConfig(UI_DIR, ['send_file']).args.slice(1)).toEqual([
       '--ui-dir',

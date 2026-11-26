@@ -39,6 +39,8 @@ interface Args {
   denyRoots: string[];
   /** The run's cwd — explicit because pi/OpenCode may spawn us elsewhere. */
   cwd: string | null;
+  /** S-56: how long `devia_spawn_agent` waits for its worker (absent = same as other tools). */
+  workerTimeoutMs: number | null;
 }
 
 function parseRoots(raw: string | undefined): string[] {
@@ -57,6 +59,7 @@ function parseArgs(argv: string[]): Args {
   let sendRoots: string[] = [];
   let denyRoots: string[] = [];
   let cwd: string | null = null;
+  let workerTimeoutMs: number | null = null;
   // `--tools` absent means "everything": a hand-written config (or an older
   // injector) should still get a working server rather than a mute one.
   let tools: UiToolName[] = [...UI_TOOL_NAMES];
@@ -72,8 +75,12 @@ function parseArgs(argv: string[]): Args {
     else if (argv[i] === '--send-roots') sendRoots = parseRoots(argv[++i]);
     else if (argv[i] === '--deny-roots') denyRoots = parseRoots(argv[++i]);
     else if (argv[i] === '--cwd') cwd = argv[++i] || null;
+    else if (argv[i] === '--worker-timeout-ms') {
+      const parsed = Number.parseInt(argv[++i] ?? '', 10);
+      workerTimeoutMs = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
   }
-  return { uiDir, tools, skillsDirs, subagentsDir, sendRoots, denyRoots, cwd };
+  return { uiDir, tools, skillsDirs, subagentsDir, sendRoots, denyRoots, cwd, workerTimeoutMs };
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -83,7 +90,7 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 }
 
 function main(): void {
-  const { uiDir, tools, skillsDirs, subagentsDir, sendRoots, denyRoots, cwd } = parseArgs(process.argv.slice(2));
+  const { uiDir, tools, skillsDirs, subagentsDir, sendRoots, denyRoots, cwd, workerTimeoutMs } = parseArgs(process.argv.slice(2));
 
   if (!uiDir) {
     process.stderr.write('[devia-ui] missing --ui-dir\n');
@@ -104,6 +111,7 @@ function main(): void {
     {
       uiDir,
       timeoutMs,
+      ...(workerTimeoutMs !== null && { serverHandledTimeoutMs: workerTimeoutMs }),
       advertised: tools,
       newCallId: (): string => `ui-${randomUUID()}`,
       // `skill` (skills + sub-agents) never reaches the rendezvous: a read-only
