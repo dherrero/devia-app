@@ -21,7 +21,8 @@ export type UiToolName =
   | 'pick'
   | 'notify'
   | 'skill'
-  | 'send_file';
+  | 'send_file'
+  | 'spawn_agent';
 
 export const UI_TOOL_NAMES: readonly UiToolName[] = [
   'ask_user',
@@ -33,6 +34,7 @@ export const UI_TOOL_NAMES: readonly UiToolName[] = [
   'notify',
   'skill',
   'send_file',
+  'spawn_agent',
 ] as const;
 
 /**
@@ -52,7 +54,20 @@ export const UI_TOOL_KIND: Record<UiToolName, UiToolKind> = {
   notify: 'fire_and_forget',
   skill: 'fire_and_forget',
   send_file: 'fire_and_forget',
+  // Blocking, but nobody clicks: the main process runs a worker and answers when it ends.
+  spawn_agent: 'blocking',
 };
+
+/**
+ * Blocking tools the main process serves ITSELF instead of drawing a card for
+ * the user (S-56 `spawn_agent`). They must never arm the runner's question
+ * timer: they wait for work, not for a person.
+ */
+const SERVER_HANDLED: readonly UiToolName[] = ['spawn_agent'];
+
+export function isServerHandledUiTool(name: UiToolName): boolean {
+  return SERVER_HANDLED.includes(name);
+}
 
 /** `ask_user` keeps its historical public name so S-24 transcripts still resolve. */
 export function uiToolPublicName(name: UiToolName): string {
@@ -477,6 +492,28 @@ export function normalizeSendFileInput(input: unknown): NormalizedSendFile | nul
  * empty card. `ask_user` is absent on purpose: it keeps the S-24 normalizer in
  * `question-ask.ts`, and with it the untouched renderer path.
  */
+// ---------------------------------------------------------------------------
+// devia_spawn_agent (S-56)
+// ---------------------------------------------------------------------------
+
+export interface SpawnAgentInput {
+  role: 'implementer' | 'reviewer';
+  taskId: string;
+}
+
+const TASK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** `{ role, taskId }`, or null when either is unusable. Never throws. */
+export function normalizeSpawnAgentInput(input: unknown): SpawnAgentInput | null {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  const role = typeof record['role'] === 'string' ? record['role'].trim().toLowerCase() : '';
+  const taskId = typeof record['taskId'] === 'string' ? record['taskId'].trim() : '';
+  if (role !== 'implementer' && role !== 'reviewer') return null;
+  if (!TASK_ID_RE.test(taskId)) return null;
+  return { role, taskId };
+}
+
 export function normalizeUiToolInput(tool: UiToolName, input: unknown): unknown | null {
   switch (tool) {
     case 'todo':
@@ -495,6 +532,8 @@ export function normalizeUiToolInput(tool: UiToolName, input: unknown): unknown 
       return normalizeSkillInput(input);
     case 'send_file':
       return normalizeSendFileInput(input);
+    case 'spawn_agent':
+      return normalizeSpawnAgentInput(input);
     case 'ask_user':
       return input;
   }

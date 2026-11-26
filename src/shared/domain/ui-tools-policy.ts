@@ -23,7 +23,7 @@ import { UI_TOOL_NAMES, type UiToolName } from './ui-tools';
  */
 const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
   plan: ['ask_user', 'todo', 'plan_approve', 'skill', 'send_file'],
-  apply: ['ask_user', 'todo', 'request_review', 'confirm', 'pick', 'notify', 'skill', 'send_file'],
+  apply: ['ask_user', 'todo', 'request_review', 'confirm', 'pick', 'notify', 'skill', 'send_file', 'spawn_agent'],
   'apply-yolo': [
     'ask_user',
     'todo',
@@ -33,6 +33,7 @@ const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
     'notify',
     'skill',
     'send_file',
+    'spawn_agent',
   ],
 };
 
@@ -49,7 +50,7 @@ const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
  * a remote turn then carries three or four schemas in its cached prefix
  * instead of seven.
  */
-const REMOTE_ALLOWED: readonly UiToolName[] = ['todo', 'notify', 'skill', 'send_file'];
+const REMOTE_ALLOWED: readonly UiToolName[] = ['todo', 'notify', 'skill', 'send_file', 'spawn_agent'];
 
 /**
  * A cross-agent worker (S-56) has nobody at the keyboard: nobody will click a
@@ -81,6 +82,12 @@ export interface UiToolPolicyInput {
   canSendFiles?: boolean;
   /** A cross-agent worker run (its run key is a worker key): non-interactive tools only. */
   isWorker?: boolean;
+  /**
+   * `spawn_agent` needs the feature on AND somewhere to send the work (two or
+   * more usable agents). Opt-in like `canSendFiles`: absent means OFF, so a run
+   * without it advertises exactly what it did before the tool existed.
+   */
+  canSpawnAgents?: boolean;
 }
 
 /**
@@ -103,6 +110,7 @@ export function resolveAdvertisedUiTools(input: UiToolPolicyInput): UiToolName[]
     if (name === 'skill' && input.hasSkills === false) continue;
     if (name === 'notify' && input.canNotify === false) continue;
     if (name === 'send_file' && input.canSendFiles !== true) continue;
+    if (name === 'spawn_agent' && input.canSpawnAgents !== true) continue;
     out.push(name);
   }
   return out;
@@ -127,6 +135,7 @@ export const IMPLEMENTED_UI_TOOLS: readonly UiToolName[] = [
   'pick',
   'request_review',
   'send_file',
+  'spawn_agent',
 ];
 
 /** Narrow an advertised set to the tools this build can actually serve. */

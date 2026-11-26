@@ -4,6 +4,34 @@ import { missingUiCapabilities, resolveAdvertisedUiTools, wiredUiTools } from '.
 
 const base = { mode: 'apply', isRemote: false, delivered: true } as const;
 
+describe('resolveAdvertisedUiTools — spawn_agent (S-56)', () => {
+  const on = { mode: 'apply', isRemote: false, delivered: true, canSpawnAgents: true } as const;
+
+  it('is opt-in: absent unless the run can spawn agents', () => {
+    expect(resolveAdvertisedUiTools({ mode: 'apply', isRemote: false, delivered: true })).not.toContain('spawn_agent');
+    expect(resolveAdvertisedUiTools({ ...on, canSpawnAgents: false })).not.toContain('spawn_agent');
+  });
+
+  it('is offered in apply and apply-yolo, never in plan', () => {
+    expect(resolveAdvertisedUiTools(on)).toContain('spawn_agent');
+    expect(resolveAdvertisedUiTools({ ...on, mode: 'apply-yolo' })).toContain('spawn_agent');
+    expect(resolveAdvertisedUiTools({ ...on, mode: 'plan' })).not.toContain('spawn_agent');
+  });
+
+  it('survives on a remote run: it needs no click', () => {
+    expect(resolveAdvertisedUiTools({ ...on, isRemote: true })).toContain('spawn_agent');
+  });
+
+  it('is never offered to a worker (depth 1)', () => {
+    expect(resolveAdvertisedUiTools({ ...on, isWorker: true })).not.toContain('spawn_agent');
+  });
+
+  it('does not change the rest of the set', () => {
+    const without = resolveAdvertisedUiTools({ mode: 'apply', isRemote: false, delivered: true });
+    expect(resolveAdvertisedUiTools(on).filter((n) => n !== 'spawn_agent')).toEqual(without);
+  });
+});
+
 describe('resolveAdvertisedUiTools — cross-agent workers (S-56)', () => {
   const worker = { mode: 'apply', isRemote: false, delivered: true, isWorker: true } as const;
 

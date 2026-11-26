@@ -49,6 +49,8 @@ const TOOL_LINES: Record<UiToolName, string> = {
     'Call `devia_skill` with `op: "list"` to see the skills and sub-agents Devia manages for this project, then `op: "load"` for the one you need — a sub-agent loads as a role to take on when a task matches it.',
   send_file:
     'When the user asks for a file (screenshot, report, export) or a result is too long for the chat (one file beats ten messages), call `devia_send_file` with its path relative to your working directory. It is delivered after your reply, so do not also paste its content. Max 50 MB; secrets and credentials (.env, keys…) are refused.',
+  spawn_agent:
+    'To have another agent implement or review a kanban task, call `devia_spawn_agent` with its `role` and `taskId` and wait: the worker reports back with a STATUS that you handle like any subagent report. It starts with no memory of this chat, so the task itself must say everything.',
 };
 
 /**

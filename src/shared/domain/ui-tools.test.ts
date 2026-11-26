@@ -9,6 +9,7 @@ import {
   classifyUiDecision,
   isBlockingUiTool,
   isPlanRunDecision,
+  isServerHandledUiTool,
   normalizeConfirmInput,
   normalizeNotifyInput,
   normalizePickInput,
@@ -16,6 +17,7 @@ import {
   normalizeRequestReviewInput,
   normalizeSendFileInput,
   normalizeSkillInput,
+  normalizeSpawnAgentInput,
   normalizeTodoInput,
   normalizeUiToolInput,
   renderConfirmResult,
@@ -352,5 +354,34 @@ describe('result renderers', () => {
     expect(renderRequestReviewResult({ decision: 'send', prompt: 'revisa: x' })).toContain(
       'revisa: x',
     );
+  });
+});
+
+describe('devia_spawn_agent (S-56)', () => {
+  it('is blocking and served by the main process, not drawn as a card', () => {
+    expect(uiToolPublicName('spawn_agent')).toBe('devia_spawn_agent');
+    expect(isBlockingUiTool('spawn_agent')).toBe(true);
+    expect(isServerHandledUiTool('spawn_agent')).toBe(true);
+    expect(isServerHandledUiTool('ask_user')).toBe(false);
+    expect(isServerHandledUiTool('confirm')).toBe(false);
+  });
+
+  it('keeps a role and a task id, trimmed', () => {
+    expect(normalizeSpawnAgentInput({ role: 'implementer', taskId: 'T-12' })).toEqual({ role: 'implementer', taskId: 'T-12' });
+    expect(normalizeSpawnAgentInput({ role: ' reviewer ', taskId: ' T-9 ' })).toEqual({ role: 'reviewer', taskId: 'T-9' });
+  });
+
+  it('rejects an unknown role or an unusable task id', () => {
+    expect(normalizeSpawnAgentInput({ role: 'architect', taskId: 'T-1' })).toBeNull();
+    expect(normalizeSpawnAgentInput({ role: 'implementer', taskId: '' })).toBeNull();
+    expect(normalizeSpawnAgentInput({ role: 'implementer', taskId: 'T-1; rm -rf' })).toBeNull();
+    expect(normalizeSpawnAgentInput({ role: 'implementer', taskId: 'x'.repeat(100) })).toBeNull();
+    expect(normalizeSpawnAgentInput({ role: 'implementer' })).toBeNull();
+  });
+
+  it('never throws on garbage and is routed by normalizeUiToolInput', () => {
+    for (const input of GARBAGE) expect(() => normalizeSpawnAgentInput(input)).not.toThrow();
+    expect(normalizeUiToolInput('spawn_agent', { role: 'reviewer', taskId: 'T-3' })).toEqual({ role: 'reviewer', taskId: 'T-3' });
+    expect(normalizeUiToolInput('spawn_agent', {})).toBeNull();
   });
 });

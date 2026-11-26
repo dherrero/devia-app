@@ -35,9 +35,15 @@ const CAPS = {
   /**
    * Everything at once — never advertised in practice, but the ceiling.
    * Measured at S-32: 4982 chars without `send_file`, 5420 with it (+438
-   * chars, its schema is kept bare).
+   * chars, its schema is kept bare). Raised to 6100 for `spawn_agent` (S-56, ~450
+   * chars): opt-in, so no default run grows.
    */
-  all: 5_500,
+  all: 6_100,
+  /**
+   * S-56: `spawn_agent` is opt-in (feature on AND 2+ usable agents), so a plain
+   * apply run never pays for it. With it, an apply run must still fit this cap.
+   */
+  applyWithSpawn: 5_300,
 } as const;
 
 function payloadSize(names: readonly (typeof UI_TOOL_NAMES)[number][]): number {
@@ -67,6 +73,14 @@ describe('advertised tool-schema budget', () => {
     // The tool is the only difference from a plain plan run: ~438 chars today.
     const plain = resolveAdvertisedUiTools({ mode: 'plan', isRemote: false, delivered: true });
     expect(payloadSize(tools) - payloadSize(plain)).toBeLessThanOrEqual(500);
+  });
+
+  it('apply with spawn_agent (S-56) fits its own cap, and a run without it is unchanged', () => {
+    const plain = payloadSize(resolveAdvertisedUiTools({ mode: 'apply', isRemote: false, delivered: true }));
+    const withSpawn = resolveAdvertisedUiTools({ mode: 'apply', isRemote: false, delivered: true, canSpawnAgents: true });
+    expect(withSpawn).toContain('spawn_agent');
+    expect(payloadSize(withSpawn)).toBeLessThanOrEqual(CAPS.applyWithSpawn);
+    expect(plain).toBeLessThanOrEqual(CAPS.apply);
   });
 
   it('the whole surface stays under the ceiling', () => {
