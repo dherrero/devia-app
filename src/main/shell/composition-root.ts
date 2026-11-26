@@ -375,6 +375,13 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
         isRunnable: (p) => tech.detect(p) !== 'folder',
         saveAttachment: (payload) => attachments.save(payload).path,
         isRunning: (project) => registry.isRunning(project),
+        // S-56: the workers of a controller, as the chat lists and cancels them.
+        workers: {
+          list: (project) =>
+            crossAgent.registry.list(project).filter((w) => w.state === 'queued' || w.state === 'running'),
+          cancel: (workerId) => crossAgent.registry.cancel(workerId),
+          cancelAll: (project) => crossAgent.registry.cancelParent(project),
+        },
         agentLabel: (project) => {
           const c = config.get();
           const agentId = project ? effectiveAgent.forRun(project).agentId : c.agentId;

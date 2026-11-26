@@ -220,3 +220,19 @@ describe('buildCrossAgentFeature — renderer surface (S-56 T10)', () => {
     expect(handles.get(IPC.workerCancelAll)?.({}, null)).toBe(0);
   });
 });
+
+describe('buildCrossAgentFeature — gateway worker events for the relay (S-56 T12)', () => {
+  it('publishes each state change of a worker on the gateway under its controller', async () => {
+    const t = setup({ roleAgents: { implementer: 'pi' } });
+    const seen: Array<{ project: string; state: string; taskId: string }> = [];
+    t.gateway.subscribe((e) => {
+      if (e.type === 'worker') seen.push({ project: e.project, state: e.worker.state, taskId: e.worker.taskId });
+    });
+    await t.built.spawnWorker(CALL);
+    expect(seen).toEqual([
+      { project: 'proj-a', state: 'queued', taskId: 'T-1' },
+      { project: 'proj-a', state: 'running', taskId: 'T-1' },
+      { project: 'proj-a', state: 'done', taskId: 'T-1' },
+    ]);
+  });
+});

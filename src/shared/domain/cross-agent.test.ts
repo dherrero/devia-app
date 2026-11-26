@@ -169,7 +169,7 @@ describe('Telegram text of the assignment question (S-56 T12)', () => {
   });
 
   it('is plain text: nothing Telegram Markdown would eat', () => {
-    expect(renderAssignQuestionText(q, 'claude')).not.toMatch(/[*_`\[\]]/);
+    expect(renderAssignQuestionText(q, 'claude')).not.toMatch(/[*_`[\]]/);
   });
 
   it('a reply the text asks for is the one parseAssignReply reads', () => {

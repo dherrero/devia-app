@@ -15,6 +15,8 @@ import type { IncomingMessage } from './telegram-controller';
 import type { ConfigRepository } from '../../../shared/ports';
 import { RunModeStore } from '../../../shared/run-mode-store';
 import { DEFAULT_CONFIG, type DeviaConfig } from '../../../../shared/domain/config';
+import { buildAssignQuestion, type WorkerRun } from '../../../../shared/domain/cross-agent';
+import { REMOTE_COMMANDS } from './commands';
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -1034,5 +1036,179 @@ describe('ConfigActiveProjectStore', () => {
 
   it('returns null when no project is known', () => {
     expect(new ConfigActiveProjectStore(cfgRepo()).get()).toBeNull();
+  });
+});
+
+describe('createCommandRouter — assignment question and workers (S-56 T12)', () => {
+  const QUESTION = buildAssignQuestion(['implementer', 'reviewer'], ['claude', 'pi', 'opencode'], 'claude');
+  const PROJECT = 'devia/app';
+
+  async function setupRun(over: Partial<RemoteCommandPorts> = {}) {
+    const gateway = new RunGateway();
+    const submitted: string[] = [];
+    gateway.bindSubmit((_p, text) => { submitted.push(text); return { queued: false }; });
+    const answers: Array<{ project: string; callId: string; text: string }> = [];
+    gateway.bindToolResult((project, callId, text) => answers.push({ project, callId, text }));
+    const router = createCommandRouter({
+      gateway,
+      activeProject: mutableProject(PROJECT),
+      ports: fakePorts(over),
+      now: () => 0,
+      heartbeatMs: 10_000_000,
+    });
+    const replies: string[] = [];
+    await router(makeMsg('haz un plan', replies));
+    await flush();
+    gateway.publish({ type: 'start', project: PROJECT, runId: 'r1' as never });
+    const ask = (): void =>
+      gateway.publish({ type: 'ask', project: PROJECT, runId: 'r1' as never, callId: 'call-1', question: QUESTION, mainAgentId: 'claude' });
+    return { gateway, router, replies, submitted, answers, ask };
+  }
+  const say = async (t: Awaited<ReturnType<typeof setupRun>>, text: string): Promise<string[]> => {
+    const out: string[] = [];
+    await t.router(makeMsg(text, out));
+    await flush();
+    return out;
+  };
+
+  it('asks the user the question as plain text in the chat of the run', async () => {
+    const t = await setupRun();
+    t.ask();
+    await flush();
+    const text = t.replies.join('\n');
+    expect(text).toContain('Elige si quieres el desarrollo en multi agente:');
+    expect(text).toContain('1 Tareas de desarrollo: a) Agente principal (claude), b) pi, c) opencode');
+    expect(text).toContain('2 Tareas de revisión');
+  });
+
+  it('answers the blocked tool with the reply, without starting a new run', async () => {
+    const t = await setupRun();
+    t.ask();
+    await flush();
+    const out = await say(t, '1. b\n2. c');
+    expect(t.answers).toEqual([{ project: PROJECT, callId: 'call-1', text: '1. b\n2. c' }]);
+    expect(out.join('\n')).toContain('✅');
+    expect(t.submitted).toEqual(['haz un plan']);
+  });
+
+  it('asks again for ONLY the missing line, and accepts it in a later message', async () => {
+    const t = await setupRun();
+    t.ask();
+    await flush();
+    const first = await say(t, '1. b');
+    expect(t.answers).toEqual([]);
+    const retry = first.join('\n');
+    expect(retry).toContain('No entendí');
+    expect(retry).toContain('2 Tareas de revisión');
+    expect(retry).not.toContain('Tareas de desarrollo');
+
+    await say(t, '2. c');
+    expect(t.answers).toEqual([{ project: PROJECT, callId: 'call-1', text: '1. b\n2. c' }]);
+  });
+
+  it('keeps the question open for text that is not an answer, instead of running it as an instruction', async () => {
+    const t = await setupRun();
+    t.ask();
+    await flush();
+    const out = await say(t, 'hola, ¿qué tal?');
+    expect(t.answers).toEqual([]);
+    expect(t.submitted).toEqual(['haz un plan']);
+    expect(out.join('\n')).toContain('Elige si quieres el desarrollo en multi agente:');
+  });
+
+  it('lets the user skip the question: every role stays with the main agent', async () => {
+    const t = await setupRun();
+    t.ask();
+    await flush();
+    await say(t, 'saltar');
+    expect(t.answers).toEqual([{ project: PROJECT, callId: 'call-1', text: '1. a\n2. a' }]);
+  });
+
+  it('forgets a pending question when its run ends: the next message is an instruction again', async () => {
+    const t = await setupRun();
+    t.ask();
+    await flush();
+    t.gateway.publish({ type: 'end', project: PROJECT, runId: 'r1' as never, code: 0 });
+    await flush();
+    await say(t, '1. b');
+    expect(t.answers).toEqual([]);
+    expect(t.submitted).toEqual(['haz un plan', '1. b']);
+  });
+
+  const worker = (over: Partial<WorkerRun> = {}): WorkerRun => ({
+    id: 'W-1', parentKey: PROJECT, turnId: 't', taskId: 'T-1', role: 'implementer', agentId: 'pi', runKey: 'k', state: 'running', ...over,
+  });
+
+  it('says one short line per worker when it ends, and nothing while it runs', async () => {
+    const t = await setupRun();
+    t.gateway.publish({ type: 'worker', project: PROJECT, worker: worker({ state: 'queued' }) });
+    t.gateway.publish({ type: 'worker', project: PROJECT, worker: worker({ state: 'running' }) });
+    await flush();
+    const before = t.replies.length;
+    t.gateway.publish({ type: 'worker', project: PROJECT, worker: worker({ state: 'done', status: 'DONE' }) });
+    t.gateway.publish({ type: 'worker', project: PROJECT, worker: worker({ state: 'done', status: 'DONE' }) });
+    await flush();
+    expect(t.replies.slice(before)).toEqual(['A · pi · desarrollo · T-1: DONE']);
+  });
+
+  it('reports a failed or cancelled worker plainly', async () => {
+    const t = await setupRun();
+    t.gateway.publish({ type: 'worker', project: PROJECT, worker: worker({ id: 'W-2', taskId: 'T-2', state: 'failed' }) });
+    t.gateway.publish({ type: 'worker', project: PROJECT, worker: worker({ id: 'W-3', taskId: 'T-3', role: 'reviewer', state: 'cancelled' }) });
+    await flush();
+    const text = t.replies.join('\n');
+    expect(text).toContain('A · pi · desarrollo · T-2: falló');
+    expect(text).toContain('A · pi · revisión · T-3: cancelado');
+  });
+
+  describe('/subagents and /killsub', () => {
+    const list = vi.fn((): WorkerRun[] => [worker(), worker({ id: 'W-2', taskId: 'T-2', role: 'reviewer', state: 'queued' })]);
+    const cancel = vi.fn(() => true);
+    const cancelAll = vi.fn(() => 2);
+    const ports = { workers: { list, cancel, cancelAll } };
+
+    it('lists the live workers of the active project', async () => {
+      const t = await setupRun(ports);
+      const out = (await say(t, '/subagents')).join('\n');
+      expect(list).toHaveBeenCalledWith(PROJECT);
+      expect(out).toContain('W-1');
+      expect(out).toContain('desarrollo');
+      expect(out).toContain('T-2');
+    });
+
+    it('says so when there are none', async () => {
+      const t = await setupRun({ workers: { list: () => [], cancel, cancelAll } });
+      expect((await say(t, '/subagents')).join('\n')).toMatch(/No hay workers/);
+    });
+
+    it('cancels one worker by id, or all of the project', async () => {
+      const t = await setupRun(ports);
+      await say(t, '/killsub W-1');
+      expect(cancel).toHaveBeenCalledWith('W-1');
+      const out = (await say(t, '/killsub all')).join('\n');
+      expect(cancelAll).toHaveBeenCalledWith(PROJECT);
+      expect(out).toContain('2');
+    });
+
+    it('asks for an argument, and degrades when workers are not wired', async () => {
+      const t = await setupRun(ports);
+      expect((await say(t, '/killsub')).join('\n')).toMatch(/Uso:/);
+      const bare = await setupRun();
+      expect((await say(bare, '/subagents')).join('\n')).toMatch(/no están disponibles/);
+    });
+
+    it('/stop and /clean cancel the controller\'s workers too', async () => {
+      cancelAll.mockClear();
+      const t = await setupRun(ports);
+      await say(t, '/stop');
+      await say(t, '/clean');
+      expect(cancelAll).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('lists the new commands in the help and the Telegram menu', () => {
+    const names = REMOTE_COMMANDS.map((c) => c.command);
+    expect(names).toContain('subagents');
+    expect(names).toContain('killsub');
   });
 });

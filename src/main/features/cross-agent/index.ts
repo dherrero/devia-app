@@ -68,7 +68,11 @@ export function buildCrossAgentFeature(deps: CrossAgentBuildDeps): CrossAgentBui
   const registry = createWorkerRegistry({
     maxConcurrent: () => cfg().maxConcurrent,
     maxPerTurn: () => cfg().maxPerTurn,
-    onChange: (run) => announce?.(run),
+    onChange: (run) => {
+      // The relay (Telegram) follows workers through the gateway; the renderer through `worker:changed`.
+      deps.gateway.publish({ type: 'worker', project: run.parentKey, worker: { ...run } });
+      announce?.(run);
+    },
   });
 
   let usable = 0;

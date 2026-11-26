@@ -20,6 +20,16 @@ import type { RunEndEvent, RunGateway, RunGatewayEvent } from '../../../shared/r
 import type { AttachmentPayload } from '../../../../shared/domain/attachment';
 import type { GitInfo, GitSyncResult } from '../../../../shared/domain/git';
 import type { SessionStats } from '../../../../shared/domain/session-stats';
+import {
+  parseAssignReply,
+  readAssignChoices,
+  renderAssignQuestionText,
+  renderAssignRetryText,
+  roleLabelEs,
+  type AssignQuestion,
+  type WorkerRun,
+  type WorkerState,
+} from '../../../../shared/domain/cross-agent';
 import type { IncomingMessage, OutboundFile, RemoteMessageHandler } from './telegram-controller';
 import { PartialUploadError, describeError } from './telegram-controller';
 import { MAX_MEDIA_GROUP } from '../infrastructure/telegram-client';
@@ -87,6 +97,12 @@ export interface RemoteCommandPorts {
   syncGit?(project: string): Promise<GitSyncResult>;
   /** Whether shell passthrough (/exec, !) is enabled (config gate, off by default). */
   allowShell(): boolean;
+  /** Cross-agent workers of a project (S-56): list, cancel one, cancel all. Absent → the commands say so. */
+  workers?: {
+    list(project: string): WorkerRun[];
+    cancel(workerId: string): boolean;
+    cancelAll(project: string): number;
+  };
   /** Run a shell command in the project directory. Absent → feature disabled. */
   runShell?(project: string, command: string): Promise<{ code: number | null; output: string; timedOut: boolean }>;
 }
@@ -178,6 +194,30 @@ function chunk(files: readonly OutboundFile[]): OutboundFile[][] {
 
 const DEFAULT_HEARTBEAT_MS = 2 * 60 * 1000;
 
+const WORKER_STATE_ES: Record<WorkerState, string> = {
+  queued: 'en cola',
+  running: 'trabajando',
+  done: 'terminado',
+  failed: 'falló',
+  cancelled: 'cancelado',
+  timeout: 'tiempo agotado',
+};
+
+/** The one short line the chat gets when a worker ends. */
+function workerEndLine(worker: WorkerRun): string {
+  const verdict = worker.state === 'done' ? (worker.status ?? WORKER_STATE_ES.done) : WORKER_STATE_ES[worker.state];
+  return `A · ${worker.agentId} · ${roleLabelEs(worker.role)} · ${worker.taskId}: ${verdict}`;
+}
+
+/** The question a Telegram run is waiting on, and what the user already answered of it. */
+interface PendingAsk {
+  callId: string;
+  question: AssignQuestion;
+  mainAgentId: string;
+  /** Role index → option key, accumulated over several messages. */
+  chosen: Record<number, string>;
+}
+
 type RemoteRunMode = 'plan' | 'apply' | 'apply-yolo';
 
 const MODE_LABEL: Record<RemoteRunMode, string> = {
@@ -255,6 +295,11 @@ export class RunForwarder {
     this.files = options.files;
     this.onFileOutcome = options.onFileOutcome;
     this.startedMs = now();
+  }
+
+  /** Say something in the chat of this run (a question, a worker's line). */
+  say(text: string): Promise<void> {
+    return this.reply(text);
   }
 
   setReply(reply: ReplyFn, files?: FileSink): void {
@@ -445,7 +490,35 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
   // A run started from the app has no forwarder (Telegram-initiated runs
   // register one before submitting); when desktop mirroring is on we create one
   // on its `start`, pushing the user prompt first so the chat shows both sides.
+  const pendingAsks = new Map<string, PendingAsk>();
+  const announcedWorkers = new Set<string>();
+
   deps.gateway.subscribe((event) => {
+    // S-56 T12: the controller asked which agent runs each role. The run's chat shows it as text.
+    if (event.type === 'ask') {
+      const owner = forwarders.get(event.project);
+      if (!owner) return;
+      pendingAsks.set(event.project, {
+        callId: event.callId,
+        question: event.question,
+        mainAgentId: event.mainAgentId,
+        chosen: {},
+      });
+      void owner.say(renderAssignQuestionText(event.question, event.mainAgentId)).catch(() => { /* best effort */ });
+      return;
+    }
+    // A worker ended: one short line, nothing while it works (the heartbeat covers that).
+    if (event.type === 'worker') {
+      const { worker } = event;
+      if (worker.state === 'queued' || worker.state === 'running') return;
+      const key = `${worker.id}:${worker.state}`;
+      const owner = forwarders.get(event.project);
+      if (!owner || announcedWorkers.has(key)) return;
+      announcedWorkers.add(key);
+      void owner.say(workerEndLine(worker)).catch(() => { /* best effort */ });
+      return;
+    }
+    if (event.type === 'end') pendingAsks.delete(event.project);
     let forwarder = forwarders.get(event.project);
     if (
       !forwarder &&
@@ -564,6 +637,32 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
     await reply('```\n' + tail + '\n```\n' + status);
   };
 
+  // The user's reply to the assignment question. One or several messages: what is
+  // understood is kept and only the missing lines are asked again.
+  const answerPendingAsk = async (project: string, text: string, reply: ReplyFn): Promise<void> => {
+    const ask = pendingAsks.get(project);
+    if (!ask) return;
+    const skipped = /^(saltar|omitir|skip|ninguno)$/i.test(text);
+    const input = skipped ? ask.question.roles.map((_, i) => `${i + 1}. a`).join('\n') : text;
+    const fresh = readAssignChoices(input, ask.question);
+    if (Object.keys(fresh).length === 0) {
+      await reply(`Tengo una pregunta pendiente. Responde con la letra de cada línea, o escribe saltar.\n${renderAssignQuestionText(ask.question, ask.mainAgentId)}`);
+      return;
+    }
+    ask.chosen = { ...ask.chosen, ...fresh };
+    const joined = Object.entries(ask.chosen)
+      .map(([index, key]) => `${Number(index) + 1}. ${key}`)
+      .join('\n');
+    const parsed = parseAssignReply(joined, ask.question);
+    if (!parsed.ok) {
+      await reply(renderAssignRetryText(ask.question, ask.mainAgentId, parsed.retryRoles));
+      return;
+    }
+    pendingAsks.delete(project);
+    deps.gateway.answerTool(project, ask.callId, joined);
+    await reply(skipped ? '✅ Sin repartir: todo con el agente principal.' : '✅ Reparto recibido. El agente continúa.');
+  };
+
   return async (msg: IncomingMessage): Promise<void> => {
     // Media messages carry a caption (the instruction) + downloaded files.
     if (msg.attachments && msg.attachments.length > 0) {
@@ -585,6 +684,10 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
       const project = deps.activeProject.get();
       if (!project) {
         await msg.reply('No hay proyecto activo. Abre un proyecto en Devia o usa /use <proyecto>.');
+        return;
+      }
+      if (pendingAsks.has(project)) {
+        await answerPendingAsk(project, text, msg.reply);
         return;
       }
       await applyKeywordMode(project, text, msg.reply);
@@ -755,6 +858,51 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
         return;
       }
 
+      case '/subagents': {
+        const workers = deps.ports.workers;
+        if (!workers) {
+          await msg.reply('Los workers de otros agentes no están disponibles en esta versión.');
+          return;
+        }
+        const target = await resolveProject(arg);
+        if (!target) {
+          await msg.reply('No hay proyecto activo. Usa /use <proyecto>.');
+          return;
+        }
+        const live = workers.list(target.path);
+        if (live.length === 0) {
+          await msg.reply(`No hay workers en *${leaf(target.path)}*.`);
+          return;
+        }
+        const lines = live.map((w) => `${w.id} · ${w.agentId} · ${roleLabelEs(w.role)} · ${w.taskId} · ${WORKER_STATE_ES[w.state]}`);
+        await msg.reply(`Workers de *${leaf(target.path)}*\n${lines.join('\n')}\nCancela con /killsub <id> o /killsub all.`);
+        return;
+      }
+
+      case '/killsub': {
+        const workers = deps.ports.workers;
+        if (!workers) {
+          await msg.reply('Los workers de otros agentes no están disponibles en esta versión.');
+          return;
+        }
+        if (!arg) {
+          await msg.reply('Uso: /killsub <id> o /killsub all (mira los ids con /subagents).');
+          return;
+        }
+        if (arg.toLowerCase() === 'all') {
+          const project = deps.activeProject.get();
+          if (!project) {
+            await msg.reply('No hay proyecto activo. Usa /use <proyecto>.');
+            return;
+          }
+          const count = workers.cancelAll(project);
+          await msg.reply(count > 0 ? `⏹️ Cancelados ${count} worker(s) de *${leaf(project)}*.` : `No había workers que cancelar en *${leaf(project)}*.`);
+          return;
+        }
+        await msg.reply(workers.cancel(arg) ? `⏹️ Worker ${arg} cancelado.` : `No encuentro un worker en marcha con id ${arg}.`);
+        return;
+      }
+
       case '/exec': {
         await handleExec(arg ?? '', msg.reply);
         return;
@@ -768,6 +916,8 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
         }
         const { path: project } = target;
         const wasRunning = deps.ports.isRunning(project);
+        pendingAsks.delete(project);
+        deps.ports.workers?.cancelAll(project);
         deps.gateway.stop(project);
         await msg.reply(wasRunning ? `⏹️ Detenido *${leaf(project)}*.` : `No había nada en ejecución en *${leaf(project)}*.`);
         return;
@@ -780,6 +930,8 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
           return;
         }
         const { path: project } = target;
+        pendingAsks.delete(project);
+        deps.ports.workers?.cancelAll(project);
         deps.gateway.resetSession(project);
         await msg.reply(`🧹 Sesión reiniciada en *${leaf(project)}*. La próxima instrucción empieza de cero.`);
         return;

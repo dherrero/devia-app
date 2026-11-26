@@ -148,6 +148,11 @@ export function parseAssignReply(text: string, question: AssignQuestion): Assign
 
 const ROLE_LABEL_ES: Record<WorkerRole, string> = { implementer: 'desarrollo', reviewer: 'revisión' };
 
+/** The role as the Spanish-speaking user reads it. */
+export function roleLabelEs(role: WorkerRole): string {
+  return ROLE_LABEL_ES[role];
+}
+
 function optionsLine(question: AssignQuestion, mainAgentId: string, role: WorkerRole): string {
   const index = question.roles.indexOf(role);
   const options = question.options
