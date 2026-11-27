@@ -9,7 +9,8 @@ When the user continues a session with a DIFFERENT CLI agent than the one that o
 
 ## Does
 
-- Trigger (in `RunInstructionUseCase`): the record's `agentSessionAgentId` exists, differs from `def.id`, and the active session has messages.
+- Trigger (in `RunInstructionUseCase`): the record's `agentSessionAgentId` exists, differs from `def.id` (the EFFECTIVE agent of the run, [cli-adapters.md](cli-adapters.md)), and the active session has messages. A project or session agent change therefore triggers it on the next run of that project or session only.
+- The "ask the previous agent for a summary" notice is `AgentSwitchHandoffService` (`src/renderer/app/core/services/agent-switch-handoff.service.ts`), shared by Settings and the footer picker.
 - Builds the brief with `buildHandoffBrief()` (`src/shared/domain/handoff.ts`, pure): goal + touched files + verbatim last 4 turns, 6000-char cap trimming the tail first. Injected into THIS run's system prompt (never via memory recall, so the first turn is guaranteed).
 - Records it in memory as a `kind: 'handoff'` session entry, appended standalone (`upsertSession` skips `kind: 'handoff'` so later run summaries never overwrite it).
 - Emits `session:handoff` before `process:start`; the renderer persists a `ChatMessage` with `kind: 'handoff'` + `handoff: { fromAgentId, toAgentId }` and renders `HandoffDividerComponent` (collapsible summary).

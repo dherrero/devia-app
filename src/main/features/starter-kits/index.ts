@@ -32,6 +32,8 @@ export interface StarterKitsDeps {
   config: ConfigRepository;
   /** Directory holding the bundled kits (`<resources>/kits`). */
   bundledKitsDir: () => string;
+  /** S-53: agent that runs in this project (default: the global agent). */
+  effectiveAgentId?: (projectPath: string | undefined) => string;
   home?: () => string;
 }
 
@@ -111,7 +113,7 @@ export function buildStarterKitsFeature(deps: StarterKitsDeps): StarterKitsBuilt
       introSeen: current?.introSeen === true,
       projectOverride: typeof override === 'boolean' ? override : null,
       effective: kit !== null && resolveKitEnabled(current, abs ?? ''),
-      nativeDetected: detectNativeMethod(cfg.agentId, home(), abs ?? cfg.workspaceRoot ?? ''),
+      nativeDetected: detectNativeMethod(deps.effectiveAgentId?.(projectPath) ?? cfg.agentId, home(), abs ?? cfg.workspaceRoot ?? ''),
     };
   };
 

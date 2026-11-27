@@ -118,6 +118,9 @@ export const IPC = {
   agentSetEnv:     'agent:setEnv',
   agentTest:       'agent:test',
   agentChanged:    'agent:changed',
+  agentSetContext: 'agents:set-context-agent',
+  agentEffective:  'agents:effective',
+  agentEffectiveChanged: 'agents:effective-changed',
 
   // Integrated terminal (one PTY per project)
   terminalStart:   'terminal:start',

@@ -52,6 +52,12 @@ export interface PersistedSession {
   worktreeBranch?: string;
   /** Run mode the session was left in; absent ⇒ a fresh session's default (plan). */
   runMode?: RunMode;
+  /**
+   * S-53: the agent the user chose for THIS session (beats the project's and the
+   * global default). Distinct from `agentId`, which is the last agent that
+   * produced the session. Absent = the session follows its project.
+   */
+  preferredAgentId?: string;
 }
 
 /**
@@ -127,7 +133,7 @@ export function parsePersistedSession(value: unknown): PersistedSession | null {
   }
   // Identity (S-2 F0.1) + workdir (S-3 F2.1) fields: tolerate absence and
   // wrong types — a session written before these contracts simply lacks them.
-  for (const key of ['agentId', 'agentSessionId', 'workdir', 'worktreeBranch'] as const) {
+  for (const key of ['agentId', 'agentSessionId', 'workdir', 'worktreeBranch', 'preferredAgentId'] as const) {
     if (typeof o[key] !== 'string' || o[key] === '') {
       delete (result as Partial<Record<typeof key, string>>)[key];
     }

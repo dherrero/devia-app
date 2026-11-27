@@ -21,11 +21,7 @@ import {
   type Theme,
 } from '../../../core/theme/accent-palettes';
 import { ToastService } from '../../../core/services/toast.service';
-import {
-  buildHandoffRequestPrompt,
-  canRequestHandoffSummary,
-  detectPendingHandoff,
-} from '../../chat/chat-panel/utils/agent-handoff.util';
+import { AgentSwitchHandoffService } from '../../../core/services/agent-switch-handoff.service';
 import type { ModalNavSection } from '../../../shared/components/modal-shell/modal-shell.component';
 import type { AgentForm, RemoteForm, WorkspaceForm } from './models/settings-forms.model';
 import { SettingsAppearanceSectionComponent } from './components/settings-appearance-section/settings-appearance-section.component';
@@ -97,6 +93,7 @@ export class SettingsModalComponent implements OnInit {
 
   private readonly api = inject(ElectronApiService);
   readonly state = inject(AppStateService);
+  private readonly handoff = inject(AgentSwitchHandoffService);
   readonly ref = inject(DialogRef, { optional: true });
   private readonly dialog = inject(Dialog);
   readonly i18n = inject(I18nService);
@@ -381,7 +378,11 @@ export class SettingsModalComponent implements OnInit {
       this.initialStyle = this.isSharp() ? 'sharp' : 'rounded';
 
       const agentId = this.selectedAgentId();
-      const previousAgentId = this.persistedAgentId;
+      // S-53: Settings sets the GLOBAL default, so the focused pane only changes agent
+      // when it follows that default (no project/session agent of its own).
+      const effectiveBefore = this.state.effectiveAgent();
+      const followsDefault = effectiveBefore === null || effectiveBefore.source === 'global';
+      const previousEffectiveId = this.state.effectiveAgentId() || this.persistedAgentId;
       const result = await this.api.selectAgent(agentId);
 
       if (!result.accepted) {
@@ -391,7 +392,7 @@ export class SettingsModalComponent implements OnInit {
       }
 
       this.persistedAgentId = result.agentId;
-      this.notifyPendingHandoff(previousAgentId, result.agentId);
+      if (followsDefault) this.handoff.notify(previousEffectiveId, result.agentId);
 
       const af = this.agentForm();
       await this.api.setAgentModel({
@@ -406,60 +407,6 @@ export class SettingsModalComponent implements OnInit {
     } finally {
       this.saving.set(false);
     }
-  }
-
-  /**
-   * S-2 F3.3: after a successful agent switch, inform (no confirmation — the
-   * base handoff is automatic on the next prompt) when the focused session or
-   * other mounted panes belong to a different agent.
-   */
-  private notifyPendingHandoff(previousAgentId: string, newAgentId: string): void {
-    if (previousAgentId === newAgentId) return;
-    const pending = detectPendingHandoff({
-      newAgentId,
-      focusedKey: this.state.focusedSessionKey() ?? this.state.selectedProject(),
-      mountedKeys: [...this.state.mountedPaneSessions()],
-      chats: this.state.chats(),
-    });
-    if (!pending) return;
-    const fromLabel =
-      this.agents().find((a) => a.id === pending.fromAgentId)?.name ?? pending.fromAgentId;
-    const others = pending.affectedKeys.length - 1;
-    const text = others > 0
-      ? (this.translate.instant('toasts.agent_handoff_pending_multi', { from: fromLabel, count: others }) as string)
-      : (this.translate.instant('toasts.agent_handoff_pending', { from: fromLabel }) as string);
-    // F3.4: offer to ask the PREVIOUS agent for a rich handoff summary — only
-    // when it is still operative (detected + selectable + authenticated).
-    const action = canRequestHandoffSummary(this.agents(), pending.fromAgentId)
-      ? {
-          label: this.translate.instant('toasts.agent_handoff_request_action', { from: fromLabel }) as string,
-          onAction: () => this.requestHandoffSummary(pending.fromAgentId),
-        }
-      : undefined;
-    this.toast.show(text, { kind: 'warning', durationMs: 10_000, ...(action !== undefined && { action }) });
-  }
-
-  /**
-   * S-2 F3.4: run an internal instruction on the FOCUSED session with the
-   * PREVIOUS agent (agentIdOverride) so it records a rich handoff summary via
-   * mem_session_summary before the new agent's first turn. The run shows in
-   * the chat as a normal one (displayText hides the internal prompt).
-   */
-  private requestHandoffSummary(fromAgentId: string): void {
-    const base = this.state.selectedProject();
-    if (!base) return;
-    const focusedPane = this.state.focusedSessionKey();
-    const displayText = this.translate.instant('chat.handoff_request_display') as string;
-    void this.api.sendInstruction(
-      base,
-      buildHandoffRequestPrompt(),
-      [],
-      'apply',
-      displayText,
-      focusedPane === null
-        ? { agentIdOverride: fromAgentId }
-        : { runKey: focusedPane, sessionId: focusedPane, isolate: false, agentIdOverride: fromAgentId },
-    );
   }
 
   // ── Audit Log methods ────────────────────────────────────────────

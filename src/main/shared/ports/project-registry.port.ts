@@ -25,6 +25,10 @@ export interface ProjectRecord {
    *  created ("No conversation found" / "no rollout found"). null when no
    *  agent session is stored. */
   agentSessionAgentId: string | null;
+  /** S-53: the agent the user chose for this project. null = follow the global
+   *  default. Sits between the session agent and the global one in
+   *  `resolveEffectiveAgentId`. */
+  preferredAgentId: string | null;
 }
 
 export interface ProjectRegistry {

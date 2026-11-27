@@ -579,6 +579,32 @@ describe('createCommandRouter — project commands', () => {
     await router(makeMsg('/agent', replies));
     expect(replies[0]).toContain('codex');
   });
+
+  it('/agent and /status ask for the agent OF THE ACTIVE PROJECT, and /agent points at the footer (S-53)', async () => {
+    const agentLabel = vi.fn((project?: string) => (project === 'devia/app' ? 'codex' : 'claude'));
+    const router = createCommandRouter({
+      gateway: new RunGateway(), activeProject: mutableProject('devia/app'), ports: fakePorts({ agentLabel }),
+    });
+    const replies: string[] = [];
+    await router(makeMsg('/agent', replies));
+    await router(makeMsg('/status', replies));
+    expect(agentLabel).toHaveBeenNthCalledWith(1, 'devia/app');
+    expect(agentLabel).toHaveBeenNthCalledWith(2, 'devia/app');
+    expect(replies[0]).toContain('codex');
+    expect(replies[0]).toContain('pie de la app');
+    expect(replies[1]).toContain('codex');
+  });
+
+  it('/status without an active project still reports the default agent', async () => {
+    const agentLabel = vi.fn(() => 'claude');
+    const router = createCommandRouter({
+      gateway: new RunGateway(), activeProject: mutableProject(null), ports: fakePorts({ agentLabel }),
+    });
+    const replies: string[] = [];
+    await router(makeMsg('/status', replies));
+    expect(replies[0]).toContain('Agente: claude');
+    expect(agentLabel).toHaveBeenCalledWith(undefined);
+  });
 });
 
 describe('createCommandRouter — attachments', () => {

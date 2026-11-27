@@ -8,7 +8,7 @@ Verified: b08bff62130756f1e2eb66ac2578efbef65c2823
 | Path | Content | Owner |
 | --- | --- | --- |
 | `devia-app.config.json` | `DeviaConfig` (secrets such as the Telegram token sealed) | [workspace](../features/workspace.md) |
-| `state.json` | runtime flags (`newSession` per project, pinned projects, toggles) | workspace / [pinned-projects](../features/pinned-projects.md) |
+| `state.json` | runtime flags (`newSession` per project, pinned projects, toggles, per-project `preferredAgentId`) | workspace / [pinned-projects](../features/pinned-projects.md) |
 | `window-state.json` | last window bounds + maximized flag (`src/main/shell/window-state.ts`) | shell |
 | `bases.json` | "new from base" templates | [workspace](../features/workspace.md) |
 | `agent-defs.json` | user-defined agents (incl. ACP) | [cli-adapters](../features/cli-adapters.md) |

@@ -31,7 +31,10 @@ const FILE: RunFile = {
   source: 'tool',
 };
 
-function setup(autoContinue: Record<string, boolean> = {}) {
+function setup(
+  autoContinue: Record<string, boolean> = {},
+  opts: { globalAgentId?: string; effective?: (project: string, sessionId?: string) => string } = {},
+) {
   const handles = new Map<string, (...args: unknown[]) => unknown>();
   const send = vi.fn();
   const ctx = {
@@ -64,7 +67,12 @@ function setup(autoContinue: Record<string, boolean> = {}) {
       clear: vi.fn(),
     },
     registry: {},
-    config: { get: () => ({ agentId: 'claude', autoContinueSessions: autoContinue }) },
+    config: { get: () => ({ agentId: opts.globalAgentId ?? 'claude', autoContinueSessions: autoContinue }) },
+    ...(opts.effective && {
+      effectiveAgent: {
+        forRun: (p: string, sid?: string) => ({ agentId: opts.effective!(p, sid), source: 'project' as const }),
+      },
+    }),
     auditLog: { append: vi.fn(), readLast: () => [] },
     runGateway: gateway,
     configChanges,
@@ -80,7 +88,7 @@ function setup(autoContinue: Record<string, boolean> = {}) {
     return captured[captured.length - 1]!;
   };
   const fileEvents = () => events.filter((e) => e.type === 'file');
-  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges };
+  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges, captured };
 }
 
 describe('claude.ipc — auto-continue after the usage limit', () => {
@@ -169,6 +177,38 @@ describe('claude.ipc — auto-continue after the usage limit', () => {
     t.ipc.dispose();
     t.configChanges.publish(cfgWith({ claude: false }));
     expect(t.send).not.toHaveBeenCalledWith('autoresume:cancelled', expect.anything());
+  });
+});
+
+describe('claude.ipc — auto-continue follows the effective agent (S-53)', () => {
+  const rateLimit = (t: ReturnType<typeof setup>, project: string) =>
+    t.start(project).onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: Date.now() + 60_000 });
+
+  it('resumes when the PROJECT agent is still the one that was rate-limited, even if the global agent differs', () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup({ claude: true }, { globalAgentId: 'codex', effective: () => 'claude' });
+      rateLimit(t, 'proj-a');
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(t.captured).toHaveLength(2); // the original run + the automatic continue
+      t.ipc.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not resume when the project switched to another agent while waiting, even if the global agent matches', () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup({ claude: true }, { globalAgentId: 'claude', effective: () => 'codex' });
+      rateLimit(t, 'proj-a');
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(t.captured).toHaveLength(1);
+      expect(t.dispatchNext).toHaveBeenCalledWith('proj-a');
+      t.ipc.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -12,6 +12,7 @@ interface MutableRecord {
   activeSessionId: string | null;
   agentSessionId: string | null;
   agentSessionAgentId: string | null;
+  preferredAgentId: string | null;
   handle: ProcessHandle | null;
   /**
    * RunId for the currently-attached process, or null when idle.
@@ -41,6 +42,8 @@ export class InMemoryProjectRegistry implements ProcessTrackingRegistry {
       set agentSessionId(v: string | null) { record.agentSessionId = v; },
       get agentSessionAgentId() { return record.agentSessionAgentId; },
       set agentSessionAgentId(v: string | null) { record.agentSessionAgentId = v; },
+      get preferredAgentId() { return record.preferredAgentId; },
+      set preferredAgentId(v: string | null) { record.preferredAgentId = v; },
     };
   }
 
@@ -57,6 +60,7 @@ export class InMemoryProjectRegistry implements ProcessTrackingRegistry {
         activeSessionId: null,
         agentSessionId: null,
         agentSessionAgentId: null,
+        preferredAgentId: null,
         handle: null,
         currentRunId: null,
       };

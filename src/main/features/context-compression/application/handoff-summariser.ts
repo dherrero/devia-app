@@ -28,10 +28,11 @@ interface CacheEntry {
 }
 
 export interface HandoffSummariserDeps {
-  /** Resolved at call time so an agent/env change picks the right provider. */
-  client: () => AuxiliaryLLMClient;
+  /** Resolved at call time so an agent/env change picks the right provider.
+   *  `identity` lets the caller use the TARGET project's effective agent (S-53). */
+  client: (identity: string) => AuxiliaryLLMClient;
   /** False ⇒ `prepare()` no-ops without ever invoking the client. */
-  clientAvailable: () => boolean;
+  clientAvailable: (identity: string) => boolean;
   now?: () => number;
 }
 
@@ -47,7 +48,7 @@ export class HandoffSummariser {
    * a fresh cached entry for the same session is never recomputed.
    */
   prepare(identity: string, sessionId: string, messages: readonly unknown[]): void {
-    if (!this.deps.clientAvailable()) return;
+    if (!this.deps.clientAvailable(identity)) return;
     const budgetMessages = toBudgetMessages(messages);
     // Nothing beyond the verbatim tail — the deterministic brief already
     // carries everything; an LLM call would only add cost.
@@ -57,7 +58,7 @@ export class HandoffSummariser {
     if (cached && cached.sessionId === sessionId && this.fresh(cached)) return;
 
     this.inFlight.add(identity);
-    void compress(budgetMessages, this.deps.client(), {
+    void compress(budgetMessages, this.deps.client(identity), {
       targetBudget: 1, // force one summarisation pass over the middle slice
       headKeep: 0,
       tailKeep: TAIL_KEEP,

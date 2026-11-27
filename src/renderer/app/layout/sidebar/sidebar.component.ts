@@ -434,7 +434,7 @@ export class SidebarComponent {
 
   /** S-2 F1.2: continuing this session with the CURRENT agent implies a handoff. */
   agentMismatch(session: SessionMeta): boolean {
-    return !!session.agentId && session.agentId !== this.state.config()?.agentId;
+    return !!session.agentId && session.agentId !== this.state.effectiveAgentId();
   }
 
   /** S-2 F0.3: true when clicking this listed session would be rejected by the
