@@ -45,12 +45,15 @@
             <ds-tool-call-card [toolCall]="block.toolCall" [children]="childrenOf(block.toolCall)" [active]="isToolInFlight(block.toolCall)" />
           } @else if (block.kind === 'tool_group') {
             <!-- Improvement #2: grouped tool-call <details> -->
-            <details class="tool-group" [open]="block.hasInFlight || msg().streaming">
+            <details class="tool-group">
               <summary class="tg-summary">
                 <dv-icon class="tg-icon" [icon]="LucideLayers" size="sm" aria-hidden="true" />
                 <span class="tg-label">{{ groupLabel(block) }}</span>
                 @if (block.hasError) {
                   <span class="tg-err-dot" aria-hidden="true"></span>
+                }
+                @if (block.hasInFlight) {
+                  <span class="tg-spinner" aria-hidden="true"></span>
                 }
               </summary>
               <div class="tg-cards">

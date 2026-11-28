@@ -110,6 +110,19 @@
   background: var(--dv-danger);
   flex-shrink: 0;
 }
+.tg-spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  margin-left: auto;
+  border: 2px solid var(--dv-bor);
+  border-top-color: var(--dv-fg);
+  border-radius: 50%;
+  animation: dv-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tg-spinner { animation-duration: 2.4s; }
+}
 .tg-cards {
   display: flex;
   flex-direction: column;
