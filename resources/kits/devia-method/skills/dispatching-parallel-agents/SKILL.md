@@ -89,7 +89,7 @@ When agents return:
 Two kinds of parallel work, and they are not the same thing:
 
 - **Parallel investigation or small independent fixes:** your agent's own subagent tool, as shown above. It shares your checkout, so the rule "agents would interfere (editing the same files)" applies in full. If your agent has no subagent tool, do the work one domain at a time; never invent a dispatch call.
-- **Parallel features or long tasks:** Devia can run up to four panes side by side, each with its own worktree and session branch. Ask the user to split the view (`isolating-work` says how), give each pane one domain, and leave merging to the user. You never create worktrees yourself.
+- **Parallel features or long tasks:** Devia can run up to four panes side by side, each with its own worktree and session branch. Ask the user to split the view (`isolating-work` says how), give each pane one domain, and leave merging to the user. You never create worktrees yourself; for a single agent the work branch is enough (`isolating-work`).
 
 ## Agent Prompt Structure
 

@@ -108,7 +108,7 @@
       "origin": "own",
       "from": "using-git-worktrees",
       "trigger": "Before implementation that should not touch the user's current checkout.",
-      "note": "Replaces using-git-worktrees. Devia's split panes are the isolation (a worktree and a session branch per pane, managed by Devia). Keeps the detection of an existing isolated workspace; removes manual worktree creation, .worktrees/ and gitignore handling."
+      "note": "Replaces using-git-worktrees. Isolation is either a Devia split pane (worktree and session branch managed by Devia) or, for a single agent, a feat/fix work branch the agent creates itself from dev/develop (gitflow) or main/master (githubflow). Keeps the detection of an existing isolated workspace; removes manual worktree creation, .worktrees/ and gitignore handling; adds the agent-created work branch (S-60)."
     },
     {
       "name": "finishing-work",

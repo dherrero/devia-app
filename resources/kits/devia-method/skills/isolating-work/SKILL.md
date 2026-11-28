@@ -7,9 +7,12 @@ description: "Before implementation that should not touch the user's current che
 
 ## Overview
 
-Work that changes code happens in an isolated workspace. In Devia the isolation is a **pane**: the user splits the chat, and Devia gives that pane its own git worktree and its own session branch, created from the repository's default branch. Devia creates it, tracks it, and removes it when the pane is closed or the session deleted.
+Work that changes code never happens on `main`, `master` or the consolidation branch (`dev`/`develop`). There are two kinds of isolation in Devia:
 
-**Core principle:** Detect existing isolation first. Ask for a pane when you need one. Never build isolation yourself.
+- **A pane** (the user splits the chat): Devia gives it its own git worktree and session branch, and removes them when the pane is closed. Devia owns that worktree.
+- **A work branch you create yourself** when you are alone in the user's checkout: gitflow when the repository has a `dev`/`develop` branch, githubflow when it only has `main`/`master`.
+
+**Core principle:** Detect existing isolation first. If there is none, create your own work branch. Never create, move or remove a worktree.
 
 **Announce at start:** "I'm using the isolating-work skill to check where this work happens."
 
@@ -35,19 +38,26 @@ git rev-parse --show-superproject-working-tree 2>/dev/null
 
 ## Step 1: When You Are on the User's Checkout
 
-Isolation is not always worth a pane. Decide by what the work is:
+You work alone on a branch you create. Do it without asking: it is the default flow, not a favour.
 
-| The work | What to do |
-|----------|------------|
-| A small, focused change; the user is watching | Work in place, on the branch they have checked out, **after they agree**. |
-| A multi-file feature, a risky refactor, a spike, or anything that will run while they do something else | Ask them to split the chat into a pane. |
+1. **Already on a work branch?** If the current branch is not `main`/`master`/`dev`/`develop` (for example `feat/...` or `fix/...`), keep working on it. Do not create another.
+2. **Pick the base.** `git branch --list dev develop` (also check `git branch -r`): if `dev` or `develop` exists, that is the base (gitflow). Otherwise the base is `main` or `master` (githubflow).
+3. **Check the tree is clean** (`git status --short`). If it has changes that are not yours, say so and ask before moving them onto a new branch.
+4. **Create the branch from the base:** `git checkout -b feat/<slug> <base>` for new behaviour, `fix/<slug>` for a bug, `chore/`, `docs/` or `refactor/` when those fit better. Use the repository's own naming convention if `AGENTS.md` or the history shows one. If the base is behind its remote, say so rather than rebasing silently.
+5. Say it in one line: "Working on `feat/<slug>`, created from `<base>`."
+
+Exceptions that need the user:
+
+| Situation | What to do |
+|-----------|------------|
+| The checkout is the one where the user runs Devia itself and `AGENTS.md` says never to develop in it | Say so and ask for a pane or another checkout. |
+| No commits yet, no git, or detached HEAD | Say so and ask before editing in place. |
 | Parallel work on independent features | One pane each (see `dispatching-parallel-agents`). |
+| A risky spike or work that will run while they do something else | Offer a pane; a pane is never required. |
 
-How to ask, in plain words: "This touches several files. Want to split the view so I work in its own pane? Devia gives it a separate worktree and branch, and your checkout stays as it is." The split button is in the chat header. Wait for them; the work continues in the new pane.
+Never commit on `main`, `master` or the consolidation branch without the user's explicit consent, and never push, open or merge a pull request unless asked.
 
-Never start implementation on `main` or `master` without the user's explicit consent.
-
-**What you never do:** create, move, prune or remove a git worktree (`git worktree add`, `remove`, `prune`); create a `.worktrees/` or `worktrees/` directory; switch the branch of a checkout that is not yours; delete a session branch. Devia owns all of that, and a worktree you made is invisible to it.
+**What you never do:** create, move, prune or remove a git worktree (`git worktree add`, `remove`, `prune`); create a `.worktrees/` or `worktrees/` directory; switch the branch of a worktree that belongs to a pane; delete a branch that is not one you created in this session's work. Devia owns worktrees, and one you made is invisible to it.
 
 ## Step 2: Project Setup
 
@@ -89,8 +99,8 @@ npm test / cargo test / pytest / go test ./...
 |-----------|--------|
 | Already in a linked worktree | Skip to setup (Step 0) |
 | In a submodule | Treat as a normal checkout (Step 0 guard) |
-| On the user's checkout, small change | Work in place with their agreement |
-| On the user's checkout, bigger work | Ask for a pane (Step 1) |
+| On the user's checkout, any change | Create `feat/<slug>` or `fix/<slug>` from `dev`/`develop` (or `main`/`master` if there is none) and work there (Step 1) |
+| Already on a `feat/`/`fix/` branch | Keep working on it |
 | Pane could not get a worktree (no git, no commits) | Devia shows a warning on the pane; say so and ask before editing in place |
 | Baseline tests fail | Report failures and ask |
 | No package manifest | Skip dependency install |
@@ -100,6 +110,7 @@ npm test / cargo test / pytest / go test ./...
 | Excuse | Reality |
 |--------|---------|
 | "I'm obviously not in a worktree, no need to check" | Run Step 0. Panes and submodules both fool eyeballing; the commands settle it. |
-| "`git worktree add` is quicker than asking for a pane" | A worktree you create is phantom state Devia cannot see, track or clean up. Ask for the pane. |
-| "I'll just branch off here, it's the same thing" | A branch on the user's checkout moves their working tree under them. |
+| "`git worktree add` is quicker" | A worktree you create is phantom state Devia cannot see, track or clean up. Create a branch in the current checkout instead. |
+| "I'll just commit on `dev`, it's a small change" | `dev` takes code only by pull request. Create the work branch first, even for one commit. |
+| "I'll wait for the user to make the branch" | Creating the branch is part of the job. Only the exceptions in Step 1 need the user. |
 | "The workspace is fresh, baseline tests can wait" | A dirty baseline makes every later failure ambiguous. Run the tests now; proceeding past failures is the user's call. |
