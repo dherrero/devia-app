@@ -9,7 +9,7 @@ description: "Before implementation that should not touch the user's current che
 
 Work that changes code never happens on `main`, `master` or the consolidation branch (`dev`/`develop`). There are two kinds of isolation in Devia:
 
-- **A pane** (the user splits the chat): Devia gives it its own git worktree and session branch, and removes them when the pane is closed. Devia owns that worktree.
+- **A worktree Devia creates**: for a pane (the user splits the chat to run several sessions at once in the same project) and for a worker when the main agent delegates a kanban task to another agent. Devia gives it its own worktree and branch, tracks it, and removes it when it is no longer needed. Devia owns that worktree.
 - **A work branch you create yourself** when you are alone in the user's checkout: gitflow when the repository has a `dev`/`develop` branch, githubflow when it only has `main`/`master`.
 
 **Core principle:** Detect existing isolation first. If there is none, create your own work branch. Never create, move or remove a worktree.
@@ -32,7 +32,7 @@ BRANCH=$(git branch --show-current)
 git rev-parse --show-superproject-working-tree 2>/dev/null
 ```
 
-**`GIT_DIR != GIT_COMMON` (and not a submodule):** you are in a linked worktree. In Devia that is a pane's workspace (or one the user made themselves). You are isolated: skip to Step 2 and work. Report it: "Already isolated at `<path>` on branch `<name>`." Do not create another one.
+**`GIT_DIR != GIT_COMMON` (and not a submodule):** you are in a linked worktree. In Devia that is a pane's or a delegated worker's workspace (or one the user made themselves). You are isolated: skip to Step 2 and work. Report it: "Already isolated at `<path>` on branch `<name>`." Do not create another one.
 
 **`GIT_DIR == GIT_COMMON`:** you are on the user's own checkout. Continue to Step 1.
 
@@ -57,7 +57,7 @@ Exceptions that need the user:
 
 Never commit on `main`, `master` or the consolidation branch without the user's explicit consent, and never push, open or merge a pull request unless asked.
 
-**What you never do:** create, move, prune or remove a git worktree (`git worktree add`, `remove`, `prune`); create a `.worktrees/` or `worktrees/` directory; switch the branch of a worktree that belongs to a pane; delete a branch that is not one you created in this session's work. Devia owns worktrees, and one you made is invisible to it.
+**What you never do:** create, move, prune or remove a git worktree (`git worktree add`, `remove`, `prune`); create a `.worktrees/` or `worktrees/` directory; switch the branch of a worktree that belongs to a pane or a delegated worker; delete a branch that is not one you created in this session's work. Devia owns worktrees, and one you made is invisible to it.
 
 ## Step 2: Project Setup
 

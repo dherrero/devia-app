@@ -22,7 +22,7 @@ Delivers the Devia Method, Devia's own development method (skills + bootstrap pr
 
 - Does NOT include a Devia-native SDD orchestrator, an embedded visual preview, remote kit updates, exporting a spec/plan to the repository, or a Devia-native session diagnosis (S-39 backlog).
 - Does NOT run when another development method is already installed for that agent.
-- Does NOT create, move or remove worktrees: `isolating-work` / `finishing-work` leave them to Devia's panes. With a single agent and no pane, the agent creates its own `feat/<slug>` or `fix/<slug>` branch from `dev`/`develop` (gitflow) or `main`/`master` (githubflow); push, PR and merge still need an explicit request.
+- Does NOT create, move or remove worktrees: `isolating-work` / `finishing-work` leave them to Devia (split panes and delegated workers). With a single agent and no pane, the agent creates its own `feat/<slug>` or `fix/<slug>` branch from `dev`/`develop` (gitflow) or `main`/`master` (githubflow); push, PR and merge still need an explicit request.
 - Executing a plan needs `apply-yolo` for Claude (`apply` is `acceptEdits`, which a headless run cannot extend to Bash).
 - Behaviour evals (`tools/agent-e2e/evals.cjs`) cost money and never run in CI.
 
