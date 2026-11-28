@@ -2,7 +2,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { grantClaudeMcpAccess, removeDeviaAskUserQuestionHook, revokeClaudeMcpAccess } from './claude-defaults';
+import {
+  CLAUDE_WORK_BRANCH_RULES,
+  grantClaudeMcpAccess,
+  grantClaudeWorkBranchAccess,
+  removeDeviaAskUserQuestionHook,
+  revokeClaudeMcpAccess,
+} from './claude-defaults';
 
 const SETTINGS_REL = path.join('.claude', 'settings.local.json');
 
@@ -243,5 +249,44 @@ describe('removeDeviaAskUserQuestionHook', () => {
     removeDeviaAskUserQuestionHook(dir);
 
     expect(fs.readFileSync(settingsPath(), 'utf8')).toBe('not json');
+  });
+});
+
+describe('grantClaudeWorkBranchAccess (S-60)', () => {
+  let dir: string;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'devia-claude-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+  const settingsPath = (): string => path.join(dir, SETTINGS_REL);
+  const read = (): { permissions: { allow: string[]; deny?: string[] }; model?: string } =>
+    JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) as never;
+
+  it('allows creating a branch and committing, but never deleting, forcing or pushing', () => {
+    grantClaudeWorkBranchAccess(dir);
+    const allow = read().permissions.allow;
+    expect(allow).toContain('Bash(git checkout -b*)');
+    expect(allow).toContain('Bash(git commit*)');
+    for (const rule of CLAUDE_WORK_BRANCH_RULES) {
+      expect(rule).not.toMatch(/push|-D|--force|worktree|reset/);
+    }
+    expect(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8')).toContain('.claude/settings.local.json');
+  });
+
+  it('merges into an existing file without touching other keys, and is idempotent', () => {
+    fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
+    fs.writeFileSync(settingsPath(), JSON.stringify({ permissions: { allow: ['mcp__x'], deny: ['Bash(rm -rf*)'] }, model: 'opus' }));
+    grantClaudeWorkBranchAccess(dir);
+    grantClaudeWorkBranchAccess(dir);
+    const s = read();
+    expect(s.permissions.allow[0]).toBe('mcp__x');
+    expect(s.permissions.allow.filter((r) => r === 'Bash(git checkout -b*)')).toHaveLength(1);
+    expect(s.permissions.deny).toEqual(['Bash(rm -rf*)']);
+    expect(s.model).toBe('opus');
+  });
+
+  it('leaves a malformed file untouched', () => {
+    fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
+    fs.writeFileSync(settingsPath(), '{ not json');
+    grantClaudeWorkBranchAccess(dir);
+    expect(fs.readFileSync(settingsPath(), 'utf8')).toBe('{ not json');
   });
 });

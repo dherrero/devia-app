@@ -13,7 +13,7 @@ Write implementation plans for an engineer who has not seen this codebase or thi
 
 **The plan lives on the kanban.** It is not a file. A plan is one **plan header task** plus one task per unit of work, all under the approved spec (`kanban_list_specs` finds it). The board is what survives compaction, what the user watches, and what another agent resumes from.
 
-**Context:** execution happens in the pane Devia gave the session (see `isolating-work`); a plan never creates a worktree.
+**Context:** execution happens in the pane Devia gave the session or, if there is none, on a work branch you create from `dev`/`develop` (or `main`/`master`) (see `isolating-work`); a plan never creates a worktree.
 
 ## Scope Check
 

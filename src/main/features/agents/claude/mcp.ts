@@ -1,6 +1,7 @@
 import type { McpServerConfig } from '../../../../shared/domain/mcp';
 import {
   grantClaudeMcpAccess,
+  grantClaudeWorkBranchAccess,
   removeDeviaAskUserQuestionHook,
   revokeClaudeMcpAccess,
 } from '../../../shared/claude-defaults';
@@ -43,6 +44,13 @@ export function prepareClaudeMcp(
     revokeClaudeMcpAccess(plan.cwd, [LEGACY_ASK_SERVER_ID]);
   } catch (err: unknown) {
     console.warn('[devia:run] could not clean the legacy AskUserQuestion hook/grant:', err instanceof Error ? err.message : String(err));
+  }
+  if (plan.mode === 'apply') {
+    try {
+      grantClaudeWorkBranchAccess(plan.cwd);
+    } catch (err: unknown) {
+      console.warn('[devia:run] could not persist git work-branch permission:', err instanceof Error ? err.message : String(err));
+    }
   }
   if (enterprise) return { args: [], mcpServerIds: [], cleanup: () => undefined };
 
