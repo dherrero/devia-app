@@ -25,6 +25,7 @@ Decides WHAT a run needs (mode, composed system prompt, Devia's and the user's M
 - Does NOT contain agent-id literals or import a concrete mapper: `src/main/features/claude-runner/application/core-is-agent-agnostic.test.ts` fails otherwise.
 - Does NOT spawn processes itself (the launcher in [cli-adapters.md](cli-adapters.md) does).
 - Does NOT offer a permission approver: runs are headless, so for Claude every Devia-managed MCP server is auto-granted in `.claude/settings.local.json` (`grantClaudeMcpAccess`).
+- In `apply` mode (`acceptEdits`, no approver) Claude also gets an allow-list to create its work branch and commit (`grantClaudeWorkBranchAccess`: `git checkout -b`, `git switch -c`, `git add`, `git commit`, read-only status/branch). Never push, delete branches or force; `plan` does not get it and `apply-yolo` skips permissions anyway (S-60).
 - Does NOT keep a pending auto-resume across app restarts (memory only).
 
 ## Entry points

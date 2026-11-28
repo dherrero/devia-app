@@ -147,6 +147,51 @@ export function grantClaudeMcpAccess(
 }
 
 /**
+ * Rules that let a headless `claude -p` apply run (`acceptEdits`) create its own
+ * work branch and commit on it (S-60). Nothing here can delete a branch, force
+ * anything, switch to an existing branch or push.
+ */
+export const CLAUDE_WORK_BRANCH_RULES: readonly string[] = [
+  'Bash(git checkout -b*)',
+  'Bash(git switch -c*)',
+  'Bash(git branch --show-current)',
+  'Bash(git branch --list*)',
+  'Bash(git status*)',
+  'Bash(git add*)',
+  'Bash(git commit*)',
+];
+
+/**
+ * Upserts {@link CLAUDE_WORK_BRANCH_RULES} into `permissions.allow` of the
+ * project's `.claude/settings.local.json`, so `git checkout -b` is not denied for
+ * lack of an interactive approver. Idempotent, preserves every other key, leaves
+ * a malformed file untouched. Only call it for apply runs: `apply-yolo` already
+ * skips permissions and `plan` must not create branches.
+ */
+export function grantClaudeWorkBranchAccess(projectAbsPath: string): void {
+  const settingsPath = path.join(projectAbsPath, CLAUDE_SETTINGS_REL);
+  const read = readSettingsObject(settingsPath);
+  if (read.kind === 'malformed') return;
+  const creating = read.kind === 'absent';
+  const settings: JsonObject = read.kind === 'object' ? read.data : {};
+  const permissions = isRecord(settings['permissions']) ? settings['permissions'] : {};
+  const rawAllow = permissions['allow'];
+  const allow: unknown[] = Array.isArray(rawAllow) ? [...rawAllow] : [];
+  let changed = creating;
+  for (const rule of CLAUDE_WORK_BRANCH_RULES) {
+    if (!allow.includes(rule)) {
+      allow.push(rule);
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  permissions['allow'] = allow;
+  settings['permissions'] = permissions;
+  writeSettingsObject(settingsPath, settings);
+  if (creating) appendGitignoreEntry(projectAbsPath, CLAUDE_SETTINGS_REL);
+}
+
+/**
  * Removes the `AskUserQuestion` PreToolUse hook Devia used to install.
  *
  * Claude Code 2.1.220 dropped `AskUserQuestion` from headless runs, so the hook
