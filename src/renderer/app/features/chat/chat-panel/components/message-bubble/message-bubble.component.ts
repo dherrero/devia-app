@@ -12,6 +12,7 @@ import { errorCardMeta } from './utils/message-bubble.utils';
 import { UserTurnComponent } from './components/user-turn/user-turn.component';
 import { AssistantTurnComponent } from './components/assistant-turn/assistant-turn.component';
 import { OutboxCardComponent } from './components/outbox-card/outbox-card.component';
+import { AgentErrorCardComponent } from '../agent-error-card/agent-error-card.component';
 
 @Component({
   selector: 'ds-message-bubble',
@@ -26,6 +27,7 @@ import { OutboxCardComponent } from './components/outbox-card/outbox-card.compon
     UserTurnComponent,
     AssistantTurnComponent,
     OutboxCardComponent,
+    AgentErrorCardComponent,
   ],
   templateUrl: './message-bubble.component.html',
   styleUrl: './message-bubble.component.scss',

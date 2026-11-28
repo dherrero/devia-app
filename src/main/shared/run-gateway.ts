@@ -1,3 +1,4 @@
+import type { UserFacingError } from '../../shared/domain/user-facing-error';
 import type { RunId } from '../../shared/domain/agent';
 import type { CancelReason } from '../../shared/domain/agent-event';
 import type { SendInstructionResult } from '../../shared/domain/queue';
@@ -57,6 +58,8 @@ export interface RunEndEvent {
    * user stop apart from a failure without parsing `error`.
    */
   cancelReason?: CancelReason;
+  /** S-54: what happened, why and what to do; `error` stays the raw agent text. */
+  userError?: UserFacingError;
 }
 /** Where an outbound file came from: the `devia_send_file` tool or the outbox. */
 export type RunFileSource = 'tool' | 'outbox';

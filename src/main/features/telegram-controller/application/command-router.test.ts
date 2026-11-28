@@ -893,6 +893,34 @@ describe('createCommandRouter — files (S-32)', () => {
     expect(outcomes).toEqual(['claude:r.pdf:failed:stopped']);
   });
 
+  it('S-54: an error end with a user reading tells the chat what happened and what to do, as plain text', async () => {
+    const { gateway, router } = setup();
+    const log: Sent[] = [];
+    await router(fileMsg('x', log));
+    gateway.publish({ type: 'start', project: P, agentId: 'pi' });
+    gateway.publish({
+      type: 'end',
+      project: P,
+      code: 1,
+      error: 'OpenAI API error (401): raw',
+      userError: {
+        code: 'invalid_provider_key',
+        title: 'La clave de openai no es válida',
+        cause: 'PI usó su modelo por defecto. Revisa OPENAI_API_KEY o elige un modelo en Ajustes › Ejecución.',
+        actions: [],
+        details: 'OpenAI API error (401): raw',
+      },
+    } as RunEndEvent);
+    await flush();
+    const text = log[log.length - 1]?.value ?? '';
+    expect(text).toContain('❌ *Error*');
+    expect(text).toContain('La clave de openai no es válida');
+    expect(text).toContain('Revisa OPENAI API KEY o elige un modelo');
+    // Markdown-significant characters are stripped so Telegram never rejects the message.
+    expect(text).not.toContain('OPENAI_API_KEY');
+    expect(text).toContain('OpenAI API error (401): raw');
+  });
+
   it('still sends the files of a run that ended in error', async () => {
     const { gateway, router, outcomes } = setup();
     const log: Sent[] = [];

@@ -182,7 +182,8 @@ describe('round trip against the real files', () => {
     // left is the pre-existing S-27 backlog, none of it under codeGraph.
     // 300: +7 for the footer agent picker (es/en only; S-27 translates).
     // 302: +2 for the pane-scoped wording of the agent picker (es/en only; S-27 translates).
-    expect(Object.keys(missing).length).toBe(302);
+    // 344 → see S-54: +51 for the agent error card (es/en only; S-27 translates).
+    expect(Object.keys(missing).length).toBe(353);
     expect(Object.keys(missing).filter((key) => key.startsWith('codeGraph.'))).toEqual([]);
   });
 

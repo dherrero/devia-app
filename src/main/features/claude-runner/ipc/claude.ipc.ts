@@ -264,7 +264,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       resumeContexts.set(identity, { ...extras.resume, agentId });
       if (!autoResume.schedule(identity, resetsAt)) resumeContexts.delete(identity);
     },
-    onProcessEnd: ({ runId, code, error, classification, signal, cancelReason, classifiedError }) => {
+    onProcessEnd: ({ runId, code, error, classification, signal, cancelReason, classifiedError, userError }) => {
       if (error === 'busy') extras?.onBusy?.();
       ctx.send('process:end', {
         project: identity,
@@ -274,6 +274,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
         ...(classification !== undefined && { classification }),
         ...(signal !== undefined && { signal }),
         ...(cancelReason !== undefined && { cancelReason }),
+        ...(userError !== undefined && { userError }),
         ...(classifiedError !== undefined && {
           failoverReason: classifiedError.reason,
           ...(classifiedError.hint !== undefined && { failoverHint: classifiedError.hint }),
@@ -289,6 +290,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
         code,
         ...(error !== undefined && { error }),
         ...(cancelReason !== undefined && { cancelReason }),
+        ...(userError !== undefined && { userError }),
       });
       notifyIfBackground(projectName, error);
       // Drain this session's own queue (keyed by identity, T-143). For the

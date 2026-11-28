@@ -1,0 +1,48 @@
+.agent-error-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: var(--dv-bd-thin, 1px) var(--dv-bd-style, solid) var(--dv-danger);
+  border-radius: var(--dv-r-md);
+  background: var(--dv-surf-2);
+  color: var(--dv-fg);
+
+  &__title {
+    margin: 0;
+    font-size: var(--dv-fs-md);
+    font-weight: 600;
+  }
+
+  &__cause {
+    margin: 0;
+    color: var(--dv-muted);
+    font-size: var(--dv-fs-sm);
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  &__details {
+    summary {
+      cursor: pointer;
+      color: var(--dv-dim);
+      font-size: var(--dv-fs-xs);
+    }
+
+    pre {
+      margin: 0.5rem 0 0;
+      max-height: 12rem;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--dv-mono);
+      font-size: var(--dv-fs-xs);
+      color: var(--dv-muted);
+    }
+  }
+}

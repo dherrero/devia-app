@@ -120,6 +120,10 @@
       </div>
     }
 
+    @if (msg().userError; as userError) {
+      <ds-agent-error-card [error]="userError" (retry)="retry.emit()" />
+    }
+
     @if (!msg().streaming || usageLabel()) {
       <div class="bubble-footer">
         @if (usageLabel(); as label) {

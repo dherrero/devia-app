@@ -1,3 +1,4 @@
+import type { UserFacingError } from '../domain/user-facing-error';
 import type { DeviaConfigView } from '../domain/config';
 import type { DiffFile, GitInfo } from '../domain/git';
 import type { OutboxFile } from '../domain/attachment';
@@ -94,6 +95,8 @@ export interface ProcessEndEvent {
   /** Optional renderer hint surfaced by the matcher (e.g. "Run `claude
    *  login`"). Only present when the matcher rule supplies one. */
   failoverHint?: string;
+  /** S-54: what to show the user (translated by the renderer); `error` stays the raw text. */
+  userError?: UserFacingError;
   /** Parsed `Retry-After` value in seconds, when the upstream API
    *  surfaces one (mostly 429 responses). */
   retryAfterSeconds?: number;
