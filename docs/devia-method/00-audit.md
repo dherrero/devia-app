@@ -51,7 +51,7 @@ Added advantage: with state on the kanban, **another agent can continue** (cross
 | `dispatching-parallel-agents` | **KEEP + note** | Add Devia panes (up to 4, own worktree) as real parallelism. |
 | `requesting-code-review` | **ADAPT** | Keeps criterion and `code-reviewer.md` template. Adds `devia_request_review` (human review). SHAs no longer come from `docs/` paths. |
 | `receiving-code-review` | **KEEP** | Only "your human partner" → "the user", and a mention of `revisa:` comments with anchors. |
-| `using-git-worktrees` | **REPLACE** → `isolating-work` | Isolation IS the split pane. Keeps detection (am I already in a worktree?). Out: manual creation, `.worktrees/`, gitignore. |
+| `using-git-worktrees` | **REPLACE** → `isolating-work` | Isolation is the split pane, or (S-60) a `feat/`/`fix/` branch the agent creates from `dev`/`develop`/`main`/`master` when it works alone. Keeps detection (am I already in a worktree?). Out: manual worktree creation, `.worktrees/`, gitignore. |
 | `finishing-a-development-branch` | **REPLACE** → `finishing-work` | Verify → commit → `devia_request_review` → `devia_pick` (leave ready / push / PR). Close tasks with commit; suggest archiving the spec. **Out:** local merge, `git branch -D`, `git worktree remove` (its Step 6 deletes everything under `worktrees/`, which is where Devia keeps its session worktrees: `<deviaDir>/worktrees/`). |
 | `test-driven-development` (+`writing-good-tests`) | **KEEP** | Only "your human partner" → "the user", cross-references without namespace prefix. |
 | `systematic-debugging` (+4 refs, `find-polluter.sh`, `condition-based-waiting-example.ts`) | **KEEP + 1 line** | When closing a bug with root cause → `mem_save` type `bugfix`. |
