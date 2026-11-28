@@ -1325,5 +1325,96 @@
       "hub": "Nodo central",
       "exported": "Exportado"
     }
+  },
+  "agent_error": {
+    "details": "Detalles técnicos",
+    "copied": "Detalles copiados",
+    "auto_continue_enabled": "Auto-continuar activado",
+    "actions": {
+      "open_settings": "Abrir ajustes",
+      "pick_model": "Elegir modelo",
+      "login": "Abrir ajustes",
+      "enable_auto_continue": "Activar auto-continuar",
+      "retry": "Reintentar",
+      "copy_details": "Copiar detalles"
+    },
+    "usage_limit": {
+      "title": "Límite de uso alcanzado",
+      "cause_auto": "Tu plan ha alcanzado su límite de uso. Devia continuará esta sesión solo a las {{time}}.",
+      "cause_manual": "Tu plan ha alcanzado su límite de uso. Se reinicia a las {{time}}. Activa auto-continuar y Devia reanudará las sesiones por ti la próxima vez.",
+      "cause_notime": "Tu plan ha alcanzado su límite de uso. Podrás seguir cuando se reinicie la ventana."
+    },
+    "auth_required": {
+      "title": "El agente no tiene la sesión iniciada",
+      "cause": "Inicia sesión en el CLI del agente o define su clave de API en Ajustes › Ejecución."
+    },
+    "image_too_large": {
+      "title": "Una imagen es demasiado grande",
+      "cause": "Cada imagen está limitada a 5 MB. Reduce la imagen adjunta y vuelve a enviarla."
+    },
+    "context_too_large": {
+      "title": "La conversación es demasiado larga",
+      "cause": "El mensaje, los adjuntos o el historial superan lo que admite el modelo. Empieza una sesión nueva o acorta el mensaje."
+    },
+    "model_unavailable": {
+      "title": "Modelo no disponible",
+      "cause": "El modelo no existe o tu cuenta no tiene acceso. Elige otro en Ajustes › Ejecución."
+    },
+    "transient": {
+      "title": "Fallo temporal",
+      "cause": "El proveedor o la red han fallado un momento. Inténtalo de nuevo en breve."
+    },
+    "rate_limited": {
+      "title": "Demasiadas peticiones",
+      "cause": "El proveedor está limitando las peticiones. Espera un momento y reintenta."
+    },
+    "provider_quota": {
+      "title": "Sin saldo o cuota",
+      "cause": "El proveedor rechaza la petición porque la cuota o el saldo se han agotado. Revisa tu plan o cambia de modelo."
+    },
+    "invalid_provider_key": {
+      "title": "La clave de API del proveedor no es válida",
+      "cause_default": "{{agent}} no tiene un modelo elegido en Devia, así que usó el suyo por defecto. Revisa la clave de API de ese proveedor o elige un modelo en Ajustes › Ejecución.",
+      "cause_default_env": "{{agent}} no tiene un modelo elegido en Devia, así que usó el suyo por defecto. La clave heredada de la variable de entorno {{envVar}} no es válida: corrígela o quítala, o elige un modelo en Ajustes › Ejecución.",
+      "cause_model": "{{agent}} usa el modelo {{model}}, pero el proveedor rechaza la clave de API. Revisa esa clave.",
+      "cause_model_env": "{{agent}} usa el modelo {{model}}, pero el proveedor rechaza la clave heredada de la variable de entorno {{envVar}}. Corrígela o quítala.",
+      "cause": "El proveedor rechaza la clave de API. Revisa esa clave."
+    },
+    "no_provider": {
+      "title": "Sin proveedor configurado",
+      "cause": "Configura un proveedor en el agente o elige un modelo en Ajustes › Ejecución."
+    },
+    "openrouter_policy": {
+      "title": "OpenRouter bloquea este modelo",
+      "cause": "Tu política de datos de OpenRouter descarta todos los endpoints de este modelo. Ajústala en openrouter.ai/settings/privacy o elige otro modelo."
+    },
+    "ollama_down": {
+      "title": "Ollama no está en marcha",
+      "cause": "Arráncalo con `ollama serve` y vuelve a intentarlo."
+    },
+    "codex_mcp_sandbox": {
+      "title": "Codex ha cancelado una herramienta MCP",
+      "cause": "El sandbox gestionado de Codex (modo apply en macOS/Linux) cancela las herramientas MCP de Devia. Prueba en modo apply-yolo o en plan."
+    },
+    "copilot_access": {
+      "title": "Copilot no está disponible en tu cuenta",
+      "cause": "Hace falta una suscripción activa de GitHub Copilot, habilitada para tu cuenta u organización."
+    },
+    "not_installed": {
+      "title": "No se encuentra el agente",
+      "cause": "El ejecutable del agente no está instalado o no está en el PATH. Instálalo y revisa Ajustes › Ejecución."
+    },
+    "enterprise_mcp": {
+      "title": "Tu organización gestiona la configuración MCP de Claude",
+      "cause": "No se pueden añadir servidores MCP por ejecución. Define DEVIA_ASSUME_ENTERPRISE_MCP=1 para que Devia los omita, o pide a IT que añada los servidores de Devia."
+    },
+    "unknown": {
+      "title": "El agente ha fallado",
+      "cause": "Devia no reconoce este error. Los detalles técnicos muestran lo que devolvió el agente."
+    },
+    "quota_exceeded": {
+      "title": "Cuota o saldo agotado",
+      "cause": "El plan o el saldo del proveedor no permite más peticiones ahora mismo. Revisa tu plan."
+    }
   }
 }

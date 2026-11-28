@@ -1325,5 +1325,96 @@
       "hub": "Central node",
       "exported": "Exported"
     }
+  },
+  "agent_error": {
+    "details": "Technical details",
+    "copied": "Details copied",
+    "auto_continue_enabled": "Auto-continue enabled",
+    "actions": {
+      "open_settings": "Open settings",
+      "pick_model": "Choose a model",
+      "login": "Open settings",
+      "enable_auto_continue": "Turn on auto-continue",
+      "retry": "Retry",
+      "copy_details": "Copy details"
+    },
+    "usage_limit": {
+      "title": "Usage limit reached",
+      "cause_auto": "Your plan has reached its usage limit. Devia will continue this session by itself at {{time}}.",
+      "cause_manual": "Your plan has reached its usage limit. It resets at {{time}}. Turn on auto-continue and Devia will resume sessions for you the next time.",
+      "cause_notime": "Your plan has reached its usage limit. You can keep going when the window resets."
+    },
+    "auth_required": {
+      "title": "The agent is not signed in",
+      "cause": "Sign in to the agent's CLI or set its API key in Settings › Execution."
+    },
+    "image_too_large": {
+      "title": "An image is too large",
+      "cause": "Each image is limited to 5 MB. Shrink the attached image and send it again."
+    },
+    "context_too_large": {
+      "title": "The conversation is too long",
+      "cause": "The message, attachments or history exceed what the model accepts. Start a new session or shorten the message."
+    },
+    "model_unavailable": {
+      "title": "Model not available",
+      "cause": "The model does not exist or your account has no access to it. Choose another one in Settings › Execution."
+    },
+    "transient": {
+      "title": "Temporary failure",
+      "cause": "The provider or the network failed for a moment. Try again shortly."
+    },
+    "rate_limited": {
+      "title": "Too many requests",
+      "cause": "The provider is limiting requests. Wait a moment and try again."
+    },
+    "provider_quota": {
+      "title": "Out of credit or quota",
+      "cause": "The provider rejects the request because the quota or balance is used up. Check your plan or switch model."
+    },
+    "invalid_provider_key": {
+      "title": "The provider API key is not valid",
+      "cause_default": "{{agent}} has no model chosen in Devia, so it used its own default. Check the API key of that provider, or choose a model in Settings › Execution.",
+      "cause_default_env": "{{agent}} has no model chosen in Devia, so it used its own default. The key inherited from the {{envVar}} environment variable is not valid: fix or remove it, or choose a model in Settings › Execution.",
+      "cause_model": "{{agent}} uses the model {{model}}, but the provider rejects the API key. Check that key.",
+      "cause_model_env": "{{agent}} uses the model {{model}}, but the provider rejects the key inherited from the {{envVar}} environment variable. Fix or remove it.",
+      "cause": "The provider rejects the API key. Check that key."
+    },
+    "no_provider": {
+      "title": "No provider configured",
+      "cause": "Configure a provider in the agent or choose a model in Settings › Execution."
+    },
+    "openrouter_policy": {
+      "title": "OpenRouter blocks this model",
+      "cause": "Your OpenRouter data policy rules out every endpoint for this model. Adjust it at openrouter.ai/settings/privacy or choose another model."
+    },
+    "ollama_down": {
+      "title": "Ollama is not running",
+      "cause": "Start it with `ollama serve` and try again."
+    },
+    "codex_mcp_sandbox": {
+      "title": "Codex cancelled an MCP tool",
+      "cause": "Codex's managed sandbox (apply mode on macOS/Linux) cancels Devia's MCP tools. Try apply-yolo or plan mode."
+    },
+    "copilot_access": {
+      "title": "Copilot is not available on your account",
+      "cause": "An active GitHub Copilot subscription, enabled for your account or organisation, is required."
+    },
+    "not_installed": {
+      "title": "Agent not found",
+      "cause": "The agent's executable is not installed or not on the PATH. Install it and check Settings › Execution."
+    },
+    "enterprise_mcp": {
+      "title": "Your organisation manages Claude's MCP config",
+      "cause": "MCP servers cannot be added per run. Set DEVIA_ASSUME_ENTERPRISE_MCP=1 so Devia skips them, or ask IT to add Devia's servers."
+    },
+    "unknown": {
+      "title": "The agent failed",
+      "cause": "Devia does not recognise this error. The technical details show what the agent returned."
+    },
+    "quota_exceeded": {
+      "title": "Quota or balance used up",
+      "cause": "The plan or balance of the provider does not allow more requests right now. Check your plan."
+    }
   }
 }

@@ -1,3 +1,4 @@
+import type { UserFacingError } from '../../../../shared/domain/user-facing-error';
 /**
  * Telegram command router (E-DSK-14 Fase C).
  *
@@ -343,7 +344,7 @@ export class RunForwarder {
    * stop, so nothing more leaves the machine — its pending files are only
    * announced as not sent and audited `failed:stopped`.
    */
-  async finish(code: number | null, error?: string, stopped = error === 'stopped'): Promise<void> {
+  async finish(code: number | null, error?: string, stopped = error === 'stopped', userError?: UserFacingError): Promise<void> {
     // The agent's reply is always labelled with the project it ran in, so the
     // chat stays unambiguous across projects (E-DSK-14).
     const label = `*[${leaf(this.project)}]*`;
@@ -351,7 +352,7 @@ export class RunForwarder {
     const footer = stopped
       ? '\n\n⏹️ *Detenido*'
       : error
-        ? `\n\n❌ *Error* (${error})`
+        ? `\n\n❌ *Error*${userError ? `\n${plainText(userError.title)}\n${plainText(userError.cause)}` : ''} (${error})`
         : `\n\n✅ *Completado* (código ${code ?? 0})`;
     const pending = [...this.pendingFiles.values()];
     this.pendingFiles.clear();
@@ -437,6 +438,15 @@ export class RunForwarder {
       this.timer = null;
     }
   }
+}
+
+/**
+ * Text for a Telegram message in legacy Markdown: the characters that open
+ * formatting (`_ * \` [`) are dropped so an explanation never makes Telegram
+ * reject the whole reply.
+ */
+function plainText(text: string): string {
+  return text.replace(/[_*`[\]]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 }
 
 /**
@@ -540,7 +550,7 @@ export function createCommandRouter(deps: CommandRouterDeps): RemoteMessageHandl
       forwarders.delete(event.project);
       const done = forwarder;
       const tail = (tails.get(event.project) ?? Promise.resolve())
-        .then(() => done.finish(event.code, event.error, stoppedByUser(event)))
+        .then(() => done.finish(event.code, event.error, stoppedByUser(event), event.userError))
         .catch(() => { /* a failed reply must not break the chain */ })
         .finally(() => done.dispose());
       tails.set(event.project, tail);

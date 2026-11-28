@@ -1,0 +1,26 @@
+<section class="agent-error-card" role="alert">
+  <h4 class="agent-error-card__title">{{ text().title }}</h4>
+  <p class="agent-error-card__cause">{{ text().cause }}</p>
+
+  @if (buttons().length > 0 || canCopy()) {
+    <div class="agent-error-card__actions">
+      @for (action of buttons(); track action.kind) {
+        <dv-button variant="secondary" size="sm" (clicked)="run(action)">
+          {{ labelKey(action) | translate }}
+        </dv-button>
+      }
+      @if (canCopy()) {
+        <dv-button variant="ghost" size="sm" (clicked)="copy()">
+          {{ 'agent_error.actions.copy_details' | translate }}
+        </dv-button>
+      }
+    </div>
+  }
+
+  @if (error().details) {
+    <details class="agent-error-card__details">
+      <summary>{{ 'agent_error.details' | translate }}</summary>
+      <pre>{{ error().details }}</pre>
+    </details>
+  }
+</section>

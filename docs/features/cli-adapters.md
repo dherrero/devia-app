@@ -17,6 +17,7 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - Legacy stream parsers (`infrastructure/parsers/`): codex, copilot, cursor-agent, gemini, grok, qoder event streams plus `plain-text.ts`; `select-parser.ts` picks by `eventParser`. Error matchers in `infrastructure/matchers/<agent>.matchers.ts`.
 - Child environment (`buildSpawnEnv` in `src/main/features/cli-adapters/infrastructure/spawn-env.ts`): the parent `process.env` is inherited, then the def's env, then the mapper's `prepared.env` (user `agentCliEnv` values filtered by the def's `envOverrideKeys`), then trusted `agentEnv`; `PWD` is forced to the cwd and a stripped `ANTHROPIC_BASE_URL` is logged. User-supplied defs may only override keys matching `SAFE_ENV_KEY_PATTERN` (`*_API_KEY`, `*_BASE_URL`, `*_CONFIG_DIR`, `*_TOKEN`).
 - Raw capture for parser diagnosis: `raw-stream-logger.ts` writes JSONL to `~/.devia-app/logs/agent-cli/<agentId>/` only when `IS_DEV` or `DEVIA_LOG_RAW_CLI=1` (size-capped, 7-day purge).
+- Agent errors explained to the user (S-54, `infrastructure/explain/`): `explainError(cliId, classified, ctx)` turns a classified error into a `UserFacingError` (`src/shared/domain/user-facing-error.ts`: `code`, `variant`, `params`, fallback `title`/`cause`, typed `actions`, redacted `details`). One explainer per agent (`<agent>.explain.ts`; PI/OpenCode/Codex/Qwen/DeepSeek/Grok/Kimi/Hermes also fall back to the shared `provider-failure.ts`, which reads the provider JSON nested in the text through `nested-error.ts`); an agent without a reading, or any error it does not recognise, uses the reason-based `generic.ts`. `ExplainContext` (built by `claude-runner/application/error-context.ts`) carries the saved model, the NAMES of inherited provider key variables, the auto-continue switch, `resetsAt` and the run origin. `RunInstructionUseCase` attaches the result as `userError` to `error` stream events and to `process:end`; the raw text always travels beside it. The renderer shows it in `ds-agent-error-card` (translated by `agent_error.<code>.title|cause[_<variant>]`, es/en); Telegram gets the title and cause as plain text, and `actions` is empty for remote runs.
 - Use cases: list agents, select agent (`SelectAgentUseCase` rejects non-CLI providers), set model/reasoning, set env, test agent.
 - Effective agent (S-53), priority **session > project > global**. `config.agentId` is the global default. `resolveEffectiveAgentId` (`src/shared/domain/effective-agent.ts`) applies the priority and falls back one level, reporting `fellBackFrom`, when a level names an agent that is not an installed CLI provider.
 - `createEffectiveAgentResolver` (`src/main/shared/effective-agent-resolver.ts`) is the single main-process answer. Runs (`RunInstructionUseCase`), Telegram, the queue, auto-continue, the handoff auxiliary client and starter-kit detection use it, so none can disagree with the footer. With no session id it uses the project's active session (the primary pane).
@@ -33,6 +34,10 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - Does NOT include a `mimo` agent: no def exists in this branch (spec S-23 did not land).
 - Does NOT keep user-defined `env` for custom agent defs (dropped), nor let a custom def re-point a built-in id.
 - Does NOT sanitise the inherited parent environment: the host `process.env` reaches the child (the default-deny `env-slicer` in the security feature is not wired in, see [security.md](security.md)).
+- Does NOT retry or fall back to another agent on failure: the explanation only tells the user what to do.
+- Explanations are verified against real agent logs for Claude (shapes from its decoder and matchers), PI and OpenCode (`~/.devia-app/logs/agent-cli/`). Codex, Gemini, Cursor, Copilot, Qwen, DeepSeek, Qoder, Grok, Kimi and Hermes have NO recorded failure logs: their rules come from their matcher tables (Kimi/Hermes: ACP "authentication required" conventions) and are UNVERIFIED against a live failure.
+- Does NOT translate causes beyond es/en (S-27); other locales show the Spanish fallback text.
+- OpenCode's `APIError` frame keeps its `statusCode` in the wire frame, but the decoder passes only the message text, so its explainer reads text, not the status.
 - Codex has no OS sandbox on Windows, so `apply` falls back to full access there.
 
 ## Entry points
@@ -44,6 +49,8 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 - `src/main/features/cli-adapters/infrastructure/detection/agent-detector.ts:ParallelAgentDetector` — detection
 - `src/main/features/cli-adapters/infrastructure/parsers/select-parser.ts` — parser selection
 - `src/main/features/cli-adapters/infrastructure/error-classifier.ts` — error classes
+- `src/main/features/cli-adapters/infrastructure/explain/index.ts:explainError` — user-facing error readings
+- `src/renderer/app/features/chat/chat-panel/components/agent-error-card/` — the error card
 - `src/main/features/cli-adapters/application/select-agent.use-case.ts:SelectAgentUseCase`
 - `src/main/features/cli-adapters/application/set-context-agent.use-case.ts:SetContextAgentUseCase`
 - `src/main/features/cli-adapters/application/get-effective-agent.use-case.ts:GetEffectiveAgentUseCase`
@@ -77,7 +84,7 @@ Static knowledge about each CLI agent (binary, models, flag builders, auth probe
 
 ## Tests
 
-- `src/main/features/cli-adapters/**/*.test.ts` (defs, parsers, launcher stdin, detection, effective agent use cases); `src/main/shared/effective-agent-resolver.test.ts`, `src/main/shared/session-agent-roundtrip.test.ts`; `tools/agent-e2e/` for real CLIs.
+- `src/main/features/cli-adapters/**/*.test.ts` (defs, parsers, launcher stdin, detection, effective agent use cases, `explain/*.test.ts`); `src/main/shared/effective-agent-resolver.test.ts`, `src/main/shared/session-agent-roundtrip.test.ts`; `tools/agent-error-i18n.test.ts` (every code has es/en text); `tools/agent-e2e/` for real CLIs.
 
 ## Related
 

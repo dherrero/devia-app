@@ -3,7 +3,12 @@
     <ds-user-turn [msg]="msg()" />
   }
   @case ("system") {
-    @if (errorCardData(); as ecd) {
+    @if (msg().userError; as userError) {
+      <!-- S-54: what happened, why, and what to do -->
+      <div class="msg-error-card">
+        <ds-agent-error-card [error]="userError" (retry)="retry.emit()" />
+      </div>
+    } @else if (errorCardData(); as ecd) {
       <!-- Classified error card (improvement #3) -->
       <div class="msg-error-card">
         <dv-error-bubble
@@ -34,7 +39,7 @@
     }
   }
   @case ("assistant") {
-    <ds-assistant-turn [msg]="msg()" [isLatest]="isLatest()" />
+    <ds-assistant-turn [msg]="msg()" [isLatest]="isLatest()" (retry)="retry.emit()" />
   }
   @case ("outbox") {
     <ds-outbox-card [msg]="msg()" />
