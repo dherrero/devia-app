@@ -15,6 +15,9 @@
  * `src/main/features/security/audit-log.test.ts` (FR5), so this file uses a
  * lightweight recording fake instead.
  */
+import { DEFAULT_CROSS_AGENT_CONFIG } from '../../../../shared/domain/cross-agent-config';
+import type { AssignAgentsPort, SpawnWorkerCall } from './run-instruction.use-case';
+import { workerRunKey } from '../../../../shared/domain/cross-agent';
 import {
   ASK_USER_MANDATE_TAG,
   REMINDER_TAG,
@@ -340,6 +343,11 @@ interface BuildExtras {
   /** How a native-config agent's MCP write behaves (default: nothing lands). */
   nativeMcp?: { deliver: (agentId: string, cwd: string, servers: readonly McpServerConfig[]) => NativeConfigDelivery };
   implementedUiTools?: readonly UiToolName[];
+  /** S-56: launches a cross-agent worker for devia_spawn_agent. */
+  spawnWorker?: (req: SpawnWorkerCall) => Promise<string>;
+  usableAgentCount?: () => number;
+  assignAgents?: AssignAgentsPort;
+  cancelWorkers?: (parentKey: string) => number;
   isConfirmationGranted?: (project: string, action: string) => boolean;
   remoteRelayConnected?: () => boolean;
   isLiveSessionWorktree?: (workdir: string) => boolean;
@@ -401,6 +409,10 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.ensureSessionWorktree ? { ensureSessionWorktree: extras.ensureSessionWorktree } : {}),
     ...(extras.uiMcpServer ? { uiMcpServer: extras.uiMcpServer } : {}),
     ...(extras.implementedUiTools ? { implementedUiTools: extras.implementedUiTools } : {}),
+    ...(extras.spawnWorker ? { spawnWorker: extras.spawnWorker } : {}),
+    ...(extras.usableAgentCount ? { usableAgentCount: extras.usableAgentCount } : {}),
+    ...(extras.assignAgents ? { assignAgents: extras.assignAgents } : {}),
+    ...(extras.cancelWorkers ? { cancelWorkers: extras.cancelWorkers } : {}),
     ...(extras.isConfirmationGranted ? { isConfirmationGranted: extras.isConfirmationGranted } : {}),
     ...(extras.remoteRelayConnected ? { remoteRelayConnected: extras.remoteRelayConnected } : {}),
     ...(extras.isLiveSessionWorktree ? { isLiveSessionWorktree: extras.isLiveSessionWorktree } : {}),
@@ -1209,6 +1221,151 @@ describe('RunInstructionUseCase — devia-ui delivery (S-25)', () => {
       expect(tools).not.toContain('confirm');
       expect(tools).toContain('todo');
     }
+  });
+
+  it('offers a cross-agent worker run (worker run key) no interactive tool (S-56)', () => {
+    const seen: Array<readonly string[]> = [];
+    const h = build({ id: 'pi', name: 'Pi' }, {
+      config: projectConfig(),
+      uiMcpServer: (_dir, tools) => { seen.push(tools); return enabledServer('devia-ui'); },
+      nativeMcp: nativeDelivery(true),
+    });
+    h.uc.execute(
+      'proj-a', 'implement T-1', [], makeHandlers(), 'apply', [], 'renderer', true,
+      workerRunKey('proj-a', 'T-1', 1), 'worker-session-1', 'pi',
+    );
+
+    expect(seen).toHaveLength(1);
+    for (const name of ['ask_user', 'confirm', 'pick', 'request_review', 'notify', 'send_file']) {
+      expect(seen[0]).not.toContain(name);
+    }
+    expect(seen[0]).toContain('todo');
+  });
+
+  describe('devia_spawn_agent wiring (S-56)', () => {
+    const crossOn = (over: Partial<typeof DEFAULT_CROSS_AGENT_CONFIG> = {}): FakeConfig => {
+      const cfg = projectConfig();
+      cfg.set({ crossAgent: { ...DEFAULT_CROSS_AGENT_CONFIG, enabled: true, ...over } });
+      return cfg;
+    };
+    const advertisedWith = (
+      config: FakeConfig,
+      extras: { spawn?: boolean; agents?: number; mode?: 'plan' | 'apply'; runKey?: string } = {},
+    ): { tools: readonly string[] | undefined; harness: { workerToolTimeoutMs?: number } | undefined } => {
+      let tools: readonly string[] | undefined;
+      let harness: { workerToolTimeoutMs?: number } | undefined;
+      const h = build({ id: 'claude', name: 'Claude Code' }, {
+        config,
+        uiMcpServer: (_dir, t, hn) => { tools = t; harness = hn; return enabledServer('devia-ui'); },
+        ...(extras.spawn !== false && { spawnWorker: async () => 'ok' }),
+        usableAgentCount: () => extras.agents ?? 2,
+      });
+      h.uc.execute('proj-a', 'do thing', [], makeHandlers(), extras.mode ?? 'apply', [], 'renderer', false, extras.runKey);
+      return { tools, harness };
+    };
+
+    it('advertises the tool when the feature is on, two agents are usable and a runner exists', () => {
+      expect(advertisedWith(crossOn()).tools).toContain('spawn_agent');
+    });
+
+    it('does not advertise it when the feature is off, with one agent, in plan mode, to a worker, or without a runner', () => {
+      expect(advertisedWith(projectConfig()).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { agents: 1 }).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { mode: 'plan' }).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { runKey: 'devia-worker:proj-a:T-1:1' }).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { spawn: false }).tools).not.toContain('spawn_agent');
+    });
+
+    it('gives the MCP server a wait longer than the worker timeout', () => {
+      const { harness } = advertisedWith(crossOn({ defaultTimeoutSec: 600 }));
+      expect(harness?.workerToolTimeoutMs).toBe((600 + 120) * 1000);
+    });
+
+    it('serves a spawn request: the worker gets the project, the controller run, the mode and the cwd', async () => {
+      const spawnWorker = vi.fn(async () => '[pi · implementer · T-1] DONE');
+      const h = build({ id: 'claude', name: 'Claude Code' }, {
+        config: crossOn(),
+        uiMcpServer: () => enabledServer('devia-ui'),
+        spawnWorker,
+        usableAgentCount: () => 2,
+      });
+      const handlers = makeHandlers();
+      h.uc.execute('proj-a', 'do thing', [], handlers);
+      const dir = uiDirFor(handlers);
+      writeUiRequest(dir, { callId: 'sp-1', tool: 'spawn_agent', toolInput: { role: 'implementer', taskId: 'T-1' } });
+      await vi.advanceTimersByTimeAsync(150);
+
+      const startArg = (handlers.onProcessStart as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { runId: RunId };
+      expect(spawnWorker).toHaveBeenCalledWith(
+        expect.objectContaining({ project: 'proj-a', parentKey: 'proj-a', turnId: startArg.runId, role: 'implementer', taskId: 'T-1', mode: 'apply' }),
+      );
+      expect(typeof (spawnWorker.mock.calls[0] as unknown as [SpawnWorkerCall])[0].controllerCwd).toBe('string');
+    });
+
+    describe('devia_assign_agents', () => {
+      const assign: AssignAgentsPort = {
+        prepare: vi.fn(async () => ({ kind: 'cached' as const, text: 'Saved for this project: implementer → pi.' })),
+        finish: vi.fn(async () => 'saved'),
+      };
+      const planTools = (config: FakeConfig, opts: { agents?: number; port?: boolean; mode?: 'plan' | 'apply'; runKey?: string } = {}) => {
+        let tools: readonly string[] | undefined;
+        const h = build({ id: 'claude', name: 'Claude Code' }, {
+          config,
+          uiMcpServer: (_dir, t) => { tools = t; return enabledServer('devia-ui'); },
+          ...(opts.port !== false && { assignAgents: assign }),
+          usableAgentCount: () => opts.agents ?? 2,
+        });
+        h.uc.execute('proj-a', 'plan it', [], makeHandlers(), opts.mode ?? 'plan', [], 'renderer', false, opts.runKey);
+        return tools;
+      };
+
+      it('is offered in plan mode when the feature is on, two agents are usable and the port exists', () => {
+        expect(planTools(crossOn())).toContain('assign_agents');
+      });
+
+      it('is not offered when the feature is off, with one agent, without the port, in apply, or to a worker', () => {
+        expect(planTools(projectConfig())).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { agents: 1 })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { port: false })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { mode: 'apply' })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { runKey: 'devia-worker:proj-a:T-1:1' })).not.toContain('assign_agents');
+      });
+
+      it('serves a request with the project of the run', async () => {
+        const h = build({ id: 'claude', name: 'Claude Code' }, {
+          config: crossOn(),
+          uiMcpServer: () => enabledServer('devia-ui'),
+          assignAgents: assign,
+          usableAgentCount: () => 2,
+        });
+        const handlers = makeHandlers();
+        h.uc.execute('proj-a', 'plan it', [], handlers, 'plan');
+        writeUiRequest(uiDirFor(handlers), { callId: 'as-1', tool: 'assign_agents', toolInput: { roles: ['implementer'] } });
+        await vi.advanceTimersByTimeAsync(150);
+        expect(assign.prepare).toHaveBeenCalledWith('proj-a', { roles: ['implementer'], reassign: false });
+      });
+    });
+
+    it('cancels the controller\'s workers when its run ends, however it ends', () => {
+      const cancelWorkers = vi.fn(() => 0);
+      const build2 = (): Harness => build({ id: 'claude', name: 'Claude Code' }, {
+        config: crossOn(),
+        uiMcpServer: () => enabledServer('devia-ui'),
+        spawnWorker: async () => 'ok',
+        usableAgentCount: () => 2,
+        cancelWorkers,
+      });
+      const done = build2();
+      done.uc.execute('proj-a', 'do thing', [], makeHandlers());
+      done.runner.last().handlers.onDone(0);
+      expect(cancelWorkers).toHaveBeenCalledWith('proj-a');
+
+      cancelWorkers.mockClear();
+      const failed = build2();
+      failed.uc.execute('proj-b', 'do thing', [], makeHandlers());
+      failed.runner.last().handlers.onError('boom');
+      expect(cancelWorkers).toHaveBeenCalledWith('proj-b');
+    });
   });
 
   it('does not deliver devia-ui under an enterprise MCP config', () => {

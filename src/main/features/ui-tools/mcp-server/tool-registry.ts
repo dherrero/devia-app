@@ -168,6 +168,23 @@ const sendFileSchema: Record<string, unknown> = {
   required: ['path'],
 };
 
+const spawnAgentSchema: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    role: { type: 'string', enum: ['implementer', 'reviewer'] },
+    taskId: { type: 'string', description: 'Kanban task id, e.g. T-12.' },
+  },
+  required: ['role', 'taskId'],
+};
+
+const assignAgentsSchema: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    roles: { type: 'array', items: { type: 'string', enum: ['implementer', 'reviewer'] } },
+    reassign: { type: 'boolean', description: 'Ask again even if this project already has an answer.' },
+  },
+};
+
 const DEFS: Record<UiToolName, Omit<UiToolDef, 'publicName' | 'kind'>> = {
   ask_user: {
     name: 'ask_user',
@@ -238,6 +255,22 @@ const DEFS: Record<UiToolName, Omit<UiToolDef, 'publicName' | 'kind'>> = {
       'Use for screenshots, reports, exports the user asked for. ' +
       'Paths relative to the working directory. Max 50 MB; secrets are refused.',
     inputSchema: sendFileSchema,
+  },
+  spawn_agent: {
+    name: 'spawn_agent',
+    description:
+      'Hand ONE kanban task to a worker of another agent and WAIT for its report. ' +
+      'The worker has no context of this conversation and works in its own worktree: the task on the board is its whole brief. ' +
+      'Returns a report that starts with STATUS.',
+    inputSchema: spawnAgentSchema,
+  },
+  assign_agents: {
+    name: 'assign_agents',
+    description:
+      'Ask the user which agent should implement and which should review the tasks of your plan, and WAIT. ' +
+      'Call it once, before devia_plan_approve, with the roles your plan uses. ' +
+      'The answer is saved for this project, so it asks only about what is not answered yet.',
+    inputSchema: assignAgentsSchema,
   },
 };
 

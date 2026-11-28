@@ -22,8 +22,8 @@ import { UI_TOOL_NAMES, type UiToolName } from './ui-tools';
  * file-writers, so there is nothing to confirm, review or pick a target for.
  */
 const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
-  plan: ['ask_user', 'todo', 'plan_approve', 'skill', 'send_file'],
-  apply: ['ask_user', 'todo', 'request_review', 'confirm', 'pick', 'notify', 'skill', 'send_file'],
+  plan: ['ask_user', 'todo', 'plan_approve', 'skill', 'send_file', 'assign_agents'],
+  apply: ['ask_user', 'todo', 'request_review', 'confirm', 'pick', 'notify', 'skill', 'send_file', 'spawn_agent'],
   'apply-yolo': [
     'ask_user',
     'todo',
@@ -33,6 +33,7 @@ const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
     'notify',
     'skill',
     'send_file',
+    'spawn_agent',
   ],
 };
 
@@ -49,7 +50,14 @@ const BY_MODE: Record<RunMode, readonly UiToolName[]> = {
  * a remote turn then carries three or four schemas in its cached prefix
  * instead of seven.
  */
-const REMOTE_ALLOWED: readonly UiToolName[] = ['todo', 'notify', 'skill', 'send_file'];
+const REMOTE_ALLOWED: readonly UiToolName[] = ['todo', 'notify', 'skill', 'send_file', 'spawn_agent', 'assign_agents'];
+
+/**
+ * A cross-agent worker (S-56) has nobody at the keyboard: nobody will click a
+ * card of a worker, so every tool that waits for a person is withheld. It keeps
+ * the checklist and the skill index, which need no one.
+ */
+const WORKER_ALLOWED: readonly UiToolName[] = ['todo', 'skill'];
 
 export interface UiToolPolicyInput {
   mode: RunMode;
@@ -72,6 +80,19 @@ export interface UiToolPolicyInput {
    * exactly what it did before the tool existed.
    */
   canSendFiles?: boolean;
+  /** A cross-agent worker run (its run key is a worker key): non-interactive tools only. */
+  isWorker?: boolean;
+  /**
+   * `spawn_agent` needs the feature on AND somewhere to send the work (two or
+   * more usable agents). Opt-in like `canSendFiles`: absent means OFF, so a run
+   * without it advertises exactly what it did before the tool existed.
+   */
+  canSpawnAgents?: boolean;
+  /**
+   * `assign_agents` (plan mode) needs the feature on and two or more usable
+   * agents to choose between. Opt-in: absent means OFF.
+   */
+  canAssignAgents?: boolean;
 }
 
 /**
@@ -89,10 +110,13 @@ export function resolveAdvertisedUiTools(input: UiToolPolicyInput): UiToolName[]
   for (const name of UI_TOOL_NAMES) {
     if (!base.has(name)) continue;
     if (input.isRemote && !REMOTE_ALLOWED.includes(name)) continue;
+    if (input.isWorker === true && !WORKER_ALLOWED.includes(name)) continue;
     if (input.preferences?.[name] === false) continue;
     if (name === 'skill' && input.hasSkills === false) continue;
     if (name === 'notify' && input.canNotify === false) continue;
     if (name === 'send_file' && input.canSendFiles !== true) continue;
+    if (name === 'spawn_agent' && input.canSpawnAgents !== true) continue;
+    if (name === 'assign_agents' && input.canAssignAgents !== true) continue;
     out.push(name);
   }
   return out;
@@ -117,6 +141,8 @@ export const IMPLEMENTED_UI_TOOLS: readonly UiToolName[] = [
   'pick',
   'request_review',
   'send_file',
+  'spawn_agent',
+  'assign_agents',
 ];
 
 /** Narrow an advertised set to the tools this build can actually serve. */

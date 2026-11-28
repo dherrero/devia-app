@@ -706,6 +706,16 @@
       "cancel": "Abbrechen",
       "send": "Auswählen"
     },
+    "assign": {
+      "aria": "Vom Agenten angeforderte Agentenzuweisung",
+      "badge": "Zuweisen",
+      "title": "Welcher Agent soll jeden Teil des Plans übernehmen?",
+      "role_implementer": "Aufgaben umsetzen",
+      "role_reviewer": "Aufgaben prüfen",
+      "main": "Hauptagent ({{agent}})",
+      "cost": "Jeder Worker ist ein vollständiger Lauf dieses Agenten und verbraucht dessen eigenes Kontingent. Wird für dieses Projekt gespeichert.",
+      "confirm": "Speichern"
+    },
     "review": {
       "requested": "Der Agent bittet dich, die Änderungen zu prüfen"
     },
@@ -718,7 +728,8 @@
       "note_always": "✓ Immer erlaubt: {{detail}}",
       "note_declined": "✕ Abgelehnt: {{detail}}",
       "note_picked": "✓ Ausgewählt: {{detail}}",
-      "note_pick_cancelled": "✕ Nichts ausgewählt"
+      "note_pick_cancelled": "✕ Nichts ausgewählt",
+      "note_assigned": "✓ Zugewiesen: {{detail}}"
     }
   },
   "codeGraph": {

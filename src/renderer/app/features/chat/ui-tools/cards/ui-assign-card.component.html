@@ -1,0 +1,37 @@
+@if (card(); as c) {
+  <section class="dsm-assign" [attr.aria-label]="'ui_tools.assign.aria' | translate">
+    <header class="dsm-assign__head">
+      <span class="dsm-assign__badge">{{ 'ui_tools.assign.badge' | translate }}</span>
+      <span class="dsm-assign__title">{{ 'ui_tools.assign.title' | translate }}</span>
+    </header>
+
+    <div class="dsm-assign__rows">
+      @for (role of c.roles; track role) {
+        <label class="dsm-assign__row">
+          <span class="dsm-assign__role">{{ 'ui_tools.assign.role_' + role | translate }}</span>
+          <select class="dsm-assign__select"
+                  [value]="pickOf(role)"
+                  (change)="onPick(role, $any($event.target).value)">
+            @for (option of c.options; track option.key) {
+              <option [value]="option.key" [selected]="option.key === pickOf(role)">
+                @if (option.agentId === MAIN) {
+                  {{ 'ui_tools.assign.main' | translate: { agent: c.mainAgentId } }}
+                } @else {
+                  {{ option.agentId }}
+                }
+              </option>
+            }
+          </select>
+        </label>
+      }
+    </div>
+
+    <p class="dsm-assign__cost">{{ 'ui_tools.assign.cost' | translate }}</p>
+
+    <div class="dsm-assign__actions">
+      <dv-button variant="primary" size="sm" data-assign-confirm (clicked)="confirm()">
+        {{ 'ui_tools.assign.confirm' | translate }}
+      </dv-button>
+    </div>
+  </section>
+}

@@ -27,6 +27,7 @@
     @if (view() === 'chat') {
       <ds-messages-feed [messages]="windowedMessages()"
                         [stream]="currentStream()"
+                        [workerMessages]="currentWorkerMessages()"
                         [hasOlder]="firstVisibleIdx() > 0"
                         [pendingQuestion]="currentPendingQuestion()"
                         (loadOlder)="onLoadOlder($event)"

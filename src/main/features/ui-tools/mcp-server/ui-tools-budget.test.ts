@@ -35,9 +35,18 @@ const CAPS = {
   /**
    * Everything at once — never advertised in practice, but the ceiling.
    * Measured at S-32: 4982 chars without `send_file`, 5420 with it (+438
-   * chars, its schema is kept bare).
+   * chars, its schema is kept bare). Raised to 6100 for `spawn_agent` (S-56, ~450
+   * chars): opt-in, so no default run grows. Raised to 6600 for
+   * `assign_agents` (S-56 T9, ~450 chars), also opt-in.
    */
-  all: 5_500,
+  all: 6_600,
+  /**
+   * S-56: `spawn_agent` is opt-in (feature on AND 2+ usable agents), so a plain
+   * apply run never pays for it. With it, an apply run must still fit this cap.
+   */
+  applyWithSpawn: 5_300,
+  /** S-56 T9: plan mode with `assign_agents` (opt-in) still fits its own cap. */
+  planWithAssign: 3_900,
 } as const;
 
 function payloadSize(names: readonly (typeof UI_TOOL_NAMES)[number][]): number {
@@ -67,6 +76,22 @@ describe('advertised tool-schema budget', () => {
     // The tool is the only difference from a plain plan run: ~438 chars today.
     const plain = resolveAdvertisedUiTools({ mode: 'plan', isRemote: false, delivered: true });
     expect(payloadSize(tools) - payloadSize(plain)).toBeLessThanOrEqual(500);
+  });
+
+  it('apply with spawn_agent (S-56) fits its own cap, and a run without it is unchanged', () => {
+    const plain = payloadSize(resolveAdvertisedUiTools({ mode: 'apply', isRemote: false, delivered: true }));
+    const withSpawn = resolveAdvertisedUiTools({ mode: 'apply', isRemote: false, delivered: true, canSpawnAgents: true });
+    expect(withSpawn).toContain('spawn_agent');
+    expect(payloadSize(withSpawn)).toBeLessThanOrEqual(CAPS.applyWithSpawn);
+    expect(plain).toBeLessThanOrEqual(CAPS.apply);
+  });
+
+  it('plan with assign_agents (S-56) fits its own cap, and a plan run without it is unchanged', () => {
+    const plain = payloadSize(resolveAdvertisedUiTools({ mode: 'plan', isRemote: false, delivered: true }));
+    const withAssign = resolveAdvertisedUiTools({ mode: 'plan', isRemote: false, delivered: true, canAssignAgents: true });
+    expect(withAssign).toContain('assign_agents');
+    expect(payloadSize(withAssign)).toBeLessThanOrEqual(CAPS.planWithAssign);
+    expect(plain).toBeLessThanOrEqual(CAPS.plan);
   });
 
   it('the whole surface stays under the ceiling', () => {

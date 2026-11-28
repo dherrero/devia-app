@@ -702,6 +702,16 @@
       "cancel": "Cancelar",
       "send": "Escolher"
     },
+    "assign": {
+      "aria": "Atribuição de agentes pedida pelo agente",
+      "badge": "Atribuir",
+      "title": "Qual agente deve fazer cada parte do plano?",
+      "role_implementer": "Implementar as tarefas",
+      "role_reviewer": "Revisar as tarefas",
+      "main": "Agente principal ({{agent}})",
+      "cost": "Cada worker é uma execução completa desse agente e gasta a sua própria cota. Guardado para este projeto.",
+      "confirm": "Guardar"
+    },
     "review": {
       "requested": "O agente pede que revejas as alterações"
     },
@@ -714,7 +724,8 @@
       "note_always": "✓ Sempre permitido: {{detail}}",
       "note_declined": "✕ Recusado: {{detail}}",
       "note_picked": "✓ Escolhido: {{detail}}",
-      "note_pick_cancelled": "✕ Nada escolhido"
+      "note_pick_cancelled": "✕ Nada escolhido",
+      "note_assigned": "✓ Atribuído: {{detail}}"
     }
   },
   "codeGraph": {

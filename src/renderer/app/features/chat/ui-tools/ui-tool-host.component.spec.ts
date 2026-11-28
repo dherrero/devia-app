@@ -306,4 +306,43 @@ describe('UiToolHostComponent (S-25 F2.0/F2.2)', () => {
       expect(card?.closest('.dv-stepper__step')).toBeNull();
     });
   });
+
+  // S-56 T9
+  describe('devia_assign_agents', () => {
+    const assign = (callId = 'a1'): UiToolRequestEvent => ({
+      project: 'proj-a',
+      callId,
+      tool: 'assign_agents',
+      input: {
+        roles: ['implementer', 'reviewer'],
+        options: [
+          { key: 'a', agentId: 'main' },
+          { key: 'b', agentId: 'pi' },
+        ],
+        mainAgentId: 'claude',
+      },
+      expectsAnswer: true,
+    });
+
+    it('shows the assignment card on its own, in plan mode with no step list', async () => {
+      const { el, detect } = await mount();
+      emit(assign());
+      detect();
+      expect(el.querySelector('ds-ui-assign-card')).not.toBeNull();
+    });
+
+    it('answers the agent with the numbered reply and drops the card', async () => {
+      const { el, detect } = await mount();
+      emit(assign());
+      detect();
+      const [implementer] = [...el.querySelectorAll('select')] as HTMLSelectElement[];
+      (implementer as HTMLSelectElement).value = 'b';
+      (implementer as HTMLSelectElement).dispatchEvent(new Event('change'));
+      (el.querySelector('dv-button[data-assign-confirm] button') as HTMLButtonElement).click();
+      detect();
+
+      expect(sendUiToolResult).toHaveBeenCalledWith('proj-a', 'a1', '1. b\n2. a');
+      expect(el.querySelector('ds-ui-assign-card')).toBeNull();
+    });
+  });
 });

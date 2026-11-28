@@ -165,6 +165,12 @@ export interface ChatMessage {
   name?: string;
   /** Outbox-specific: file type — plus 'handoff' for the S-2 divider message. */
   kind?: 'image' | 'video' | 'file' | 'handoff' | 'todo' | 'plan';
+  /**
+   * S-56: set on a message that a cross-agent worker wrote into its controller's
+   * thread (role, agent, task and how it ended). The renderer owns the thread and
+   * its persistence, like every other assistant message.
+   */
+  worker?: import('./cross-agent').WorkerRun;
   /** Outbox-specific: absolute file path. */
   path?: string;
   /**

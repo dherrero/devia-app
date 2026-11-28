@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DetectedAgentView } from '../../../../../../types/devia';
-import { filterVisibleAgents, getNextAgentPanelState } from './settings-execution-section.utils';
+import { filterVisibleAgents, getNextAgentPanelState, patchCrossAgent } from './settings-execution-section.utils';
+import { DEFAULT_CROSS_AGENT_CONFIG } from '../../../../../../../shared/domain/cross-agent-config';
 
 function agent(overrides: Partial<DetectedAgentView> & Pick<DetectedAgentView, 'id' | 'name'>): DetectedAgentView {
   const { id, name, ...rest } = overrides;
@@ -98,5 +99,28 @@ describe('getNextAgentPanelState', () => {
       resetEnv: true,
       emitSelection: true,
     });
+  });
+});
+
+describe('patchCrossAgent (S-56)', () => {
+  const base = { ...DEFAULT_CROSS_AGENT_CONFIG };
+
+  it('toggles enabled without touching the limits', () => {
+    expect(patchCrossAgent(base, { enabled: true })).toEqual({ ...base, enabled: true });
+  });
+
+  it('accepts a number typed as a string', () => {
+    expect(patchCrossAgent(base, { maxConcurrent: '5' }).maxConcurrent).toBe(5);
+  });
+
+  it('keeps the current value when the input is not a positive number', () => {
+    const current = { ...base, maxPerTurn: 6 };
+    expect(patchCrossAgent(current, { maxPerTurn: '' }).maxPerTurn).toBe(6);
+    expect(patchCrossAgent(current, { maxPerTurn: 'abc' }).maxPerTurn).toBe(6);
+    expect(patchCrossAgent(current, { maxPerTurn: '0' }).maxPerTurn).toBe(6);
+  });
+
+  it('caps the concurrency at the global maximum', () => {
+    expect(patchCrossAgent(base, { maxConcurrent: '99' }).maxConcurrent).toBe(8);
   });
 });

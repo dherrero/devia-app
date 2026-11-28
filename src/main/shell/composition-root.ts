@@ -73,6 +73,10 @@ import {
   createShellRunner,
 } from '../features/telegram-controller';
 import { RunGateway } from '../shared/run-gateway';
+import { buildCrossAgentFeature } from '../features/cross-agent';
+import { createGitRunner } from '../features/cross-agent/infrastructure/git-runner';
+import { ensureWorktreeSync } from '../features/git/infrastructure/cli-git-worktree-manager';
+import { resolveAndValidateCwd } from '../features/cli-adapters/infrastructure/resolve-cwd';
 import { RunModeStore } from '../shared/run-mode-store';
 import { ConfigChangeBus } from '../shared/config-change-bus';
 import { seedRunModes } from '../shared/seed-run-modes';
@@ -371,6 +375,13 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
         isRunnable: (p) => tech.detect(p) !== 'folder',
         saveAttachment: (payload) => attachments.save(payload).path,
         isRunning: (project) => registry.isRunning(project),
+        // S-56: the workers of a controller, as the chat lists and cancels them.
+        workers: {
+          list: (project) =>
+            crossAgent.registry.list(project).filter((w) => w.state === 'queued' || w.state === 'running'),
+          cancel: (workerId) => crossAgent.registry.cancel(workerId),
+          cancelAll: (project) => crossAgent.registry.cancelParent(project),
+        },
         agentLabel: (project) => {
           const c = config.get();
           const agentId = project ? effectiveAgent.forRun(project).agentId : c.agentId;
@@ -424,6 +435,28 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     }),
   });
 
+  // S-56: workers of other agents for the Devia Method loop. Off by default (config);
+  // `execute()` offers `devia_spawn_agent` only when it is on and 2+ agents are usable.
+  const crossAgent = buildCrossAgentFeature({
+    config,
+    registry,
+    agents: { get: (id) => cliAdapters.exports.registry.get(id) },
+    state: stateStore,
+    effective: effectiveAgent,
+    detector: cliAdapters.exports.detector,
+    gateway: runGateway,
+    stopRun: (runKey) => runGateway.stop(runKey),
+    git: createGitRunner(),
+    // A worker starts from the controller's HEAD, not from the configured base ref.
+    ensureWorktree: (ref, baseRef) => ensureWorktreeSync(ref, undefined, baseRef),
+    projectDir: (project, workspaceRoot) => {
+      const resolved = resolveAndValidateCwd(project, workspaceRoot);
+      return resolved.ok ? resolved.resolvedPath : null;
+    },
+  });
+  void crossAgent.refreshAgents();
+  setInterval(() => void crossAgent.refreshAgents(), 60_000).unref();
+
   const features: Feature[] = [
     // S-25 F3.3: read-only catalog + the confirm grants the settings panel manages.
     uiToolsBuilt.feature,
@@ -435,6 +468,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       configChanges,
     }),
     cliAdapters.feature,
+    crossAgent.feature,
     promptPacksBuilt.feature,
     mcpBuilt.feature,
     queueBuilt.feature,
@@ -502,6 +536,13 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // E-DSK-14: bind the queue-aware submit + republish run events so the
       // Telegram controller can drive and mirror runs.
       runGateway,
+      spawnWorker: crossAgent.spawnWorker,
+      assignAgents: {
+        prepare: (project, input) => crossAgent.assignAgents.prepare(project, input),
+        finish: (project, question, text) => crossAgent.assignAgents.finish(project, question, text),
+      },
+      usableAgentCount: crossAgent.usableAgentCount,
+      cancelWorkers: crossAgent.cancelWorkers,
       // A reset session starts over in plan mode.
       onSessionReset: (project) => runModes.reset(project),
       // S-32: `devia_send_file` is only offered while the relay is connected.

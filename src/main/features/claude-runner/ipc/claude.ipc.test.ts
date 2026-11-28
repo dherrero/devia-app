@@ -44,16 +44,19 @@ function setup(
   } as unknown as FeatureContext;
 
   const captured: RunInstructionHandlers[] = [];
+  const executeCalls: unknown[][] = [];
   const gateway = new RunGateway();
   const events: RunGatewayEvent[] = [];
   gateway.subscribe((e) => events.push(e));
 
   const dispatchNext = vi.fn();
+  const writeToolResult = vi.fn();
   const configChanges = new ConfigChangeBus();
   const deps = {
     runInstruction: {
-      execute: (_p: string, _t: string, _a: unknown, handlers: RunInstructionHandlers) => {
-        captured.push(handlers);
+      execute: (...args: unknown[]) => {
+        executeCalls.push(args);
+        captured.push(args[3] as RunInstructionHandlers);
       },
     },
     stopProject: { execute: vi.fn() },
@@ -66,7 +69,7 @@ function setup(
       dispatchNext,
       clear: vi.fn(),
     },
-    registry: {},
+    registry: { writeToolResult },
     config: { get: () => ({ agentId: opts.globalAgentId ?? 'claude', autoContinueSessions: autoContinue }) },
     ...(opts.effective && {
       effectiveAgent: {
@@ -88,7 +91,7 @@ function setup(
     return captured[captured.length - 1]!;
   };
   const fileEvents = () => events.filter((e) => e.type === 'file');
-  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges, captured };
+  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges, captured, gateway, executeCalls, writeToolResult };
 }
 
 describe('claude.ipc — auto-continue after the usage limit', () => {
@@ -305,6 +308,72 @@ describe('claude.ipc — run end on the gateway', () => {
     start('proj-a').onProcessEnd({ runId: RUN_ID, code: 0 });
 
     expect(events.filter((e) => e.type === 'end')).toEqual([{ type: 'end', project: 'proj-a', runId: RUN_ID, code: 0 }]);
+  });
+});
+
+describe('claude.ipc — gateway submit with its own run identity (S-56)', () => {
+  it('starts the run under the given run key, session, isolation and agent', () => {
+    const t = setup();
+    const runKey = 'devia-worker:proj-a:T-1:1';
+    t.gateway.submit('proj-a', 'implement T-1', {
+      mode: 'apply-yolo',
+      origin: 'renderer',
+      runKey,
+      sessionId: 'worker-session-1',
+      isolate: true,
+      agentIdOverride: 'pi',
+    });
+
+    const call = t.executeCalls[0] as unknown[];
+    expect(call[0]).toBe('proj-a');
+    expect(call[4]).toBe('apply-yolo');
+    expect(call[6]).toBe('renderer');
+    expect(call.slice(7, 11)).toEqual([true, runKey, 'worker-session-1', 'pi']);
+
+    // Events of that run reach the gateway under the run key, so a completion
+    // waiter keyed by it sees them and nobody else's.
+    const handlers = t.captured[0] as RunInstructionHandlers;
+    handlers.onProcessStart({ runId: RUN_ID, agentId: 'pi' });
+    expect(t.events).toContainEqual(expect.objectContaining({ type: 'start', project: runKey }));
+    t.ipc.dispose();
+  });
+
+  it('a plain submit keeps the old behaviour: no run key, no isolation, no override', () => {
+    const t = setup();
+    t.gateway.submit('proj-a', 'hello', { mode: 'apply', origin: 'remote' });
+    const call = t.executeCalls[0] as unknown[];
+    expect(call.slice(7, 11)).toEqual([false, undefined, undefined, undefined]);
+    t.ipc.dispose();
+  });
+});
+
+describe('claude.ipc — remote assignment question (S-56 T12)', () => {
+  const QUESTION = {
+    roles: ['implementer'] as Array<'implementer'>,
+    options: [{ key: 'a', agentId: 'main' }, { key: 'b', agentId: 'pi' }],
+  };
+
+  it('publishes the question on the gateway under the run identity, for the relay to ask as text', () => {
+    const t = setup();
+    const handlers = t.start('proj-a');
+    handlers.onRemoteAssign?.('call-1', { question: QUESTION, mainAgentId: 'claude' }, RUN_ID);
+    expect(t.events).toContainEqual({
+      type: 'ask',
+      project: 'proj-a',
+      runId: RUN_ID,
+      callId: 'call-1',
+      question: QUESTION,
+      mainAgentId: 'claude',
+    });
+    t.ipc.dispose();
+  });
+
+  it('routes the relay\'s answer to the blocked tool call, sanitised', () => {
+    const t = setup();
+    t.start('proj-a');
+    expect(t.gateway.answerTool('proj-a', 'call-1', '1. b\0')).toBe(true);
+    expect(t.writeToolResult).toHaveBeenCalledWith('proj-a', 'call-1', '1. b');
+    t.ipc.dispose();
   });
 });
 

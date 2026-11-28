@@ -1,5 +1,34 @@
-<dv-ai-bubble class="msg-asst" avatarLabel="D" [avatarImageSrc]="avatarOpenSrc" [avatarBlinkSrc]="avatarBlinkSrc" [avatarSpeakFrames]="avatarSpeakFrames" [avatarState]="avatarState()" [avatarActive]="isLatest()">
-  <div class="body-col">
+<dv-ai-bubble class="msg-asst"
+              [class.msg-worker]="worker()"
+              [avatarLabel]="worker() ? 'A' : 'D'"
+              [avatarImageSrc]="worker() ? null : avatarOpenSrc"
+              [avatarBlinkSrc]="worker() ? null : avatarBlinkSrc"
+              [avatarSpeakFrames]="worker() ? null : avatarSpeakFrames"
+              [avatarState]="worker() ? 'idle' : avatarState()"
+              [avatarActive]="worker() ? false : isLatest()">
+  <div class="body-col" [class.worker-collapsed]="worker() && !workerOpen()">
+    @if (worker(); as w) {
+      <div class="worker-head">
+        <span class="worker-who">{{ w.agentId }} · {{ 'worker_bubble.role_' + w.role | translate }} · {{ w.taskId }}</span>
+        <span class="worker-state" [attr.data-state]="w.state">
+          {{ 'worker_bubble.state_' + w.state | translate }}@if (w.status) { · {{ w.status }}}
+        </span>
+        @if (workerDuration(); as duration) {
+          <span class="worker-time">{{ duration }}</span>
+        }
+        @if (workerActive()) {
+          <dv-button data-worker-cancel variant="ghost" size="sm"
+                     [ariaLabel]="'worker_bubble.cancel_aria' | translate"
+                     (clicked)="cancelWorker()">
+            {{ 'worker_bubble.cancel' | translate }}
+          </dv-button>
+        } @else {
+          <dv-button data-worker-toggle variant="ghost" size="sm" (clicked)="toggleWorker()">
+            {{ (workerOpen() ? 'worker_bubble.collapse' : 'worker_bubble.expand') | translate }}
+          </dv-button>
+        }
+      </div>
+    }
     @if (hasThinking()) {
       <details class="thinking-block" [class.thinking-active]="msg().streaming">
         <summary class="thinking-summary">

@@ -2,7 +2,7 @@
      class="ds-messages-feed__scroll dsm-scroll"
      (scroll)="onScroll()">
   <div #innerEl class="ds-messages-feed__inner">
-    @if (messages().length === 0 && !stream()) {
+    @if (messages().length === 0 && !stream() && workerMessages().length === 0) {
       <div class="ds-messages-feed__empty" role="status">
         <dv-icon class="ds-messages-feed__empty-ic"
                  [icon]="LucideMessageSquare"
@@ -39,6 +39,9 @@
         (retry)="onRetry()"
         (continueRun)="onContinueRun()"
       />
+    }
+    @for (worker of workerMessages(); track worker.id) {
+      <ds-message-bubble [msg]="worker" [isLatest]="false" />
     }
     @if (pendingQuestion(); as q) {
       <ds-question-card [question]="q"

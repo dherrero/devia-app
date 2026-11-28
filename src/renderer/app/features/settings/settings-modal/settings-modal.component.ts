@@ -32,6 +32,7 @@ import { SettingsUiToolsSectionComponent } from './components/settings-ui-tools-
 import type { UiToolName } from '../../../../../shared/domain/ui-tools';
 import { SettingsRemoteSectionComponent } from './components/settings-remote-section/settings-remote-section.component';
 import { SettingsWorkspaceSectionComponent } from './components/settings-workspace-section/settings-workspace-section.component';
+import { DEFAULT_CROSS_AGENT_CONFIG, normalizeCrossAgentConfig, type CrossAgentConfig } from '../../../../../shared/domain/cross-agent-config';
 
 function isDarkTheme(theme: Theme): boolean {
   return theme === 'dark' || theme === 'navy-dark';
@@ -172,6 +173,7 @@ export class SettingsModalComponent implements OnInit {
     },
     uiTools: this.uiToolsEnabled(),
     autoContinue: this.autoContinueSessions(),
+    crossAgent: this.crossAgent(),
     remote: this.remoteForm(),
     // Appearance is applied live (localStorage) but reverts on close-without-save.
     // Tracking it here marks the form dirty so Save enables and commits it.
@@ -197,6 +199,9 @@ export class SettingsModalComponent implements OnInit {
   // An absent entry means "use the run-mode default"; only an explicit `false`
   // withholds a tool. A preference can never WIDEN the policy.
   readonly uiToolsEnabled = signal<Partial<Record<UiToolName, boolean>>>({});
+
+  /** S-56: workers of other agents (off by default). */
+  readonly crossAgent = signal<CrossAgentConfig>({ ...DEFAULT_CROSS_AGENT_CONFIG });
 
   /** Per-agent switch: resume a session cut short by the account's usage limit. */
   readonly autoContinueSessions = signal<Record<string, boolean>>({});
@@ -245,6 +250,7 @@ export class SettingsModalComponent implements OnInit {
     // S-25 F3.3: absent config means "every tool at its mode default".
     this.uiToolsEnabled.set({ ...(cfg.uiTools?.enabled ?? {}) });
     this.autoContinueSessions.set({ ...(cfg.autoContinueSessions ?? {}) });
+    this.crossAgent.set(normalizeCrossAgentConfig(cfg.crossAgent));
 
     // E-DSK-14: hydrate the remote-control form (the remote section loads the
     // current connection status itself when mounted).
@@ -346,6 +352,7 @@ export class SettingsModalComponent implements OnInit {
         // S-1: persist the memory toggles, preserving engramImported/at.
         uiTools: { enabled: this.uiToolsEnabled() },
         autoContinueSessions: this.autoContinueSessions(),
+        crossAgent: this.crossAgent(),
         // S-1: persist the memory toggles, preserving engramImported/at.
         memory: {
           ...persistedMemory,

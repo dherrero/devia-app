@@ -53,6 +53,9 @@ import {
   resolveAdvertisedUiTools,
   wiredUiTools,
 } from '../../../../shared/domain/ui-tools-policy';
+import { isWorkerRunKey, type AssignQuestion } from '../../../../shared/domain/cross-agent';
+import type { AssignAgentsInput } from '../../../../shared/domain/ui-tools';
+import { normalizeCrossAgentConfig } from '../../../../shared/domain/cross-agent-config';
 import type { McpServerRegistry } from '../../mcp';
 import { CODE_MODE_SERVER_ID, CodeModeEventRelay, codeModeRunDir, removeCodeModeRunDir, type CodeModePlan } from '../../code-mode';
 import type { AgentRunPlan, MapperRegistry } from '../../agents/domain';
@@ -184,6 +187,16 @@ export interface RunInstructionHandlers {
     expectsAnswer: boolean,
   ): void;
   /**
+   * S-56 T12: a REMOTE run's `devia_assign_agents` needs the user to choose,
+   * but there is no card to click: the relay asks the question as text and
+   * answers back through the gateway.
+   */
+  onRemoteAssign?(
+    callId: string,
+    ask: { question: AssignQuestion; mainAgentId: string },
+    runId: RunId,
+  ): void;
+  /**
    * Called when Claude emits a `tool_result` for a file-editing tool
    * (Edit, Write, MultiEdit). Used by the IPC layer to trigger a non-blocking
    * git diff snapshot. Optional — callers that do not support TS-CLI-10 omit it.
@@ -199,6 +212,37 @@ export interface RunInstructionHandlers {
  * adapter is responsible for spawning the right binary with the right
  * argv and translating its event stream back to the renderer.
  */
+/** A request to run one cross-agent worker, as `devia_spawn_agent` makes it (S-56). */
+export interface SpawnWorkerCall {
+  /** The BASE project (memory and kanban identity). */
+  project: string;
+  /** The controller's run identity. */
+  parentKey: string;
+  /** The controller's run id: the per-turn cap counts per turn. */
+  turnId: string;
+  role: 'implementer' | 'reviewer';
+  taskId: string;
+  mode: RunMode;
+  /** Where the controller works: the worker starts from its HEAD. */
+  controllerCwd: string;
+}
+
+/** S-56 T9: the per-project "which agent runs which role" question, as `execute()` sees it. */
+export interface AssignAgentsPort {
+  prepare(
+    project: string,
+    input: import('../../../../shared/domain/ui-tools').AssignAgentsInput,
+  ): Promise<
+    | { kind: 'cached'; text: string }
+    | { kind: 'ask'; question: import('../../../../shared/domain/cross-agent').AssignQuestion; mainAgentId: string }
+  >;
+  finish(
+    project: string,
+    question: import('../../../../shared/domain/cross-agent').AssignQuestion,
+    answerText: string,
+  ): Promise<string>;
+}
+
 export class RunInstructionUseCase {
   private readonly turnContextTracker: TurnContextTracker;
 
@@ -372,6 +416,17 @@ export class RunInstructionUseCase {
      * `devia_send_file` is never offered.
      */
     remoteRelayConnected?: () => boolean;
+    /**
+     * S-56: runs one cross-agent worker and returns its report text. Absent ⇒
+     * `devia_spawn_agent` is never offered.
+     */
+    spawnWorker?: (call: SpawnWorkerCall) => Promise<string>;
+    /** S-56 T9: the role → agent question of plan mode; absent ⇒ `devia_assign_agents` is never offered. */
+    assignAgents?: AssignAgentsPort;
+    /** S-56: how many agents can take a worker right now (a cached snapshot, sync). */
+    usableAgentCount?: () => number;
+    /** S-56: cancels every worker the controller `parentKey` started; returns how many. */
+    cancelWorkers?: (parentKey: string) => number;
     /**
      * S-32: validates that a run cwd is a live session worktree
      * (`<deviaDir>/worktrees/...`), the only folder outside the workspace a
@@ -776,11 +831,26 @@ export class RunInstructionUseCase {
     // guard itself, with a message the agent relays to the user.
     const sendDenyRoots: readonly string[] = [this.deps.config.deviaDir()];
 
+    // S-56: the tool is offered only when the feature is on, a runner exists, and
+    // there is somewhere to send the work (two or more usable agents).
+    const crossAgentCfg = normalizeCrossAgentConfig(cfg.crossAgent);
+    const canSpawnAgents =
+      crossAgentCfg.enabled
+      && this.deps.spawnWorker !== undefined
+      && (this.deps.usableAgentCount?.() ?? 0) >= 2;
+    const canAssignAgents =
+      crossAgentCfg.enabled
+      && this.deps.assignAgents !== undefined
+      && (this.deps.usableAgentCount?.() ?? 0) >= 2;
     const uiCandidate = wiredUiTools(
       resolveAdvertisedUiTools({
         mode: requestedMode,
         isRemote,
         delivered: true,
+        // S-56: a cross-agent worker has nobody to click a card.
+        ...(isWorkerRunKey(identity) && { isWorker: true }),
+        ...(canSpawnAgents && { canSpawnAgents: true }),
+        ...(canAssignAgents && { canAssignAgents: true }),
         // `devia_skill` serves both skills and sub-agents.
         hasSkills: skills.length > 0 || subagents.length > 0 || kit !== null,
         canSendFiles,
@@ -807,6 +877,8 @@ export class RunInstructionUseCase {
             skillsDirs,
             ...(subagentsDir !== undefined && { subagentsDir }),
             ...(uiCandidate.includes('send_file') && { sendRoots, cwd, denyRoots: sendDenyRoots }),
+            // The MCP side must outlive the worker's own timeout (S-56).
+            ...(uiCandidate.includes('spawn_agent') && { workerToolTimeoutMs: (crossAgentCfg.defaultTimeoutSec + 120) * 1000 }),
           })
         : undefined;
     // S-50: the user's servers set to code mode leave `harness.mcp.user` and sit
@@ -1096,6 +1168,24 @@ export class RunInstructionUseCase {
       advertised: uiAdvertised,
       files: fileGate,
       timeoutMs: QUESTION_TIMEOUT_MS,
+      ...(this.deps.spawnWorker !== undefined && uiAdvertised.includes('spawn_agent') && {
+        spawnWorker: (input: { role: 'implementer' | 'reviewer'; taskId: string }): Promise<string> =>
+          this.deps.spawnWorker!({
+            project: projectName,
+            parentKey: identity,
+            turnId: runId,
+            role: input.role,
+            taskId: input.taskId,
+            mode: capabilities.mode,
+            controllerCwd: cwd,
+          }),
+      }),
+      ...(this.deps.assignAgents !== undefined && uiAdvertised.includes('assign_agents') && {
+        assignAgents: {
+          prepare: (input: AssignAgentsInput) => this.deps.assignAgents!.prepare(projectName, input),
+          finish: (question: AssignQuestion, text: string) => this.deps.assignAgents!.finish(projectName, question, text),
+        },
+      }),
       handlers,
       ...(this.deps.auditLog !== undefined && { auditLog: this.deps.auditLog }),
       ...(this.deps.isConfirmationGranted !== undefined && { isConfirmationGranted: this.deps.isConfirmationGranted }),
@@ -1258,6 +1348,7 @@ export class RunInstructionUseCase {
         },
         onDone: (code) => {
           interaction.stop();
+          if (canSpawnAgents) this.deps.cancelWorkers?.(identity);
           stopCodeMode();
           cleanupUiDir();
           // Every temp artifact the mapper prepared (MCP config, system prompt file).
@@ -1290,6 +1381,7 @@ export class RunInstructionUseCase {
         },
         onError: (msg, classification, signal, cancelReason, classifiedError) => {
           interaction.stop();
+          if (canSpawnAgents) this.deps.cancelWorkers?.(identity);
           stopCodeMode();
           cleanupUiDir();
           prepared?.cleanup();

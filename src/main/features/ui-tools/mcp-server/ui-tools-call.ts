@@ -5,7 +5,7 @@ import {
   removeUiCall,
   writeUiRequest,
 } from '../../../shared/ui-rendezvous';
-import { uiToolFromPublicName, type UiToolName } from '../../../../shared/domain/ui-tools';
+import { isServerHandledUiTool, uiToolFromPublicName, type UiToolName } from '../../../../shared/domain/ui-tools';
 import { UI_TOOL_REGISTRY } from './tool-registry';
 
 /**
@@ -34,6 +34,11 @@ export type UiLocalResolution = UiToolResult | UiPassThrough | null;
 export interface UiToolDeps {
   uiDir: string;
   timeoutMs: number;
+  /**
+   * Timeout of tools the main process serves itself (`spawn_agent`): they wait
+   * for a worker, not for a person, so the 5-minute card timeout does not fit.
+   */
+  serverHandledTimeoutMs?: number;
   advertised: readonly UiToolName[];
   newCallId: () => string;
   pollIntervalMs?: number;
@@ -53,7 +58,10 @@ export interface UiToolDeps {
  * agent must be able to carry on without the answer.
  */
 export const UI_TIMEOUT_RESULT = (publicName: string): string =>
-  `No answer was received from the user before the timeout. ` +
+  publicName === 'devia_spawn_agent'
+    ? 'The worker did not report before the timeout. ' +
+      'Do not call devia_spawn_agent again for this task right away: read the task and the git log to see what it left, then decide.'
+    : `No answer was received from the user before the timeout. ` +
   `Do not call ${publicName} again for this decision. ` +
   `Either proceed with the most reasonable default and state the assumption you made, ` +
   `or re-ask as plain text in your reply and end your turn.`;
@@ -107,7 +115,8 @@ export async function callUiTool(
   const answerFile = answerFilePath(deps.uiDir, callId);
   const pollIntervalMs = deps.pollIntervalMs ?? POLL_INTERVAL_MS;
   try {
-    const deadline = Date.now() + deps.timeoutMs;
+    const timeoutMs = isServerHandledUiTool(tool) ? (deps.serverHandledTimeoutMs ?? deps.timeoutMs) : deps.timeoutMs;
+    const deadline = Date.now() + timeoutMs;
     // The caller awaits this, but the server's readline loop does not — a
     // pending tool must never stop the server from serving other messages.
     while (Date.now() < deadline) {

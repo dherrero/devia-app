@@ -70,6 +70,7 @@ One row per capability: does Devia do it? Status: `implemented`, `partial`, `not
 | Sub-agent definitions synced to CLIs | implemented | [sub-agents](features/sub-agents.md) | |
 | Prompt packs | partial | [prompt-packs](features/prompt-packs.md) | scanner and compose exist; no UI, no built-in packs, never selected in a run |
 | Built-in development method (Devia Method) | implemented | [starter-kits](features/starter-kits.md) | |
+| Workers of other agents for the method loop | implemented | [cross-agent](features/cross-agent.md) | S-56: off by default; tools `devia_assign_agents` (plan) and `devia_spawn_agent` (apply), worker bubbles, Telegram flow; not yet run with real agents |
 | Own code graph (6 languages) served over MCP and a `/graph` view | implemented | [code-graph](features/code-graph.md) | |
 | Sandboxed TypeScript scripts over MCP servers (code mode) | implemented | [code-mode](features/code-mode.md) | read-only v1 |
 | Plugin / extension system for third-party panels, themes or workers | not implemented | [settings](features/settings.md) | searched `src` for a plugin manifest/host API: none (the kit's `.claude-plugin` is Claude's own plugin format) |

@@ -214,4 +214,29 @@
       }
     </div>
   }
+  <div class="cross-agent">
+    <h4>{{ 'modals.settings.cross_agent_heading' | translate }}</h4>
+    <div class="agent-option">
+      <dv-toggle
+        [ngModel]="crossAgent().enabled"
+        (ngModelChange)="setCrossAgent({ enabled: $event })"
+        [ariaLabel]="'modals.settings.cross_agent_enabled_label' | translate"
+      />
+      <span class="agent-option-label">{{ 'modals.settings.cross_agent_enabled_label' | translate }}</span>
+    </div>
+    <p class="hint inline">{{ 'modals.settings.cross_agent_cost_warning' | translate }}</p>
+    @if (crossAgent().enabled) {
+      <div class="cross-agent-limits">
+        <label>{{ 'modals.settings.cross_agent_max_concurrent' | translate }}
+          <dv-input type="number" [ngModel]="crossAgent().maxConcurrent" (ngModelChange)="setCrossAgent({ maxConcurrent: $event })" />
+        </label>
+        <label>{{ 'modals.settings.cross_agent_max_per_turn' | translate }}
+          <dv-input type="number" [ngModel]="crossAgent().maxPerTurn" (ngModelChange)="setCrossAgent({ maxPerTurn: $event })" />
+        </label>
+        <label>{{ 'modals.settings.cross_agent_timeout_sec' | translate }}
+          <dv-input type="number" [ngModel]="crossAgent().defaultTimeoutSec" (ngModelChange)="setCrossAgent({ defaultTimeoutSec: $event })" />
+        </label>
+      </div>
+    }
+  </div>
 </section>

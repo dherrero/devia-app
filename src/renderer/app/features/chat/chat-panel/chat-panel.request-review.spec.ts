@@ -43,6 +43,7 @@ function createMockState() {
     selectedProject,
     chats: signal(new Map<string, unknown[]>()),
     assistantStreams: signal(new Map()),
+    workerMessagesFor: () => [],
     pendingQuestions: signal(new Map()),
     queue: signal(new Map()),
     gitInfo: signal(null),

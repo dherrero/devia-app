@@ -15,3 +15,4 @@ export type { SddProjectPurger } from './sdd-project-purger.port';
 export type { QueueInspector } from './queue-inspector.port';
 export type { StarterKitsPort, StarterKitRun } from './starter-kits.port';
 export type { WorktreeLifecycleHooks } from './worktree-lifecycle-hooks.port';
+export type { RunCompletion, RunOutcome, RunCompletionOptions } from './run-completion.port';

@@ -4,11 +4,17 @@ import * as path from 'node:path';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { QuestionPrompt } from '../../../../shared/contracts/events';
 import { normalizeAskUserQuestionInput } from '../../../../shared/domain/question-ask';
+import type { AssignQuestion } from '../../../../shared/domain/cross-agent';
 import type { RunMode } from '../../../../shared/domain/run-capabilities';
 import {
   classifyUiDecision,
   isBlockingUiTool,
+  isServerHandledUiTool,
+  normalizeAssignAgentsInput,
+  normalizeSpawnAgentInput,
   normalizeUiToolInput,
+  type AssignAgentsInput,
+  type SpawnAgentInput,
   renderConfirmResult,
   uiToolPublicName,
   type NormalizedSendFile,
@@ -54,7 +60,27 @@ export interface RunInteractionContext {
    */
   readonly files?: RunFileGate;
   readonly timeoutMs: number;
-  readonly handlers: Pick<RunInstructionHandlers, 'onQuestionAsk' | 'onUiToolRequest' | 'onRunFileRejected'>;
+  /**
+   * S-56: runs a cross-agent worker for `devia_spawn_agent`; the returned text
+   * is the tool result. Absent ⇒ the tool is not served.
+   */
+  readonly spawnWorker?: (input: SpawnAgentInput) => Promise<string>;
+  /** S-56: how often the idle watchdog is nudged while a worker runs (default 30 s). */
+  readonly workerHeartbeatMs?: number;
+  /**
+   * S-56 T9: decides what `devia_assign_agents` asks (or answers from the
+   * project's saved choice) and saves the answer. Absent ⇒ the tool is not served.
+   */
+  readonly assignAgents?: {
+    prepare(input: AssignAgentsInput): Promise<
+      { kind: 'cached'; text: string } | { kind: 'ask'; question: AssignQuestion; mainAgentId: string }
+    >;
+    finish(question: AssignQuestion, answerText: string): Promise<string>;
+  };
+  readonly handlers: Pick<
+    RunInstructionHandlers,
+    'onQuestionAsk' | 'onUiToolRequest' | 'onRunFileRejected' | 'onRemoteAssign'
+  >;
   readonly auditLog?: AgentAuditLog;
   readonly isConfirmationGranted?: (projectAbs: string, action: string) => boolean;
   readonly grantConfirmation?: (projectAbs: string, action: string, agentId: string) => void;
@@ -85,6 +111,12 @@ export class RunInteraction {
   private questionTimer: ReturnType<typeof setTimeout> | null = null;
   private poller: ReturnType<typeof setInterval> | null = null;
   private handle: AgentProcessHandle | null = null;
+  /** `devia_spawn_agent` calls whose worker is still running. */
+  /** `devia_assign_agents` cards waiting for the user, with the question each one asked. */
+  private readonly pendingAssign = new Map<string, AssignQuestion>();
+  private pendingWorkers = 0;
+  private workerHeartbeat: ReturnType<typeof setInterval> | null = null;
+  private ended = false;
 
   constructor(private readonly ctx: RunInteractionContext) {
     this.registerUiToolHandlers();
@@ -110,12 +142,133 @@ export class RunInteraction {
    * requests are left alone: nobody is left to read an answer.
    */
   stop(): void {
+    this.ended = true;
+    this.stopWorkerHeartbeat();
     if (this.poller !== null) {
       clearInterval(this.poller);
       this.poller = null;
       this.pollRendezvous({ fireAndForgetOnly: true });
     }
     this.clearQuestionTimer();
+  }
+
+  /**
+   * `devia_spawn_agent` (S-56): the main process runs the worker and writes the
+   * report as the answer. Nobody clicks anything, so there is no card and NO
+   * question timer — the worker has its own timeout — but the controller prints
+   * nothing while it waits, so the idle watchdog is nudged until it is done.
+   */
+  private serveSpawnAgent(callId: string, input: unknown): void {
+    const spawnWorker = this.ctx.spawnWorker;
+    if (!spawnWorker || !this.firstSighting(callId)) return;
+    const normalized = normalizeSpawnAgentInput(input);
+    if (normalized === null) {
+      writeUiAnswer(
+        this.ctx.uiDir,
+        callId,
+        'The arguments were unusable. `role` must be "implementer" or "reviewer" and `taskId` a kanban task id such as T-12. Fix them and call the tool again, or continue without it.',
+      );
+      return;
+    }
+    this.audit('spawn_agent', callId, 'request');
+    this.pendingWorkers += 1;
+    this.startWorkerHeartbeat();
+    const answer = (text: string, phase: string): void => {
+      // The run may be over (and its rendezvous dir removed): writing now would resurrect the dir.
+      if (this.ended) return;
+      this.audit('spawn_agent', callId, phase);
+      writeUiAnswer(this.ctx.uiDir, callId, text);
+    };
+    void spawnWorker(normalized)
+      .then((text) => answer(text, 'answered'))
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        answer(`The worker could not run: ${message}. Continue without it, or try again later.`, 'failed');
+      })
+      .finally(() => {
+        this.pendingWorkers = Math.max(0, this.pendingWorkers - 1);
+        if (this.pendingWorkers === 0) this.stopWorkerHeartbeat();
+      });
+  }
+
+  /**
+   * `devia_assign_agents` (S-56 T9): answered straight from the project's saved
+   * choice when it already covers the roles, otherwise a card asks the user.
+   */
+  private serveAssignAgents(callId: string, input: unknown): void {
+    const assign = this.ctx.assignAgents;
+    if (!assign || !this.firstSighting(callId)) return;
+    this.audit('assign_agents', callId, 'request');
+    void assign
+      .prepare(normalizeAssignAgentsInput(input))
+      .then((prepared) => {
+        if (this.ended) return;
+        if (prepared.kind === 'cached') {
+          this.audit('assign_agents', callId, 'answered:cached');
+          writeUiAnswer(this.ctx.uiDir, callId, prepared.text);
+          return;
+        }
+        // A remote (Telegram) user cannot click a card: the relay asks it as text. No
+        // kill timer — a phone user may take long, the MCP side bounds the agent's wait,
+        // and a late reply still saves the choice while the run lives.
+        if (this.ctx.isRemote && this.ctx.handlers.onRemoteAssign) {
+          this.pendingAssign.set(callId, prepared.question);
+          this.pendingUiCalls.set(callId, 'assign_agents');
+          this.ctx.handlers.onRemoteAssign(
+            callId,
+            { question: prepared.question, mainAgentId: prepared.mainAgentId },
+            this.ctx.runId,
+          );
+          return;
+        }
+        const ask = this.ctx.isRemote ? undefined : this.ctx.handlers.onUiToolRequest;
+        if (!ask) {
+          writeUiAnswer(this.ctx.uiDir, callId, 'The user cannot be asked here. Continue the plan without splitting roles: every role stays with the main agent.');
+          return;
+        }
+        this.pendingAssign.set(callId, prepared.question);
+        this.pendingUiCalls.set(callId, 'assign_agents');
+        this.armTimer('devia_assign_agents', () => this.audit('assign_agents', callId, 'timeout'));
+        ask(
+          callId,
+          'assign_agents',
+          { roles: prepared.question.roles, options: prepared.question.options, mainAgentId: prepared.mainAgentId },
+          this.ctx.runId,
+          true,
+        );
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!this.ended) {
+          writeUiAnswer(this.ctx.uiDir, callId, `The assignment could not be prepared: ${message}. Continue the plan without splitting roles.`);
+        }
+      });
+  }
+
+  /** Writes the text a promise resolves to as the call's answer, unless the run is over. */
+  private writeWhenDone(callId: string, text: Promise<string>, failure: string): void {
+    void text
+      .then((answer) => {
+        if (!this.ended) writeUiAnswer(this.ctx.uiDir, callId, answer);
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!this.ended) writeUiAnswer(this.ctx.uiDir, callId, `${failure}: ${message}. Continue without it.`);
+      });
+  }
+
+  private startWorkerHeartbeat(): void {
+    if (this.workerHeartbeat !== null) return;
+    const every = this.ctx.workerHeartbeatMs ?? 30_000;
+    this.handle?.keepAlive?.();
+    this.workerHeartbeat = setInterval(() => this.handle?.keepAlive?.(), every);
+    (this.workerHeartbeat as { unref?: () => void }).unref?.();
+  }
+
+  private stopWorkerHeartbeat(): void {
+    if (this.workerHeartbeat === null) return;
+    clearInterval(this.workerHeartbeat);
+    this.workerHeartbeat = null;
   }
 
   clearQuestionTimer(): void {
@@ -196,6 +349,14 @@ export class RunInteraction {
         this.ctx.grantConfirmation?.(this.ctx.projectCheckout, action, this.ctx.agentId);
       }
       this.handle?.answer(toolUseId, toAgentAnswer(native, content));
+      return;
+    }
+    const assignQuestion = this.pendingAssign.get(toolUseId);
+    if (assignQuestion && this.ctx.assignAgents) {
+      this.pendingAssign.delete(toolUseId);
+      this.pendingUiCalls.delete(toolUseId);
+      this.audit('assign_agents', toolUseId, 'answered');
+      this.writeWhenDone(toolUseId, this.ctx.assignAgents.finish(assignQuestion, content), 'The assignment could not be saved');
       return;
     }
     const prompts = this.askUserQuestionPrompts.get(toolUseId);
@@ -306,9 +467,16 @@ export class RunInteraction {
     if (handlers.onQuestionAsk) {
       this.uiToolHandlers.ask_user = (callId, input): void => this.surfaceAskUserQuestion(callId, input);
     }
+    // Served by the main process itself: no card, so it needs no renderer handler.
+    if (this.ctx.spawnWorker && this.ctx.advertised.includes('spawn_agent')) {
+      this.uiToolHandlers.spawn_agent = (callId, input): void => this.serveSpawnAgent(callId, input);
+    }
+    if (this.ctx.assignAgents && this.ctx.advertised.includes('assign_agents')) {
+      this.uiToolHandlers.assign_agents = (callId, input): void => this.serveAssignAgents(callId, input);
+    }
     if (!handlers.onUiToolRequest) return;
     for (const tool of this.ctx.advertised) {
-      if (tool === 'ask_user') continue;
+      if (tool === 'ask_user' || tool === 'assign_agents' || isServerHandledUiTool(tool)) continue;
       this.uiToolHandlers[tool] = (callId, input): void => {
         // A blocking request stays on disk until the server reads its answer,
         // so the poller sees it on many ticks (S-28 T-333).

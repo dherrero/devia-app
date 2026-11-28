@@ -43,6 +43,7 @@ const mockApi: Partial<ElectronApiService> = {
   onNotificationClick: noop as any,
   onAgentChanged: noop as any,
   onEffectiveAgentChanged: noop as any,
+  onWorkerChanged: noop as any,
   getEffectiveAgent: (() => Promise.resolve({ agentId: 'claude', source: 'global' })) as any,
   onQueueChanged: noop as any,
   onQueueDispatched: noop as any,

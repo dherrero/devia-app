@@ -258,6 +258,17 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       ctx.send('claude:output', { project: identity, runId, line });
       deps.runGateway?.publish({ type: 'output', project: identity, runId, line });
     },
+    onRemoteAssign: (callId, ask, runId) => {
+      // S-56 T12: the relay (Telegram) asks this as text and answers via `answerTool`.
+      deps.runGateway?.publish({
+        type: 'ask',
+        project: identity,
+        runId,
+        callId,
+        question: ask.question,
+        mainAgentId: ask.mainAgentId,
+      });
+    },
     onRateLimited: ({ agentId, resetsAt }) => {
       if (!extras?.resume || resetsAt === undefined) return;
       if (deps.config.get().autoContinueSessions?.[agentId] !== true) return;
@@ -494,9 +505,30 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
 
   // E-DSK-14: let the Telegram controller submit / stop / reset through the
   // same use cases the renderer drives.
-  deps.runGateway?.bindSubmit((project, text, opts) =>
-    submitInstruction(project, text, [], opts?.mode ?? 'apply', opts?.origin ?? 'remote'));
+  deps.runGateway?.bindSubmit((project, text, opts) => {
+    // S-56: a cross-agent worker starts through here with its own identity.
+    const runOpts = {
+      ...(opts?.runKey !== undefined && { runKey: opts.runKey }),
+      ...(opts?.isolate !== undefined && { isolate: opts.isolate }),
+      ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
+      ...(opts?.agentIdOverride !== undefined && { agentIdOverride: opts.agentIdOverride }),
+    };
+    return submitInstruction(
+      project,
+      text,
+      [],
+      opts?.mode ?? 'apply',
+      opts?.origin ?? 'remote',
+      undefined,
+      Object.keys(runOpts).length > 0 ? runOpts : undefined,
+    );
+  });
   deps.runGateway?.bindStop((project) => deps.stopProject.execute(project));
+  // S-56 T12: the relay answers a blocked tool call (the assignment question).
+  deps.runGateway?.bindToolResult((project, callId, answer) => {
+    const safe = String(answer ?? '').slice(0, 10_000).replace(/\0/g, '');
+    deps.registry.writeToolResult(project, callId, safe);
+  });
   // Reset the session AND drop its pending queue: a reset starts the
   // conversation from scratch, so any instruction still parked for this
   // session belongs to the old one (e.g. a Telegram `/clean` while a queued

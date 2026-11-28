@@ -55,6 +55,8 @@ import { ChatScrollService } from '../../services/chat-scroll.service';
 export class MessagesFeedComponent implements OnDestroy {
   readonly messages = input<readonly ChatMessage[]>([]);
   readonly stream = input<ChatMessage | null>(null);
+  /** S-56: bubbles of workers of other agents that are not in the thread yet (running, or held until the controller's turn ends). */
+  readonly workerMessages = input<readonly ChatMessage[]>([]);
   readonly hasOlder = input(false);
   /** Pending AskUserQuestion for the active project — rendered as the last
    *  bubble in the feed so the question sits inside the conversation. */

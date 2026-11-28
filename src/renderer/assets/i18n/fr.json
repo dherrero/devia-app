@@ -706,6 +706,16 @@
       "cancel": "Annuler",
       "send": "Choisir"
     },
+    "assign": {
+      "aria": "Répartition des agents demandée par l'agent",
+      "badge": "Assigner",
+      "title": "Quel agent doit réaliser chaque partie du plan ?",
+      "role_implementer": "Implémenter les tâches",
+      "role_reviewer": "Relire les tâches",
+      "main": "Agent principal ({{agent}})",
+      "cost": "Chaque worker est une exécution complète de cet agent et consomme son propre quota. Enregistré pour ce projet.",
+      "confirm": "Enregistrer"
+    },
     "review": {
       "requested": "L'agent vous demande de relire les modifications"
     },
@@ -718,7 +728,8 @@
       "note_always": "✓ Toujours autorisé : {{detail}}",
       "note_declined": "✕ Refusé : {{detail}}",
       "note_picked": "✓ Choisi : {{detail}}",
-      "note_pick_cancelled": "✕ Rien n'a été choisi"
+      "note_pick_cancelled": "✕ Rien n'a été choisi",
+      "note_assigned": "✓ Assigné : {{detail}}"
     }
   },
   "codeGraph": {

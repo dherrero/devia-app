@@ -273,6 +273,12 @@ export interface AgentsDetectedEvent {
 
 export type SkillRegistryChangedEvent = import('../domain/skill-registry').SkillRegistryChangedEvent;
 
+/** A cross-agent worker changed state (S-56). `parentKey` is the controller's run identity. */
+export interface WorkerChangedEvent {
+  parentKey: string;
+  worker: import('../domain/cross-agent').WorkerRun;
+}
+
 /**
  * Map of every channel the main process emits to the renderer. The composition
  * root provides a typed `send<K extends keyof RendererEvents>` so an event
@@ -298,6 +304,7 @@ export interface RendererEvents {
   'notification:click': NotificationClickEvent;
   'agent:changed': AgentChangedEvent;
   'agents:effective-changed': EffectiveAgentChangedEvent;
+  'worker:changed': WorkerChangedEvent;
   'queue:changed': QueueChangedEvent;
   'queue:dispatched': QueueDispatchedEvent;
   'terminal:data': TerminalDataEvent;
