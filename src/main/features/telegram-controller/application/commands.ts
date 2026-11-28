@@ -34,6 +34,8 @@ export const REMOTE_COMMANDS: readonly RemoteCommandSpec[] = [
   { command: 'sync',                                description: 'Cambia el proyecto a su rama principal y hace pull (requiere árbol limpio y no estar ya en ella)' },
   { command: 'mode',     args: 'plan|apply|yolo',   description: 'Modo de permisos de las ejecuciones' },
   { command: 'agent',                               description: 'Muestra el agente activo' },
+  { command: 'subagents',                           description: 'Lista los workers de otros agentes del proyecto activo' },
+  { command: 'killsub',  args: '<id|all>',          description: 'Cancela un worker (por su id) o todos los del proyecto' },
   { command: 'exec',     args: '<comando>',         description: 'Ejecuta un comando de shell (alias: !<comando>, si está habilitado)' },
   { command: 'help',                                description: 'Muestra esta ayuda' },
 ];

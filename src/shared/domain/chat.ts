@@ -1,3 +1,4 @@
+import type { UserFacingError } from './user-facing-error';
 import type { DiffFile } from './git';
 import type { CancelReason, ErrorClassification, SubagentInfo } from './agent-event';
 import type { RunId } from './agent';
@@ -125,6 +126,13 @@ export interface ChatMessage {
   errorClassification?: ErrorClassification;
 
   /**
+   * S-54: what to show the user for a failed run (what happened, why, what to do).
+   * Set on the error system message and on an assistant message whose stream
+   * reported an `error`; the raw text stays in `userError.details`.
+   */
+  userError?: UserFacingError;
+
+  /**
    * Cross-agent handoff metadata (S-2 F3.1). Present (with `kind: 'handoff'`)
    * on the divider message persisted when a different agent continues this
    * session; the handoff summary travels in `text` so existing persistence
@@ -157,6 +165,12 @@ export interface ChatMessage {
   name?: string;
   /** Outbox-specific: file type — plus 'handoff' for the S-2 divider message. */
   kind?: 'image' | 'video' | 'file' | 'handoff' | 'todo' | 'plan';
+  /**
+   * S-56: set on a message that a cross-agent worker wrote into its controller's
+   * thread (role, agent, task and how it ended). The renderer owns the thread and
+   * its persistence, like every other assistant message.
+   */
+  worker?: import('./cross-agent').WorkerRun;
   /** Outbox-specific: absolute file path. */
   path?: string;
   /**

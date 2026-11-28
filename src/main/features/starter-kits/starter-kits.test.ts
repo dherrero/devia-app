@@ -251,6 +251,23 @@ describe('StarterKitsPort', () => {
   });
 });
 
+describe('status().nativeDetected follows the effective agent (S-53)', () => {
+  it("detects the native method of the PROJECT's agent, not the global one", () => {
+    makeBundle();
+    put(home, `.codex/skills/${OTHER_BOOTSTRAP}/SKILL.md`, 'x');
+    const config = fakeConfig({ workspaceRoot: '/ws', agentId: 'claude' });
+    const built = buildStarterKitsFeature({
+      config,
+      bundledKitsDir: () => bundled,
+      home: () => home,
+      effectiveAgentId: (project) => (project === 'app' ? 'codex' : 'claude'),
+    });
+    built.feature.register({ ipc: { handle: () => undefined } } as never);
+    expect(built.status('app').nativeDetected).toBe(true);
+    expect(built.status('other').nativeDetected).toBe(false);
+  });
+});
+
 describe('migration from a build that stored the kit under another id', () => {
   it("carries the user's choice to devia-method and removes the old files", () => {
     makeBundle();

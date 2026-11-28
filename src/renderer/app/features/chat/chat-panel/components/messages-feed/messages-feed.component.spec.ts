@@ -155,4 +155,38 @@ describe('MessagesFeedComponent (HT-CH-03)', () => {
     expect(avatars[1]?.getAttribute('data-active')).toBe('true');
     expect(avatars[1]?.getAttribute('data-state')).toBe('asking');
   });
+
+  describe('cross-agent workers (S-56 T11)', () => {
+    const workerMsg = (id: string): ChatMessage =>
+      ({
+        id,
+        role: 'assistant',
+        text: 'from a worker',
+        worker: { id: 'W-1', parentKey: 'p', turnId: 't', taskId: 'T-1', role: 'implementer', agentId: 'pi', runKey: 'k', state: 'running' },
+      }) as ChatMessage;
+
+    it('draws the worker bubbles after the controller stream', () => {
+      fixture.componentRef.setInput('stream', { id: 'stream-1', role: 'assistant', text: 'controller', streaming: true } as ChatMessage);
+      fixture.componentRef.setInput('workerMessages', [workerMsg('w-1')]);
+      fixture.detectChanges();
+
+      const bubbles = [...el().querySelectorAll('ds-message-bubble')];
+      expect(bubbles).toHaveLength(2);
+      expect(bubbles[1]?.querySelector('.worker-head')).not.toBeNull();
+      expect(bubbles[0]?.querySelector('.worker-head')).toBeNull();
+    });
+
+    it('is not the empty state while only a worker is talking', () => {
+      fixture.componentRef.setInput('workerMessages', [workerMsg('w-1')]);
+      fixture.detectChanges();
+      expect(el().querySelector('.ds-messages-feed__empty')).toBeNull();
+      expect(el().querySelectorAll('ds-message-bubble')).toHaveLength(1);
+    });
+
+    it('draws nothing extra when no worker is running', () => {
+      fixture.componentRef.setInput('workerMessages', []);
+      fixture.detectChanges();
+      expect(el().querySelector('.worker-head')).toBeNull();
+    });
+  });
 });

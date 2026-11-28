@@ -1,8 +1,10 @@
+import type { UserFacingError } from '../domain/user-facing-error';
 import type { DeviaConfigView } from '../domain/config';
 import type { DiffFile, GitInfo } from '../domain/git';
 import type { OutboxFile } from '../domain/attachment';
 import type { ComposeAction } from '../domain/compose';
 import type { AgentChangedEvent, DetectedAgentView, RunId } from '../domain/agent';
+import type { EffectiveAgentChangedEvent } from '../domain/effective-agent';
 import type { QueueChangedEvent, QueueDispatchedEvent } from '../domain/queue';
 import type { CancelReason, ErrorClassification } from '../domain/agent-event';
 import type { FailoverReason } from '../domain/cli-errors';
@@ -93,6 +95,8 @@ export interface ProcessEndEvent {
   /** Optional renderer hint surfaced by the matcher (e.g. "Run `claude
    *  login`"). Only present when the matcher rule supplies one. */
   failoverHint?: string;
+  /** S-54: what to show the user (translated by the renderer); `error` stays the raw text. */
+  userError?: UserFacingError;
   /** Parsed `Retry-After` value in seconds, when the upstream API
    *  surfaces one (mostly 429 responses). */
   retryAfterSeconds?: number;
@@ -269,6 +273,12 @@ export interface AgentsDetectedEvent {
 
 export type SkillRegistryChangedEvent = import('../domain/skill-registry').SkillRegistryChangedEvent;
 
+/** A cross-agent worker changed state (S-56). `parentKey` is the controller's run identity. */
+export interface WorkerChangedEvent {
+  parentKey: string;
+  worker: import('../domain/cross-agent').WorkerRun;
+}
+
 /**
  * Map of every channel the main process emits to the renderer. The composition
  * root provides a typed `send<K extends keyof RendererEvents>` so an event
@@ -293,6 +303,8 @@ export interface RendererEvents {
   'config:changed': DeviaConfigView;
   'notification:click': NotificationClickEvent;
   'agent:changed': AgentChangedEvent;
+  'agents:effective-changed': EffectiveAgentChangedEvent;
+  'worker:changed': WorkerChangedEvent;
   'queue:changed': QueueChangedEvent;
   'queue:dispatched': QueueDispatchedEvent;
   'terminal:data': TerminalDataEvent;

@@ -38,6 +38,8 @@ export interface ClaudeRunnerDeps {
   registry: ProcessTrackingRegistry;
   /** Catalog of CLI adapters the runner can drive. */
   agents: CliAdapterRegistry;
+  /** S-53: which agent each project/session runs with (session > project > global). */
+  effectiveAgent?: import('../../shared/effective-agent-resolver').EffectiveAgentResolver;
   /** Process launcher provided by the cli-adapters feature. */
   launcher: CliLauncher;
   /** Agent id → mapper (S-30), shared with cli-adapters for capability views. */
@@ -171,6 +173,14 @@ export interface ClaudeRunnerDeps {
    * mirror runs.
    */
   runGateway?: import('../../shared/run-gateway').RunGateway;
+  /** S-56: runs one cross-agent worker for `devia_spawn_agent`; absent ⇒ the tool is never offered. */
+  spawnWorker?: (call: import('./application/run-instruction.use-case').SpawnWorkerCall) => Promise<string>;
+  /** S-56 T9: the role → agent question of plan mode. */
+  assignAgents?: import('./application/run-instruction.use-case').AssignAgentsPort;
+  /** S-56: how many agents can take a worker right now (cached snapshot). */
+  usableAgentCount?: () => number;
+  /** S-56: cancels the workers of a controller run when it ends. */
+  cancelWorkers?: (parentKey: string) => number;
   /** Notified after a session reset (the run mode goes back to its default). */
   onSessionReset?: (project: string) => void;
   /** S-32: whether the chat relay is connected (gates `devia_send_file`). */
@@ -191,6 +201,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     registry: deps.registry,
     runner,
     agents: deps.agents,
+    ...(deps.effectiveAgent !== undefined && { effectiveAgent: deps.effectiveAgent }),
     attachments: deps.attachments,
     outbox: deps.outbox,
     tech: deps.tech,
@@ -222,6 +233,10 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
     ...(deps.consumeMemoryReinjection !== undefined && { consumeMemoryReinjection: deps.consumeMemoryReinjection }),
     ...(deps.ensureSessionWorktree !== undefined && { ensureSessionWorktree: deps.ensureSessionWorktree }),
     ...(deps.remoteRelayConnected !== undefined && { remoteRelayConnected: deps.remoteRelayConnected }),
+    ...(deps.spawnWorker !== undefined && { spawnWorker: deps.spawnWorker }),
+    ...(deps.usableAgentCount !== undefined && { usableAgentCount: deps.usableAgentCount }),
+    ...(deps.assignAgents !== undefined && { assignAgents: deps.assignAgents }),
+    ...(deps.cancelWorkers !== undefined && { cancelWorkers: deps.cancelWorkers }),
     ...(deps.isLiveSessionWorktree !== undefined && { isLiveSessionWorktree: deps.isLiveSessionWorktree }),
     mappers,
   });
@@ -240,6 +255,7 @@ export function buildClaudeRunnerFeature(deps: ClaudeRunnerDeps): Feature {
         queue: deps.queue,
         registry: deps.registry,
         config: deps.config,
+        ...(deps.effectiveAgent !== undefined && { effectiveAgent: deps.effectiveAgent }),
         auditLog,
         ...(deps.gitInspector !== undefined && { gitInspector: deps.gitInspector }),
         ...(deps.runGateway !== undefined && { runGateway: deps.runGateway }),

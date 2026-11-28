@@ -14,7 +14,8 @@ import type { StarterKitsPort } from '../../../shared/ports';
 import type { AttachmentPayload, OutboxFile, SavedAttachment } from '../../../../shared/domain/attachment';
 import type { CliAdapterRegistry } from '../../cli-adapters';
 import type { AgentRunner } from '../infrastructure/cli-runner-adapter';
-import { resolveCurrentAgent } from '../infrastructure/cli-runner-adapter';
+import { resolveAgentDefById, resolveCurrentAgent } from '../infrastructure/cli-runner-adapter';
+import type { EffectiveAgentResolver } from '../../../shared/effective-agent-resolver';
 import { buildSystemPrompt } from '../infrastructure/system-prompt';
 import { buildMemoryProtocolHint } from '../infrastructure/memory-protocol';
 import { buildRemoteProtocolHint } from '../infrastructure/remote-protocol';
@@ -34,6 +35,10 @@ import type { WorktreeRef } from '../../git/domain/worktree-ref';
 import type { AgentEvent, CancelReason, ErrorClassification } from '../../../../shared/domain/agent-event';
 import type { QuestionOption, QuestionPrompt } from '../../../../shared/contracts/events';
 import type { ClassifiedError } from '../../../../shared/domain/cli-errors';
+import type { UserFacingError } from '../../../../shared/domain/user-facing-error';
+import { classify } from '../../cli-adapters/infrastructure/error-classifier';
+import { explainError } from '../../cli-adapters/infrastructure/explain';
+import { buildExplainContext } from './error-context';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { AgentAuditLog } from '../../security/audit-log';
 import { buildDefaultCapabilities, sanitiseToolNames, type RunMode } from '../../../../shared/domain/run-capabilities';
@@ -48,6 +53,9 @@ import {
   resolveAdvertisedUiTools,
   wiredUiTools,
 } from '../../../../shared/domain/ui-tools-policy';
+import { isWorkerRunKey, type AssignQuestion } from '../../../../shared/domain/cross-agent';
+import type { AssignAgentsInput } from '../../../../shared/domain/ui-tools';
+import { normalizeCrossAgentConfig } from '../../../../shared/domain/cross-agent-config';
 import type { McpServerRegistry } from '../../mcp';
 import { CODE_MODE_SERVER_ID, CodeModeEventRelay, codeModeRunDir, removeCodeModeRunDir, type CodeModePlan } from '../../code-mode';
 import type { AgentRunPlan, MapperRegistry } from '../../agents/domain';
@@ -129,6 +137,8 @@ export interface RunInstructionHandlers {
     cancelReason?: CancelReason;
     /** E-DSK-09 #262 — recovery-action taxonomy forwarded onto `process:end`. */
     classifiedError?: ClassifiedError;
+    /** S-54 — what to show the user; `error` keeps the raw agent text. */
+    userError?: UserFacingError;
   }): void;
   onOutboxFile(file: OutboxFile): void;
   /**
@@ -177,6 +187,16 @@ export interface RunInstructionHandlers {
     expectsAnswer: boolean,
   ): void;
   /**
+   * S-56 T12: a REMOTE run's `devia_assign_agents` needs the user to choose,
+   * but there is no card to click: the relay asks the question as text and
+   * answers back through the gateway.
+   */
+  onRemoteAssign?(
+    callId: string,
+    ask: { question: AssignQuestion; mainAgentId: string },
+    runId: RunId,
+  ): void;
+  /**
    * Called when Claude emits a `tool_result` for a file-editing tool
    * (Edit, Write, MultiEdit). Used by the IPC layer to trigger a non-blocking
    * git diff snapshot. Optional — callers that do not support TS-CLI-10 omit it.
@@ -192,6 +212,37 @@ export interface RunInstructionHandlers {
  * adapter is responsible for spawning the right binary with the right
  * argv and translating its event stream back to the renderer.
  */
+/** A request to run one cross-agent worker, as `devia_spawn_agent` makes it (S-56). */
+export interface SpawnWorkerCall {
+  /** The BASE project (memory and kanban identity). */
+  project: string;
+  /** The controller's run identity. */
+  parentKey: string;
+  /** The controller's run id: the per-turn cap counts per turn. */
+  turnId: string;
+  role: 'implementer' | 'reviewer';
+  taskId: string;
+  mode: RunMode;
+  /** Where the controller works: the worker starts from its HEAD. */
+  controllerCwd: string;
+}
+
+/** S-56 T9: the per-project "which agent runs which role" question, as `execute()` sees it. */
+export interface AssignAgentsPort {
+  prepare(
+    project: string,
+    input: import('../../../../shared/domain/ui-tools').AssignAgentsInput,
+  ): Promise<
+    | { kind: 'cached'; text: string }
+    | { kind: 'ask'; question: import('../../../../shared/domain/cross-agent').AssignQuestion; mainAgentId: string }
+  >;
+  finish(
+    project: string,
+    question: import('../../../../shared/domain/cross-agent').AssignQuestion,
+    answerText: string,
+  ): Promise<string>;
+}
+
 export class RunInstructionUseCase {
   private readonly turnContextTracker: TurnContextTracker;
 
@@ -202,6 +253,11 @@ export class RunInstructionUseCase {
     registry: ProcessTrackingRegistry;
     runner: AgentRunner;
     agents: CliAdapterRegistry;
+    /**
+     * S-53: which agent this project/session runs with (session > project >
+     * global). Absent in legacy callers/tests → the global `config.agentId`.
+     */
+    effectiveAgent?: EffectiveAgentResolver;
     /**
      * Agent id → mapper (S-30 contract B). Everything that depends on WHICH
      * agent runs — MCP delivery, argv, system-prompt channel, stream decoding,
@@ -360,6 +416,17 @@ export class RunInstructionUseCase {
      * `devia_send_file` is never offered.
      */
     remoteRelayConnected?: () => boolean;
+    /**
+     * S-56: runs one cross-agent worker and returns its report text. Absent ⇒
+     * `devia_spawn_agent` is never offered.
+     */
+    spawnWorker?: (call: SpawnWorkerCall) => Promise<string>;
+    /** S-56 T9: the role → agent question of plan mode; absent ⇒ `devia_assign_agents` is never offered. */
+    assignAgents?: AssignAgentsPort;
+    /** S-56: how many agents can take a worker right now (a cached snapshot, sync). */
+    usableAgentCount?: () => number;
+    /** S-56: cancels every worker the controller `parentKey` started; returns how many. */
+    cancelWorkers?: (parentKey: string) => number;
     /**
      * S-32: validates that a run cwd is a live session worktree
      * (`<deviaDir>/worktrees/...`), the only folder outside the workspace a
@@ -531,7 +598,13 @@ export class RunInstructionUseCase {
       }
     }
 
-    let def = resolveCurrentAgent(this.deps.agents, this.deps.config);
+    // S-53: the effective agent is resolved against the BASE project (never the
+    // pane runKey) so every entry point — UI, Telegram, queue, auto-continue —
+    // lands on the same agent the footer shows.
+    const effective = this.deps.effectiveAgent?.forRun(projectName, record.activeSessionId ?? undefined);
+    let def = effective
+      ? resolveAgentDefById(this.deps.agents, this.deps.config, effective.agentId)
+      : resolveCurrentAgent(this.deps.agents, this.deps.config);
     if (agentIdOverride !== undefined && agentIdOverride !== def.id) {
       const overrideDef = this.deps.agents.get(agentIdOverride);
       if (!overrideDef || (overrideDef.providerType ?? 'cli') !== 'cli') {
@@ -758,11 +831,26 @@ export class RunInstructionUseCase {
     // guard itself, with a message the agent relays to the user.
     const sendDenyRoots: readonly string[] = [this.deps.config.deviaDir()];
 
+    // S-56: the tool is offered only when the feature is on, a runner exists, and
+    // there is somewhere to send the work (two or more usable agents).
+    const crossAgentCfg = normalizeCrossAgentConfig(cfg.crossAgent);
+    const canSpawnAgents =
+      crossAgentCfg.enabled
+      && this.deps.spawnWorker !== undefined
+      && (this.deps.usableAgentCount?.() ?? 0) >= 2;
+    const canAssignAgents =
+      crossAgentCfg.enabled
+      && this.deps.assignAgents !== undefined
+      && (this.deps.usableAgentCount?.() ?? 0) >= 2;
     const uiCandidate = wiredUiTools(
       resolveAdvertisedUiTools({
         mode: requestedMode,
         isRemote,
         delivered: true,
+        // S-56: a cross-agent worker has nobody to click a card.
+        ...(isWorkerRunKey(identity) && { isWorker: true }),
+        ...(canSpawnAgents && { canSpawnAgents: true }),
+        ...(canAssignAgents && { canAssignAgents: true }),
         // `devia_skill` serves both skills and sub-agents.
         hasSkills: skills.length > 0 || subagents.length > 0 || kit !== null,
         canSendFiles,
@@ -789,6 +877,8 @@ export class RunInstructionUseCase {
             skillsDirs,
             ...(subagentsDir !== undefined && { subagentsDir }),
             ...(uiCandidate.includes('send_file') && { sendRoots, cwd, denyRoots: sendDenyRoots }),
+            // The MCP side must outlive the worker's own timeout (S-56).
+            ...(uiCandidate.includes('spawn_agent') && { workerToolTimeoutMs: (crossAgentCfg.defaultTimeoutSec + 120) * 1000 }),
           })
         : undefined;
     // S-50: the user's servers set to code mode leave `harness.mcp.user` and sit
@@ -1023,6 +1113,24 @@ export class RunInstructionUseCase {
 
     // Set when the agent reports the account's usage limit is exhausted.
     let rateLimited: { resetsAt?: number } | null = null;
+    /** S-54: explain a failure of this run. Never throws; null when it cannot. */
+    const explainRunError = (raw: string, known?: ClassifiedError): UserFacingError | null => {
+      try {
+        const classified = known ?? classify(def.id, raw);
+        return explainError(
+          def.id,
+          classified,
+          buildExplainContext({
+            agentId: def.id,
+            cfg,
+            origin,
+            ...(rateLimited?.resetsAt !== undefined && { resetsAt: rateLimited.resetsAt }),
+          }),
+        );
+      } catch {
+        return null;
+      }
+    };
     const reportRateLimit = (): void => {
       if (rateLimited === null) return;
       handlers.onRateLimited?.({
@@ -1060,6 +1168,24 @@ export class RunInstructionUseCase {
       advertised: uiAdvertised,
       files: fileGate,
       timeoutMs: QUESTION_TIMEOUT_MS,
+      ...(this.deps.spawnWorker !== undefined && uiAdvertised.includes('spawn_agent') && {
+        spawnWorker: (input: { role: 'implementer' | 'reviewer'; taskId: string }): Promise<string> =>
+          this.deps.spawnWorker!({
+            project: projectName,
+            parentKey: identity,
+            turnId: runId,
+            role: input.role,
+            taskId: input.taskId,
+            mode: capabilities.mode,
+            controllerCwd: cwd,
+          }),
+      }),
+      ...(this.deps.assignAgents !== undefined && uiAdvertised.includes('assign_agents') && {
+        assignAgents: {
+          prepare: (input: AssignAgentsInput) => this.deps.assignAgents!.prepare(projectName, input),
+          finish: (question: AssignQuestion, text: string) => this.deps.assignAgents!.finish(projectName, question, text),
+        },
+      }),
       handlers,
       ...(this.deps.auditLog !== undefined && { auditLog: this.deps.auditLog }),
       ...(this.deps.isConfirmationGranted !== undefined && { isConfirmationGranted: this.deps.isConfirmationGranted }),
@@ -1127,9 +1253,16 @@ export class RunInstructionUseCase {
     const runHandlers: AgentRunHandlers = {
         onOutput: (line) => {
           let seenByCodeMode: AgentEvent | null = null;
+          // S-54: an `error` event leaves with its user-facing reading beside the raw message.
+          let outLine = line;
           try {
             const parsed = JSON.parse(line) as AgentEvent;
             seenByCodeMode = parsed;
+
+            if (parsed.type === 'error' && parsed.userError === undefined) {
+              const userError = explainRunError(parsed.message);
+              if (userError !== null) outLine = JSON.stringify({ ...parsed, userError });
+            }
 
             // Capture agent-generated session ID the moment it arrives.
             // This is the ONLY place agentSessionId is ever written.
@@ -1209,12 +1342,13 @@ export class RunInstructionUseCase {
           } catch {
             /* non-JSON lines are fine */
           }
-          handlers.onClaudeOutput(line, runId);
+          handlers.onClaudeOutput(outLine, runId);
           // After the line, never before: a nested call must not reach the chat ahead of its parent.
           if (seenByCodeMode !== null) codeModeRelay?.observeAgentEvent(seenByCodeMode);
         },
         onDone: (code) => {
           interaction.stop();
+          if (canSpawnAgents) this.deps.cancelWorkers?.(identity);
           stopCodeMode();
           cleanupUiDir();
           // Every temp artifact the mapper prepared (MCP config, system prompt file).
@@ -1247,6 +1381,7 @@ export class RunInstructionUseCase {
         },
         onError: (msg, classification, signal, cancelReason, classifiedError) => {
           interaction.stop();
+          if (canSpawnAgents) this.deps.cancelWorkers?.(identity);
           stopCodeMode();
           cleanupUiDir();
           prepared?.cleanup();
@@ -1288,10 +1423,12 @@ export class RunInstructionUseCase {
           }
           reportRateLimit();
           const outboxFiles = flushOutbox();
+          const userError = cancelReason === undefined ? explainRunError(msg, classifiedError) : null;
           handlers.onProcessEnd({
             runId,
             code: 1,
             error: msg,
+            ...(userError !== null && { userError }),
             ...(classification !== undefined && { classification }),
             ...(signal !== undefined && { signal }),
             ...(cancelReason !== undefined && { cancelReason }),

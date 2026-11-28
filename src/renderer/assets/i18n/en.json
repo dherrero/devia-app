@@ -131,6 +131,15 @@
     "changes_tooltip": "{{count}} modified or untracked files",
     "model_tooltip": "Active model",
     "agent_tooltip": "Active agent · click to change",
+    "agent_picker_title": "Agent for this project",
+    "agent_picker_hint": "Applies to this project only. The default agent is chosen in Settings.",
+    "agent_use_default": "Use the default agent",
+    "agent_picker_hint_session": "Applies to this pane's session only. The project's agent stays as it is.",
+    "agent_use_project": "Use the project's agent",
+    "agent_open_settings": "Agent settings…",
+    "agent_change_blocked": "Wait for the running instruction to finish before changing the agent.",
+    "agent_change_failed": "The agent could not be changed.",
+    "agent_fallback_warning": "The agent \"{{agent}}\" is not available; running with the next level instead.",
     "effort_tooltip": "Effort level · click to change",
     "context_tooltip": "{{used}} / {{total}} tokens",
     "context_compactions": "{{count}} compactions",
@@ -534,6 +543,12 @@
       "remote_hint": "Control Devia from a messaging platform while the app is open. What you type runs in the active project and is mirrored in the app.",
       "auto_continue_label": "Auto-continue sessions",
       "auto_continue_hint": "Devia will automatically continue a session that was interrupted because your subscription account limit ran out.",
+      "cross_agent_heading": "Workers from other agents",
+      "cross_agent_enabled_label": "Let the agent hand tasks to other agents",
+      "cross_agent_cost_warning": "Each worker is a full run of that agent's CLI and spends its own quota, just like you would. Off by default.",
+      "cross_agent_max_concurrent": "Workers at once (max 8)",
+      "cross_agent_max_per_turn": "Workers per turn",
+      "cross_agent_timeout_sec": "Stop a worker after (seconds)",
       "remote_enable": "Enable Telegram",
       "remote_token": "Bot API Key",
       "remote_token_placeholder": "123456:ABC-DEF…",
@@ -617,8 +632,8 @@
       "snapshot_label": "Config change history",
       "snapshot_hint": "(automatic snapshots before every destructive change)",
       "snapshot_button": "View history",
-      "agent_heading": "Active agent",
-      "agent_hint": "Choose which CLI executes your instructions.",
+      "agent_heading": "Default agent",
+      "agent_hint": "Used by every project that has no agent of its own. Change a project's agent from the footer.",
       "detecting": "Detecting agents…",
       "available": "available",
       "not_detected": "not detected",
@@ -1026,6 +1041,16 @@
       "cancel": "Cancel",
       "send": "Choose"
     },
+    "assign": {
+      "aria": "Agent assignment requested by the agent",
+      "badge": "Assign",
+      "title": "Which agent should do each part of the plan?",
+      "role_implementer": "Implement the tasks",
+      "role_reviewer": "Review the tasks",
+      "main": "Main agent ({{agent}})",
+      "cost": "Each worker is a full run of that agent and spends its own quota. Saved for this project.",
+      "confirm": "Save"
+    },
     "review": {
       "requested": "The agent is asking you to review the changes"
     },
@@ -1038,8 +1063,23 @@
       "note_always": "✓ Always allowed: {{detail}}",
       "note_declined": "✕ Declined: {{detail}}",
       "note_picked": "✓ Picked: {{detail}}",
-      "note_pick_cancelled": "✕ Nothing picked"
+      "note_pick_cancelled": "✕ Nothing picked",
+      "note_assigned": "✓ Assigned: {{detail}}"
     }
+  },
+  "worker_bubble": {
+    "role_implementer": "implementer",
+    "role_reviewer": "reviewer",
+    "state_queued": "Waiting",
+    "state_running": "Working",
+    "state_done": "Done",
+    "state_failed": "Failed",
+    "state_cancelled": "Cancelled",
+    "state_timeout": "Timed out",
+    "cancel": "Cancel",
+    "cancel_aria": "Cancel this worker",
+    "expand": "Show",
+    "collapse": "Hide"
   },
   "starter_kit": {
     "intro": {
@@ -1284,6 +1324,97 @@
       "test": "Test",
       "hub": "Central node",
       "exported": "Exported"
+    }
+  },
+  "agent_error": {
+    "details": "Technical details",
+    "copied": "Details copied",
+    "auto_continue_enabled": "Auto-continue enabled",
+    "actions": {
+      "open_settings": "Open settings",
+      "pick_model": "Choose a model",
+      "login": "Open settings",
+      "enable_auto_continue": "Turn on auto-continue",
+      "retry": "Retry",
+      "copy_details": "Copy details"
+    },
+    "usage_limit": {
+      "title": "Usage limit reached",
+      "cause_auto": "Your plan has reached its usage limit. Devia will continue this session by itself at {{time}}.",
+      "cause_manual": "Your plan has reached its usage limit. It resets at {{time}}. Turn on auto-continue and Devia will resume sessions for you the next time.",
+      "cause_notime": "Your plan has reached its usage limit. You can keep going when the window resets."
+    },
+    "auth_required": {
+      "title": "The agent is not signed in",
+      "cause": "Sign in to the agent's CLI or set its API key in Settings › Execution."
+    },
+    "image_too_large": {
+      "title": "An image is too large",
+      "cause": "Each image is limited to 5 MB. Shrink the attached image and send it again."
+    },
+    "context_too_large": {
+      "title": "The conversation is too long",
+      "cause": "The message, attachments or history exceed what the model accepts. Start a new session or shorten the message."
+    },
+    "model_unavailable": {
+      "title": "Model not available",
+      "cause": "The model does not exist or your account has no access to it. Choose another one in Settings › Execution."
+    },
+    "transient": {
+      "title": "Temporary failure",
+      "cause": "The provider or the network failed for a moment. Try again shortly."
+    },
+    "rate_limited": {
+      "title": "Too many requests",
+      "cause": "The provider is limiting requests. Wait a moment and try again."
+    },
+    "provider_quota": {
+      "title": "Out of credit or quota",
+      "cause": "The provider rejects the request because the quota or balance is used up. Check your plan or switch model."
+    },
+    "invalid_provider_key": {
+      "title": "The provider API key is not valid",
+      "cause_default": "{{agent}} has no model chosen in Devia, so it used its own default. Check the API key of that provider, or choose a model in Settings › Execution.",
+      "cause_default_env": "{{agent}} has no model chosen in Devia, so it used its own default. The key inherited from the {{envVar}} environment variable is not valid: fix or remove it, or choose a model in Settings › Execution.",
+      "cause_model": "{{agent}} uses the model {{model}}, but the provider rejects the API key. Check that key.",
+      "cause_model_env": "{{agent}} uses the model {{model}}, but the provider rejects the key inherited from the {{envVar}} environment variable. Fix or remove it.",
+      "cause": "The provider rejects the API key. Check that key."
+    },
+    "no_provider": {
+      "title": "No provider configured",
+      "cause": "Configure a provider in the agent or choose a model in Settings › Execution."
+    },
+    "openrouter_policy": {
+      "title": "OpenRouter blocks this model",
+      "cause": "Your OpenRouter data policy rules out every endpoint for this model. Adjust it at openrouter.ai/settings/privacy or choose another model."
+    },
+    "ollama_down": {
+      "title": "Ollama is not running",
+      "cause": "Start it with `ollama serve` and try again."
+    },
+    "codex_mcp_sandbox": {
+      "title": "Codex cancelled an MCP tool",
+      "cause": "Codex's managed sandbox (apply mode on macOS/Linux) cancels Devia's MCP tools. Try apply-yolo or plan mode."
+    },
+    "copilot_access": {
+      "title": "Copilot is not available on your account",
+      "cause": "An active GitHub Copilot subscription, enabled for your account or organisation, is required."
+    },
+    "not_installed": {
+      "title": "Agent not found",
+      "cause": "The agent's executable is not installed or not on the PATH. Install it and check Settings › Execution."
+    },
+    "enterprise_mcp": {
+      "title": "Your organisation manages Claude's MCP config",
+      "cause": "MCP servers cannot be added per run. Set DEVIA_ASSUME_ENTERPRISE_MCP=1 so Devia skips them, or ask IT to add Devia's servers."
+    },
+    "unknown": {
+      "title": "The agent failed",
+      "cause": "Devia does not recognise this error. The technical details show what the agent returned."
+    },
+    "quota_exceeded": {
+      "title": "Quota or balance used up",
+      "cause": "The plan or balance of the provider does not allow more requests right now. Check your plan."
     }
   }
 }

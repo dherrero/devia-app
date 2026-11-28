@@ -42,6 +42,9 @@ const mockApi: Partial<ElectronApiService> = {
   onConfigChanged: noop as any,
   onNotificationClick: noop as any,
   onAgentChanged: noop as any,
+  onEffectiveAgentChanged: noop as any,
+  onWorkerChanged: noop as any,
+  getEffectiveAgent: (() => Promise.resolve({ agentId: 'claude', source: 'global' })) as any,
   onQueueChanged: noop as any,
   onQueueDispatched: noop as any,
   onTerminalData: noop as any,
@@ -1010,6 +1013,28 @@ describe('AppStateService — onProcessEnd error message classification', () => 
     const msg = lastSystemMessage();
     expect(msg?.cancelReason).toBe('idle');
     expect(msg?.errorClassification).toBeUndefined();
+  });
+
+  it('S-54: stamps userError on the error message', () => {
+    const userError = { code: 'auth_required', title: 't', cause: 'c', actions: [], details: 'HTTP 401' };
+    fireProcessEnd!({ project: PROJECT, code: 1, error: 'HTTP 401', classification: 'auth', userError });
+    const msg = lastSystemMessage();
+    expect(msg?.userError).toEqual(userError);
+  });
+
+  it('S-54: a quota failure with a user reading is shown (the upsell event still fires)', () => {
+    const userError = { code: 'usage_limit', title: 't', cause: 'c', actions: [], details: 'limit' };
+    const paywall = vi.fn();
+    window.addEventListener('paywall-requested', paywall);
+    fireProcessEnd!({ project: PROJECT, code: 1, error: 'limit', failoverReason: 'quota_exceeded', userError });
+    window.removeEventListener('paywall-requested', paywall);
+    expect(lastSystemMessage()?.userError).toEqual(userError);
+    expect(paywall).toHaveBeenCalledOnce();
+  });
+
+  it('S-54: without userError a quota failure keeps being suppressed as before', () => {
+    fireProcessEnd!({ project: PROJECT, code: 1, error: 'limit', failoverReason: 'quota_exceeded' });
+    expect(lastSystemMessage()).toBeUndefined();
   });
 
   it('adds no system message for stopped/busy ends', () => {

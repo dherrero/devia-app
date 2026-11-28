@@ -14,6 +14,7 @@ import {
 import { AppStateService } from '../../core/services/app-state.service';
 import { ElectronApiService } from '../../core/services/electron-api.service';
 import { KeyboardShortcutsService } from '../../core/layout/keyboard-shortcuts.service';
+import { AgentPickerComponent } from './agent-picker/agent-picker.component';
 import { BranchSwitcherComponent } from '../../features/git/branch-switcher/branch-switcher.component';
 
 @Component({
@@ -101,37 +102,51 @@ export class StatusbarComponent {
 
   // Active agent's display name (falls back to its id until detection lands).
   readonly agentName = computed<string>(() => {
-    const id = this.state.config()?.agentId;
+    const id = this.state.effectiveAgentId();
     if (!id) return '';
     return this.state.detectedAgents()?.find((a) => a.id === id)?.name ?? id;
   });
 
   // Effort levels the active agent exposes (empty → no selector in the footer).
   readonly reasoningOptions = computed(() => {
-    const id = this.state.config()?.agentId;
+    const id = this.state.effectiveAgentId();
     const agent = this.state.detectedAgents()?.find((a) => a.id === id);
     return (agent?.reasoningOptions ?? []).map((r) => ({ value: r.id, label: r.label }));
   });
 
   readonly activeReasoning = computed<string>(() => {
     const cfg = this.state.config();
-    return (cfg && cfg.agentModels?.[cfg.agentId]?.reasoning) || 'default';
+    return (cfg && cfg.agentModels?.[this.state.effectiveAgentId()]?.reasoning) || 'default';
   });
 
   async onReasoningChange(reasoning: string): Promise<void> {
     const cfg = this.state.config();
     if (!cfg || reasoning === this.activeReasoning()) return;
     // agent:setModel overwrites BOTH fields, so forward the current model.
-    const model = cfg.agentModels?.[cfg.agentId]?.model ?? null;
+    const agentId = this.state.effectiveAgentId();
+    const model = cfg.agentModels?.[agentId]?.model ?? null;
     await this.api.setAgentModel({
-      agentId: cfg.agentId,
+      agentId,
       model,
       reasoning: reasoning === 'default' ? null : reasoning,
     });
     this.state.config.set(await this.api.getConfig());
   }
 
+  /** S-53: with a project, the chip picks THAT project's agent; without one, Settings chooses the default. */
+  readonly canPickAgent = computed(() => !!this.state.selectedProject());
+  /** The agent cannot change under a run that is already working. */
+  readonly agentPickerLocked = computed(() => {
+    const key = this.state.focusedKey();
+    return !!key && this.state.isRunning(key);
+  });
+
   openAgentSettings() {
+    if (this.agentPickerLocked()) return;
+    if (this.canPickAgent()) {
+      this.dialogs.open(AgentPickerComponent);
+      return;
+    }
     this.shortcuts.openSettings('execution');
   }
 

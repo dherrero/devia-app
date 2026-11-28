@@ -66,6 +66,7 @@
                     class="agent-chip"
                     [dvTooltip]="'statusbar.agent_tooltip' | translate"
                     [attr.aria-label]="'statusbar.agent_tooltip' | translate"
+                    [disabled]="agentPickerLocked()"
                     (click)="openAgentSettings()">
               <dv-icon class="ic" [icon]="LucideBot" size="sm" />
               <span class="agent-label">{{ agent }}</span>

@@ -36,7 +36,7 @@ BRANCH=$(git branch --show-current)
 ```
 
 - `GIT_DIR != GIT_COMMON`: you are in a pane's worktree on a session branch. **It belongs to Devia.** Leave the worktree and the branch exactly where they are, always: the user may keep iterating there, and Devia removes them when the pane or session is closed.
-- `GIT_DIR == GIT_COMMON`: you worked on the user's own checkout, on `<branch>`.
+- `GIT_DIR == GIT_COMMON`: you worked on the user's own checkout, on the work branch you created (`feat/...` or `fix/...`, from `dev`/`develop` or `main`/`master`). The pull request goes against that base.
 - `BRANCH` empty: detached HEAD. Commit your work, and say that it needs a branch before it can be pushed.
 
 Everything is committed? `git status --porcelain` is empty, or the leftovers are named and explained to the user.
@@ -59,7 +59,7 @@ Implementation complete and reviewed. What would you like to do?
 3. Push the branch and open a pull request
 ```
 
-Present exactly these. Never merge into the base branch, never delete a branch, never discard work on your own: if the user asks to throw the work away, tell them to close the pane or delete the session in Devia, which removes the worktree and its branch for them.
+Present exactly these. Never merge into the base branch, never delete a branch, never discard work on your own: if the user asks to throw the work away, tell them to close the pane or delete the session in Devia (which removes the worktree and its branch), or, for a branch you created yourself, ask them to confirm before deleting it.
 
 ## Step 5: Execute the Choice
 

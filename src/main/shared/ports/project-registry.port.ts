@@ -1,3 +1,5 @@
+import type { RoleAgentMap } from '../../../shared/domain/cross-agent';
+
 /**
  * Per-project process bookkeeping. Owned by the `claude-runner` feature
  * because process lifecycle lives there, but consumed by:
@@ -25,6 +27,13 @@ export interface ProjectRecord {
    *  created ("No conversation found" / "no rollout found"). null when no
    *  agent session is stored. */
   agentSessionAgentId: string | null;
+  /** S-53: the agent the user chose for this project. null = follow the global
+   *  default. Sits between the session agent and the global one in
+   *  `resolveEffectiveAgentId`. */
+  preferredAgentId: string | null;
+  /** S-56: which agent runs each cross-agent worker role in this project. A role
+   *  absent here runs with the effective (main) agent. */
+  roleAgents?: RoleAgentMap;
 }
 
 export interface ProjectRegistry {

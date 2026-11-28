@@ -118,6 +118,15 @@ export const IPC = {
   agentSetEnv:     'agent:setEnv',
   agentTest:       'agent:test',
   agentChanged:    'agent:changed',
+  agentSetContext: 'agents:set-context-agent',
+  agentEffective:  'agents:effective',
+  agentEffectiveChanged: 'agents:effective-changed',
+
+  // Cross-agent workers (S-56)
+  workerChanged:   'worker:changed',
+  workerCancel:    'worker:cancel',
+  workerCancelAll: 'worker:cancel-all',
+  workerList:      'worker:list',
 
   // Integrated terminal (one PTY per project)
   terminalStart:   'terminal:start',

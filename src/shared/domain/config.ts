@@ -1,4 +1,5 @@
 import type { StarterKitsConfig } from './starter-kit';
+import { DEFAULT_CROSS_AGENT_CONFIG, type CrossAgentConfig } from './cross-agent-config';
 
 /**
  * Per-agent CLI preferences (model + reasoning effort). Keyed by the
@@ -156,6 +157,9 @@ export interface DeviaConfig {
    */
   uiTools?: UiToolsConfig;
 
+  /** S-56: workers of other agents for the Devia Method loop. Off by default. */
+  crossAgent?: CrossAgentConfig;
+
   /**
    * @deprecated S-3 F1.1: worktree isolation is MANDATORY for additional split
    * panes — this flag no longer gates the renderer's eager worktree creation
@@ -201,6 +205,7 @@ export const DEFAULT_CONFIG: Readonly<DeviaConfig> = Object.freeze({
   memory: DEFAULT_MEMORY_CONFIG,
   remoteControl: DEFAULT_REMOTE_CONTROL_CONFIG,
   uiTools: { enabled: {} },
+  crossAgent: DEFAULT_CROSS_AGENT_CONFIG,
   worktreePerSession: false,
   worktreeBaseRef: 'default-branch',
 });

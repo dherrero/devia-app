@@ -154,6 +154,8 @@ export class ElectronApiService {
   // CLI adapters (multi-CLI picker in Settings)
   listAgents() { return this.api.listAgents(); }
   selectAgent(agentId: string) { return this.api.selectAgent(agentId); }
+  setContextAgent(input: Parameters<DeviaBridge['setContextAgent']>[0]) { return this.api.setContextAgent(input); }
+  getEffectiveAgent(input: Parameters<DeviaBridge['getEffectiveAgent']>[0]) { return this.api.getEffectiveAgent(input); }
   setAgentModel(input: Parameters<DeviaBridge['setAgentModel']>[0]) { return this.api.setAgentModel(input); }
   setAgentEnv(input: Parameters<DeviaBridge['setAgentEnv']>[0]) { return this.api.setAgentEnv(input); }
   testAgent(agentId: string) { return this.api.testAgent(agentId); }
@@ -179,6 +181,11 @@ export class ElectronApiService {
   onConfigChanged  = this.api.onConfigChanged.bind(this.api);
   onNotificationClick = this.api.onNotificationClick.bind(this.api);
   onAgentChanged   = this.api.onAgentChanged.bind(this.api);
+  onEffectiveAgentChanged = this.api.onEffectiveAgentChanged.bind(this.api);
+  onWorkerChanged  = this.api.onWorkerChanged.bind(this.api);
+  cancelWorker(workerId: string) { return this.api.cancelWorker(workerId); }
+  cancelAllWorkers(parentKey: string) { return this.api.cancelAllWorkers(parentKey); }
+  listWorkers(parentKey: string) { return this.api.listWorkers(parentKey); }
   onQueueChanged   = this.api.onQueueChanged.bind(this.api);
   onQueueDispatched = this.api.onQueueDispatched.bind(this.api);
   onTerminalData   = this.api.onTerminalData.bind(this.api);

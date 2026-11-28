@@ -1,3 +1,4 @@
+import type { EffectiveAgent, EffectiveAgentChangedEvent, SetContextAgentInput, SetContextAgentResult } from '../domain/effective-agent';
 import type { StarterKitSetRequest, StarterKitView } from '../domain/starter-kit';
 import type { DeviaConfig, DeviaConfigView } from '../domain/config';
 import type {
@@ -63,6 +64,7 @@ import type {
   UiToolRequestEvent,
   DiffSnapshotEvent,
   AgentsDetectedEvent,
+  WorkerChangedEvent,
 } from './events';
 import type { OutboxFile } from '../domain/attachment';
 import type {
@@ -421,6 +423,10 @@ export interface DeviaBridge {
    * / planned) and the renderer surfaces the reason in the Settings modal.
    */
   selectAgent(agentId: string): Promise<{ agentId: string; accepted: boolean; rejectedReason?: string }>;
+  /** S-53: set (or clear with agentId null) the agent of a project. The global default stays `selectAgent`. */
+  setContextAgent(input: SetContextAgentInput): Promise<SetContextAgentResult>;
+  /** S-53: which agent a project/session runs with now (session > project > global). */
+  getEffectiveAgent(input: { projectPath: string; sessionId?: string }): Promise<EffectiveAgent>;
   setAgentModel(input: SetAgentModelInput): Promise<{ model?: string; reasoning?: string }>;
   setAgentEnv(input: SetAgentEnvInput): Promise<Record<string, string>>;
   /** REV-TS-CLI-13-03: returns full DetectedAgentView (incl. authStatus, diagnostic,
@@ -452,6 +458,14 @@ export interface DeviaBridge {
   onConfigChanged(cb: (cfg: DeviaConfigView) => void): void;
   onNotificationClick(cb: (e: NotificationClickEvent) => void): void;
   onAgentChanged(cb: (e: AgentChangedEvent) => void): void;
+  /** S-53: the effective agent of a project/session (or of every project, when no fields) may have changed. */
+  onEffectiveAgentChanged(cb: (e: EffectiveAgentChangedEvent) => void): void;
+  /** S-56: a cross-agent worker was queued, started or ended. */
+  onWorkerChanged(cb: (e: WorkerChangedEvent) => void): void;
+  cancelWorker(workerId: string): Promise<boolean>;
+  /** Cancels every worker of a controller; resolves with how many were cancelled. */
+  cancelAllWorkers(parentKey: string): Promise<number>;
+  listWorkers(parentKey: string): Promise<import('../domain/cross-agent').WorkerRun[]>;
   onQueueChanged(cb: (e: QueueChangedEvent) => void): void;
   onQueueDispatched(cb: (e: QueueDispatchedEvent) => void): void;
   onTerminalData(cb: (e: TerminalDataEvent) => void): void;

@@ -5,6 +5,7 @@ import type {
 import type { ProjectRecord } from '../../../shared/ports';
 import type { RunId } from '../../../../shared/domain/agent';
 import type { CancelReason } from '../../../../shared/domain/agent-event';
+import type { RoleAgentMap } from '../../../../shared/domain/cross-agent';
 
 interface MutableRecord {
   name: string;
@@ -12,6 +13,8 @@ interface MutableRecord {
   activeSessionId: string | null;
   agentSessionId: string | null;
   agentSessionAgentId: string | null;
+  preferredAgentId: string | null;
+  roleAgents: RoleAgentMap;
   handle: ProcessHandle | null;
   /**
    * RunId for the currently-attached process, or null when idle.
@@ -41,6 +44,10 @@ export class InMemoryProjectRegistry implements ProcessTrackingRegistry {
       set agentSessionId(v: string | null) { record.agentSessionId = v; },
       get agentSessionAgentId() { return record.agentSessionAgentId; },
       set agentSessionAgentId(v: string | null) { record.agentSessionAgentId = v; },
+      get preferredAgentId() { return record.preferredAgentId; },
+      set preferredAgentId(v: string | null) { record.preferredAgentId = v; },
+      get roleAgents() { return record.roleAgents; },
+      set roleAgents(v: RoleAgentMap) { record.roleAgents = v; },
     };
   }
 
@@ -57,6 +64,8 @@ export class InMemoryProjectRegistry implements ProcessTrackingRegistry {
         activeSessionId: null,
         agentSessionId: null,
         agentSessionAgentId: null,
+        preferredAgentId: null,
+        roleAgents: {},
         handle: null,
         currentRunId: null,
       };

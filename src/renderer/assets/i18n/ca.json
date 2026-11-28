@@ -706,6 +706,16 @@
       "cancel": "Cancel·lar",
       "send": "Triar"
     },
+    "assign": {
+      "aria": "Repartiment d'agents sol·licitat per l'agent",
+      "badge": "Assignar",
+      "title": "Quin agent ha de fer cada part del pla?",
+      "role_implementer": "Implementar les tasques",
+      "role_reviewer": "Revisar les tasques",
+      "main": "Agent principal ({{agent}})",
+      "cost": "Cada worker és una execució completa d'aquest agent i gasta la seva pròpia quota. Es desa per a aquest projecte.",
+      "confirm": "Desar"
+    },
     "review": {
       "requested": "L'agent demana que revisis els canvis"
     },
@@ -718,7 +728,8 @@
       "note_always": "✓ Permès sempre: {{detail}}",
       "note_declined": "✕ Rebutjat: {{detail}}",
       "note_picked": "✓ Triat: {{detail}}",
-      "note_pick_cancelled": "✕ No s'ha triat res"
+      "note_pick_cancelled": "✕ No s'ha triat res",
+      "note_assigned": "✓ Assignat: {{detail}}"
     }
   },
   "codeGraph": {

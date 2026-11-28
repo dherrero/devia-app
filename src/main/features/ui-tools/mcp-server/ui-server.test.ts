@@ -153,6 +153,32 @@ describe('tools/call', () => {
     expect(sent[0]?.result?.content?.[0]?.text).toContain('Do not call devia_ask_user again');
   });
 
+  it('lets a server-handled tool wait for its own, longer timeout (S-56)', async () => {
+    const handle = dispatcher({ timeoutMs: 30, serverHandledTimeoutMs: 2_000 });
+    const call = handle({
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'devia_spawn_agent', arguments: { role: 'implementer', taskId: 'T-1' } },
+    });
+    await waitFor(() => fs.existsSync(requestFilePath(uiDir, 'call-1')));
+    // Well past the ordinary 30 ms timeout: a user-card tool would have given up.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    writeUiAnswer(uiDir, 'call-1', '[pi · implementer · T-1] DONE');
+    await call;
+
+    expect(sent[0]?.result?.isError).toBeUndefined();
+    expect(sent[0]?.result?.content?.[0]?.text).toContain('DONE');
+  });
+
+  it('still times out a server-handled tool at ITS timeout, not forever', async () => {
+    await dispatcher({ timeoutMs: 1_000, serverHandledTimeoutMs: 30 })({
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'devia_spawn_agent', arguments: { role: 'implementer', taskId: 'T-1' } },
+    });
+    expect(sent[0]?.result?.isError).toBe(true);
+  });
+
   it('returns immediately for a fire-and-forget tool and never waits', async () => {
     const started = Date.now();
     await dispatcher({ timeoutMs: 60_000 })({

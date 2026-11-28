@@ -180,7 +180,14 @@ describe('round trip against the real files', () => {
     // 488: +71 for the graph search, filters and node detail panel (es/en only; T-513 translates).
     // 293: T-513 translated every codeGraph key into the nine locales (-195); what is
     // left is the pre-existing S-27 backlog, none of it under codeGraph.
-    expect(Object.keys(missing).length).toBe(293);
+    // 300: +7 for the footer agent picker (es/en only; S-27 translates).
+    // 302: +2 for the pane-scoped wording of the agent picker (es/en only; S-27 translates).
+    // 308: +6 for the cross-agent workers block in Settings (es/en only; S-27 translates).
+    // 308: the assign-agents card's 9 keys (ui_tools is a protected namespace) are translated in every language.
+    // 320: +12 for the cross-agent worker bubble (es/en only; S-27 translates).
+    // 344 → see S-54: +51 for the agent error card (es/en only; S-27 translates).
+    // 371: both lines of work merged (353 on dev + 18 from cross-agent).
+    expect(Object.keys(missing).length).toBe(371);
     expect(Object.keys(missing).filter((key) => key.startsWith('codeGraph.'))).toEqual([]);
   });
 

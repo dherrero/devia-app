@@ -75,6 +75,8 @@ export function summarizeSessionStats(stats: SessionStats): SessionStatsSummary 
  *  the renderer's ChatMessage so the builder stays in pure shared/domain. */
 export interface StatsSourceMessage {
   role: string;
+  /** A cross-agent worker's message (S-56): its cost counts, but it never drives the headline. */
+  worker?: unknown;
   agentId?: string;
   model?: string;
   usage?: {
@@ -110,9 +112,13 @@ export function buildSessionStats(opts: {
 
   for (const m of opts.messages) {
     if (m.role !== 'assistant') continue;
-    turnCount++;
-    if (m.agentId) lastAgentId = m.agentId;
-    if (m.model) lastModel = m.model;
+    // A worker is another agent in another context window: its COST belongs to
+    // the session, but it must not move the controller's agent, model, context
+    // meter or turn count (S-56).
+    const isWorker = m.worker !== undefined;
+    if (!isWorker) turnCount++;
+    if (!isWorker && m.agentId) lastAgentId = m.agentId;
+    if (!isWorker && m.model) lastModel = m.model;
     const u = m.usage;
     if (!u) continue;
     if (u.costUsd !== undefined && u.costUsd > 0) {
@@ -120,6 +126,7 @@ export function buildSessionStats(opts: {
       const key = m.model ?? lastModel ?? 'unknown';
       costByModel[key] = (costByModel[key] ?? 0) + u.costUsd;
     }
+    if (isWorker) continue;
     if (u.inputTokens !== undefined || u.cachedInputTokens !== undefined) {
       lastContextTokens = (u.inputTokens ?? 0) + (u.cachedInputTokens ?? 0);
     }

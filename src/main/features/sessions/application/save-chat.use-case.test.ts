@@ -217,3 +217,35 @@ describe('SaveChatUseCase — run mode', () => {
     expect('runMode' in saved[0]!.session).toBe(false);
   });
 });
+
+describe('SaveChatUseCase — session agent (S-53)', () => {
+  const seeded = (preferredAgentId?: string): PersistedSession => ({
+    id: SID, project: BASE, createdAt: 1, updatedAt: 2, messages: [],
+    ...(preferredAgentId !== undefined && { preferredAgentId }),
+  });
+
+  it('a primary-pane save never erases the session agent', () => {
+    const { sessions, saved } = makeSessionStore([seeded('codex')]);
+    const useCase = new SaveChatUseCase({ registry: makeRegistry(), sessions, state: makeState() });
+    useCase.execute(BASE, [{ id: 'm1', role: 'user', text: 'hi' }]);
+    expect(saved[0]?.session.preferredAgentId).toBe('codex');
+  });
+
+  it('a split-pane save never erases the session agent', () => {
+    const { sessions, saved } = makeSessionStore([seeded('codex')]);
+    const useCase = new SaveChatUseCase({ registry: strictRegistry(), sessions, state: makeState() });
+    useCase.saveAs(BASE, SID, [{ id: 'm1', role: 'user', text: 'hi' }]);
+    expect(saved[0]?.session.preferredAgentId).toBe('codex');
+  });
+
+  it('the first save of a pane writes the choice made before it had a session', () => {
+    const { sessions, saved } = makeSessionStore();
+    const resolveForSave = vi.fn(() => 'pi');
+    const useCase = new SaveChatUseCase({
+      registry: strictRegistry(), sessions, state: makeState(), sessionAgents: { resolveForSave },
+    });
+    useCase.saveAs(BASE, SID, [{ id: 'm1', role: 'user', text: 'hi' }]);
+    expect(resolveForSave).toHaveBeenCalledWith(BASE, SID, undefined);
+    expect(saved[0]?.session.preferredAgentId).toBe('pi');
+  });
+});

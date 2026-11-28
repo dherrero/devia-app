@@ -5,6 +5,10 @@
         <ds-ui-confirm-card [input]="request.input"
                             (decided)="onConfirmDecided(request, $event)" />
       }
+      @case ('assign_agents') {
+        <ds-ui-assign-card [input]="request.input"
+                           (decided)="onAssignDecided(request, $event)" />
+      }
       @case ('pick') {
         <ds-ui-pick-card [input]="request.input"
                          [project]="project()"

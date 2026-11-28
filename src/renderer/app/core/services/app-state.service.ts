@@ -1,7 +1,8 @@
-import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { ElectronApiService } from './electron-api.service';
 import { ToastService } from './toast.service';
+import { agentErrorText } from '../utils/agent-error-text';
 import { applyStyle, applyTheme, resolveStyle, resolveTheme } from '../theme/accent-palettes';
 import type {
   DeviaConfig, DeviaConfigView, ProjectEntry, ClaudeOutputEvent, ProcessStartEvent,
@@ -18,7 +19,9 @@ import { buildSessionStats } from '../../../../shared/domain/session-stats';
 import type { SessionStats, StatsSourceMessage, CompactionRecord } from '../../../../shared/domain/session-stats';
 import type { AgentEvent } from '../../../../shared/domain/agent-event';
 import type { RunId } from '../../../../shared/domain/agent';
+import type { EffectiveAgent, SetContextAgentResult } from '../../../../shared/domain/effective-agent';
 import { isForeignEvent } from '../../../../shared/domain/agent';
+import { parseWorkerRunKey, type WorkerRun } from '../../../../shared/domain/cross-agent';
 import type { ChatMessage, ContentBlock, ToolCallRecord } from '../../../../shared/domain/chat';
 import { isAskUserTool } from '../../../../shared/domain/question-ask';
 import { planRecordText, type PlanRecord, type TodoItem } from '../../../../shared/domain/ui-tools';
@@ -190,6 +193,80 @@ export class AppStateService implements OnDestroy {
   // The session key the footer selectors read: the focused pane's key, or the
   // selected project when no split pane is focused.
   readonly focusedKey = computed(() => this.focusedSessionKey() ?? this.selectedProject());
+
+  // ── Effective agent (S-53: session > project > global) ──────────────────
+  // Asked of main for the focused pane — never derived here — so the footer can
+  // not disagree with what Telegram, the queue or auto-continue will run.
+  private readonly effectiveAgentState = signal<{ key: string; agent: EffectiveAgent } | null>(null);
+  /** Bumped when main announces that an effective agent may have changed. */
+  private readonly effectiveAgentTick = signal(0);
+  private effectiveAgentRequest = 0;
+  /** The focused pane's effective agent, once main has answered for it. */
+  readonly effectiveAgent = computed<EffectiveAgent | null>(() => {
+    const s = this.effectiveAgentState();
+    return s && s.key === this.focusedKey() ? s.agent : null;
+  });
+  /** Effective agent id; the global default stands in until main answers. */
+  readonly effectiveAgentId = computed<string>(
+    () => this.effectiveAgent()?.agentId ?? this.config()?.agentId ?? '',
+  );
+  /**
+   * Where a footer agent change is written (S-53): an additional split pane — or a
+   * primary pane whose session already has its own agent — changes its SESSION;
+   * otherwise the PROJECT.
+   */
+  readonly agentTarget = computed<'project' | 'session'>(() =>
+    this.focusedSessionKey() !== null || this.effectiveAgent()?.source === 'session' ? 'session' : 'project',
+  );
+
+  /** Change the agent of what the footer is showing: see {@link agentTarget}. */
+  async setFocusedAgent(agentId: string | null): Promise<SetContextAgentResult> {
+    const project = this.selectedProject();
+    if (!project) return this.setProjectAgent(agentId); // reports NO_PROJECT
+    const pane = this.focusedSessionKey();
+    const sessionId = pane ?? (this.agentTarget() === 'session' ? this.activeSessionId() ?? undefined : undefined);
+    if (sessionId === undefined) return this.setProjectAgent(agentId);
+    const result = await this.api.setContextAgent({ scope: 'session', projectPath: project, sessionId, agentId });
+    if (result.accepted) this.effectiveAgentTick.update((n) => n + 1);
+    return result;
+  }
+
+  /**
+   * Set (or clear with null) the agent of the SELECTED project; the global
+   * default is changed from Settings. Main refuses it while a run is active.
+   */
+  async setProjectAgent(agentId: string | null): Promise<SetContextAgentResult> {
+    const project = this.selectedProject();
+    if (!project) {
+      return {
+        accepted: false,
+        effective: this.effectiveAgent() ?? { agentId: this.config()?.agentId ?? '', source: 'global' },
+        rejectedReason: 'NO_PROJECT',
+      };
+    }
+    const result = await this.api.setContextAgent({ scope: 'project', projectPath: project, agentId });
+    if (result.accepted) this.effectiveAgentTick.update((n) => n + 1);
+    return result;
+  }
+  /** The primary pane's active session (a computed, so an unrelated list refresh re-asks nothing). */
+  private readonly activeSessionId = computed(() => this.availableSessions().find((x) => x.isActive)?.id ?? null);
+  private readonly effectiveAgentSync = effect(() => {
+    const project = this.selectedProject();
+    const key = this.focusedKey();
+    const sessionId = this.focusedSessionKey();
+    // The primary pane's active session can carry its own agent: ask again when it changes.
+    void this.activeSessionId();
+    this.effectiveAgentTick();
+    if (!project || !key) return;
+    const request = ++this.effectiveAgentRequest;
+    void this.api
+      .getEffectiveAgent({ projectPath: project, ...(sessionId ? { sessionId } : {}) })
+      .then((agent) => {
+        if (request !== this.effectiveAgentRequest) return; // a newer question is in flight
+        this.effectiveAgentState.set({ key, agent });
+      })
+      .catch(() => { /* keep the previous answer; the global agent still stands in */ });
+  });
   // True while a footer-triggered sync is in flight, so the button can show
   // a spinner and disable itself. Cleared on resolve regardless of outcome.
   readonly syncingGit = signal(false);
@@ -365,18 +442,23 @@ export class AppStateService implements OnDestroy {
     if (!project) return null;
     const stream = this.assistantStreams().get(project);
     if (stream?.model) return stream.model;
+    // S-53: a session can change agent mid-way, so a recorded model only counts when
+    // it was produced by the agent that runs NOW; otherwise the footer would keep
+    // showing the previous agent's model.
+    const agentId = this.effectiveAgentId();
+    const isCurrent = (id: string | undefined): boolean => id === undefined || agentId === '' || id === agentId;
     const snap = this.sessionStats().get(project);
-    if (snap?.model) return snap.model;
+    if (snap?.model && isCurrent(snap.agentId)) return snap.model;
     const msgs = this.chats().get(project);
     if (msgs) {
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
-        if (m.role === 'assistant' && m.model) return m.model;
+        if (m.role === 'assistant' && !m.worker && m.model && isCurrent(m.agentId)) return m.model;
       }
     }
     const cfg = this.config();
     if (!cfg) return null;
-    return cfg.agentModels[cfg.agentId]?.model ?? null;
+    return cfg.agentModels[agentId]?.model ?? null;
   });
 
   readonly contextUsageTokens = computed<number | null>(() => {
@@ -394,7 +476,7 @@ export class AppStateService implements OnDestroy {
     if (msgs) {
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
-        if (m.role === 'assistant' && m.usage?.inputTokens !== undefined) {
+        if (m.role === 'assistant' && !m.worker && m.usage?.inputTokens !== undefined) {
           const { inputTokens, cachedInputTokens } = m.usage;
           return (inputTokens ?? 0) + (cachedInputTokens ?? 0);
         }
@@ -418,14 +500,14 @@ export class AppStateService implements OnDestroy {
       const msgs = this.chats().get(project);
       if (msgs) {
         for (let i = msgs.length - 1; i >= 0; i--) {
-          const w = msgs[i]?.usage?.contextWindow;
+          const w = msgs[i]?.worker ? undefined : msgs[i]?.usage?.contextWindow;
           if (typeof w === 'number' && w > 0) return w;
         }
       }
     }
-    const cfg = this.config();
-    if (!cfg?.agentId) return null;
-    return getModelContextLength(cfg.agentId, this.activeModel() ?? undefined);
+    const agentId = this.effectiveAgentId();
+    if (!agentId) return null;
+    return getModelContextLength(agentId, this.activeModel() ?? undefined);
   });
 
   readonly contextPct = computed<number | null>(() => {
@@ -504,13 +586,14 @@ export class AppStateService implements OnDestroy {
   readonly currentBillingMode = computed<BillingMode>(() => {
     const cfg = this.config();
     if (!cfg) return 'unknown';
-    const detected = this.detectedAgents()?.find((a) => a.id === cfg.agentId);
+    const agentId = this.effectiveAgentId();
+    const detected = this.detectedAgents()?.find((a) => a.id === agentId);
     const authStatus = detected?.authStatus === 'ok'
       ? { kind: 'logged-in' as const }
       : detected?.authStatus === 'missing'
         ? { kind: 'logged-out' as const }
         : { kind: 'unknown' as const };
-    return deriveBillingMode(cfg.agentId, cfg.agentCliEnv?.[cfg.agentId], authStatus);
+    return deriveBillingMode(agentId, cfg.agentCliEnv?.[agentId], authStatus);
   });
 
   /** Minimum splash duration ms. Internal — adjust here only. */
@@ -958,10 +1041,11 @@ export class AppStateService implements OnDestroy {
   private deriveStatsFromMessages(project: string, messages: StatsSourceMessage[]): SessionStats {
     const cfg = this.config();
     const prior = this.sessionStats().get(project);
-    const fallbackModel = cfg ? cfg.agentModels[cfg.agentId]?.model : undefined;
+    const agentId = this.effectiveAgentId();
+    const fallbackModel = cfg ? cfg.agentModels[agentId]?.model : undefined;
     return buildSessionStats({
       messages,
-      fallbackAgentId: cfg?.agentId ?? 'unknown',
+      fallbackAgentId: agentId || (cfg?.agentId ?? 'unknown'),
       ...(fallbackModel !== undefined && { fallbackModel }),
       ...(prior?.compactions && prior.compactions.length > 0 && { priorCompactions: prior.compactions }),
       now: Date.now(),
@@ -1460,6 +1544,8 @@ export class AppStateService implements OnDestroy {
   // ── IPC bridge ────────────────────────────────────────────────────────
   private wireBridgeEvents() {
     this.api.onConfigChanged((cfg) => this.config.set(cfg));
+    // S-53: a project/session agent (or the global default) changed — ask main again.
+    this.api.onEffectiveAgentChanged(() => this.effectiveAgentTick.update((n) => n + 1));
     this.api.onNotificationClick((e) => void this.navigateToProject(e.project));
     // E-DSK-14: Telegram `/use <proyecto>` switches the desktop to that project.
     this.api.onRemoteSelectProject((e) => void this.navigateToProject(e.project));
@@ -1520,7 +1606,8 @@ export class AppStateService implements OnDestroy {
     });
 
     this.api.onProcessStart((e: ProcessStartEvent) => {
-      this.markRunning(e.project, true);
+      // A cross-agent worker is not a project: it must not light up the "running" state of one.
+      if (parseWorkerRunKey(e.project) === null) this.markRunning(e.project, true);
       // REV-TS-CLI-05-02: clear any stale pendingQuestion from a previous run
       // before starting a new one so the question card never shows stale state.
       // REV-TS-CLI-05-04: delete from Map rather than null-setting a single signal.
@@ -1551,7 +1638,7 @@ export class AppStateService implements OnDestroy {
         startedAt: Date.now(),
         // Use the agentId stamped by the main process on this specific run.
         // Fallback to the current config to handle older builds without this field.
-        agentId: e.agentId ?? this.config()?.agentId,
+        agentId: e.agentId ?? (this.effectiveAgentId() || this.config()?.agentId),
         // REV-AGENT-CORE-006: stamp the active run mode so the bubble can
         // render a badge and so loaded chats remember the policy used.
         mode: this.runMode(e.project),
@@ -1566,7 +1653,14 @@ export class AppStateService implements OnDestroy {
 
     this.api.onClaudeOutput((e: ClaudeOutputEvent) => this.consumeAgentEvent(e));
 
+    this.api.onWorkerChanged((e) => this.onWorkerChanged(e.parentKey, e.worker));
+
     this.api.onProcessEnd((e: ProcessEndEvent) => {
+      // S-56: a worker's run is folded into its controller's thread, with none of the project-run side effects.
+      if (parseWorkerRunKey(e.project) !== null) {
+        this.finishWorkerRun(e);
+        return;
+      }
       this.flushPendingTextDelta(e.project);
       this.markRunning(e.project, false);
       const streams = new Map(this.assistantStreams());
@@ -1601,6 +1695,8 @@ export class AppStateService implements OnDestroy {
           expiresAt: Date.now() + AppStateService.GRACE_MS,
         });
       }
+      // Workers that finished while this controller was still streaming join the thread now, after it.
+      this.flushHeldWorkerMessages(e.project);
       // E-DSK-09 #262 — quota_exceeded routes through the upgrade toast
       // (ticket #258 listens on `paywall-requested`). The renderer also
       // suppresses the generic error toast in that case so the user only
@@ -1610,7 +1706,7 @@ export class AppStateService implements OnDestroy {
           detail: { feature: e.cancelReason ?? 'agent-quota' },
         }));
       }
-      if (e.error && e.error !== 'busy' && e.error !== 'stopped' && e.failoverReason !== 'quota_exceeded') {
+      if (e.error && e.error !== 'busy' && e.error !== 'stopped' && (e.failoverReason !== 'quota_exceeded' || e.userError !== undefined)) {
         // REV-AGENT-CORE-011: structured cancellation gets a humanised label
         // and stamps `cancelReason` on the system message so the bubble can
         // hide the Retry button for user-initiated cancels.
@@ -1633,6 +1729,7 @@ export class AppStateService implements OnDestroy {
           text: cancelText ?? this.translate.instant('app_state.process_error', { error: e.error }),
           ...(e.cancelReason !== undefined && { cancelReason: e.cancelReason }),
           ...(classification !== undefined && { errorClassification: classification }),
+          ...(e.userError !== undefined && { userError: e.userError }),
         });
       }
       // REV-TS-CLI-05-02: clear any pending question when the process ends so
@@ -1890,8 +1987,15 @@ export class AppStateService implements OnDestroy {
       }
 
       case 'error':
-        // Surface error inline in the stream so the user sees it.
-        updated.text = (updated.text ?? '') + `\n[error] ${event.message}`;
+        // Surface error inline in the stream so the user sees it. S-54: with a
+        // user-facing reading the line is its short title and the card carries
+        // the cause, the actions and the raw message (in its details).
+        if (event.userError !== undefined) {
+          updated.userError = event.userError;
+          updated.text = (updated.text ?? '') + `\n[error] ${agentErrorText(this.translate, event.userError).title}`;
+        } else {
+          updated.text = (updated.text ?? '') + `\n[error] ${event.message}`;
+        }
         changed = true;
         break;
 
@@ -2005,6 +2109,103 @@ export class AppStateService implements OnDestroy {
       next.set(project, updated);
       this.assistantStreams.set(next);
     }
+  }
+
+  // ── Cross-agent workers (S-56) ────────────────────────────────────────
+  /** Every worker the main process announced, by run key. */
+  private readonly workerRuns = signal<Record<string, WorkerRun>>({});
+  /** Finished worker messages waiting for their controller's turn to end. */
+  private readonly heldWorkerMessages = signal<Map<SessionKey, ChatMessage[]>>(new Map());
+
+  /**
+   * The worker bubbles of one controller that are NOT in its thread yet: the
+   * finished ones held back and the ones still streaming. The feed draws them
+   * below the controller's own live message.
+   */
+  workerMessagesFor(parentKey: SessionKey): ChatMessage[] {
+    const runs = this.workerRuns();
+    const live: ChatMessage[] = [];
+    for (const [key, stream] of this.assistantStreams()) {
+      const parsed = parseWorkerRunKey(key);
+      if (parsed?.parentKey !== parentKey) continue;
+      live.push({ ...stream, worker: runs[key] ?? this.workerStub(key, stream) });
+    }
+    return [...(this.heldWorkerMessages().get(parentKey) ?? []), ...live];
+  }
+
+  /** What the bubble shows before main's `worker:changed` has arrived. */
+  private workerStub(runKey: string, stream: ChatMessage): WorkerRun {
+    const parsed = parseWorkerRunKey(runKey);
+    return {
+      id: runKey,
+      parentKey: parsed?.parentKey ?? '',
+      turnId: '',
+      taskId: parsed?.taskId ?? '',
+      role: 'implementer',
+      agentId: stream.agentId ?? '',
+      runKey,
+      state: 'running',
+    };
+  }
+
+  private onWorkerChanged(parentKey: SessionKey, worker: WorkerRun): void {
+    this.workerRuns.set({ ...this.workerRuns(), [worker.runKey]: worker });
+
+    const patch = (list: readonly ChatMessage[]): ChatMessage[] =>
+      list.map((m) => (m.worker?.id === worker.id ? { ...m, worker } : m));
+    const thread = this.chats().get(parentKey);
+    if (thread?.some((m) => m.worker?.id === worker.id)) {
+      const map = new Map(this.chats());
+      map.set(parentKey, patch(thread));
+      this.chats.set(map);
+      this.scheduleSave(parentKey);
+    }
+    const held = this.heldWorkerMessages().get(parentKey);
+    if (held?.some((m) => m.worker?.id === worker.id)) {
+      const map = new Map(this.heldWorkerMessages());
+      map.set(parentKey, patch(held));
+      this.heldWorkerMessages.set(map);
+    }
+  }
+
+  private finishWorkerRun(e: ProcessEndEvent): void {
+    const parsed = parseWorkerRunKey(e.project);
+    if (!parsed) return;
+    this.flushPendingTextDelta(e.project);
+    const streams = new Map(this.assistantStreams());
+    const stream = streams.get(e.project);
+    if (!stream) return;
+    streams.delete(e.project);
+    this.assistantStreams.set(streams);
+
+    const canceled = e.cancelReason !== undefined || e.error === 'stopped' || e.signal === 'SIGTERM';
+    const finalised: ChatMessage = {
+      ...stream,
+      streaming: false,
+      runStatus: canceled ? 'canceled' : e.error ? 'failed' : 'succeeded',
+      endedAt: Date.now(),
+      events: (stream.events ?? []).slice(-AppStateService.MAX_EVENTS),
+      worker: this.workerRuns()[e.project] ?? this.workerStub(e.project, stream),
+      ...(e.cancelReason !== undefined && { cancelReason: e.cancelReason }),
+    };
+    if (!finalised.id) finalised.id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    if (this.assistantStreams().has(parsed.parentKey)) {
+      const held = new Map(this.heldWorkerMessages());
+      held.set(parsed.parentKey, [...(held.get(parsed.parentKey) ?? []), finalised]);
+      this.heldWorkerMessages.set(held);
+    } else {
+      this.addMessage(parsed.parentKey, finalised);
+    }
+  }
+
+  private flushHeldWorkerMessages(parentKey: SessionKey): void {
+    const held = this.heldWorkerMessages().get(parentKey);
+    if (!held || held.length === 0) return;
+    const map = new Map(this.heldWorkerMessages());
+    map.delete(parentKey);
+    this.heldWorkerMessages.set(map);
+    for (const message of held) this.addMessage(parentKey, message);
   }
 
   private markRunning(projectPath: string, running: boolean) {

@@ -1,3 +1,4 @@
+import type { EffectiveAgentResolver } from '../../../shared/effective-agent-resolver';
 import type { ConfigChangeBus } from '../../../shared/config-change-bus';
 import { Notification, powerMonitor } from 'electron';
 import type { FeatureContext } from '../../../shared/feature';
@@ -29,6 +30,8 @@ export interface ClaudeRunnerIpcDeps {
   registry: ProcessTrackingRegistry;
   /** Read for `autoContinueSessions` and the active agent when a resume is due. */
   config: ConfigRepository;
+  /** S-53: agent the project/session runs with now; absent → the global agent. */
+  effectiveAgent?: EffectiveAgentResolver;
   /** FR-4: audit log instance used by the `audit:read` IPC handler. */
   auditLog: AgentAuditLog;
   /**
@@ -84,7 +87,10 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       const cfg = deps.config.get();
       // Switching the agent or turning the switch off while waiting must not
       // resume: a different agent would start the session without its context.
-      if (!rc || cfg.agentId !== rc.agentId || cfg.autoContinueSessions?.[rc.agentId] !== true) {
+      const currentAgentId = rc
+        ? deps.effectiveAgent?.forRun(rc.base, rc.sessionId).agentId ?? cfg.agentId
+        : cfg.agentId;
+      if (!rc || currentAgentId !== rc.agentId || cfg.autoContinueSessions?.[rc.agentId] !== true) {
         deps.queue.dispatchNext(key);
         return;
       }
@@ -252,13 +258,24 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
       ctx.send('claude:output', { project: identity, runId, line });
       deps.runGateway?.publish({ type: 'output', project: identity, runId, line });
     },
+    onRemoteAssign: (callId, ask, runId) => {
+      // S-56 T12: the relay (Telegram) asks this as text and answers via `answerTool`.
+      deps.runGateway?.publish({
+        type: 'ask',
+        project: identity,
+        runId,
+        callId,
+        question: ask.question,
+        mainAgentId: ask.mainAgentId,
+      });
+    },
     onRateLimited: ({ agentId, resetsAt }) => {
       if (!extras?.resume || resetsAt === undefined) return;
       if (deps.config.get().autoContinueSessions?.[agentId] !== true) return;
       resumeContexts.set(identity, { ...extras.resume, agentId });
       if (!autoResume.schedule(identity, resetsAt)) resumeContexts.delete(identity);
     },
-    onProcessEnd: ({ runId, code, error, classification, signal, cancelReason, classifiedError }) => {
+    onProcessEnd: ({ runId, code, error, classification, signal, cancelReason, classifiedError, userError }) => {
       if (error === 'busy') extras?.onBusy?.();
       ctx.send('process:end', {
         project: identity,
@@ -268,6 +285,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
         ...(classification !== undefined && { classification }),
         ...(signal !== undefined && { signal }),
         ...(cancelReason !== undefined && { cancelReason }),
+        ...(userError !== undefined && { userError }),
         ...(classifiedError !== undefined && {
           failoverReason: classifiedError.reason,
           ...(classifiedError.hint !== undefined && { failoverHint: classifiedError.hint }),
@@ -283,6 +301,7 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
         code,
         ...(error !== undefined && { error }),
         ...(cancelReason !== undefined && { cancelReason }),
+        ...(userError !== undefined && { userError }),
       });
       notifyIfBackground(projectName, error);
       // Drain this session's own queue (keyed by identity, T-143). For the
@@ -486,9 +505,30 @@ export function registerClaudeRunnerIpc(ctx: FeatureContext, deps: ClaudeRunnerI
 
   // E-DSK-14: let the Telegram controller submit / stop / reset through the
   // same use cases the renderer drives.
-  deps.runGateway?.bindSubmit((project, text, opts) =>
-    submitInstruction(project, text, [], opts?.mode ?? 'apply', opts?.origin ?? 'remote'));
+  deps.runGateway?.bindSubmit((project, text, opts) => {
+    // S-56: a cross-agent worker starts through here with its own identity.
+    const runOpts = {
+      ...(opts?.runKey !== undefined && { runKey: opts.runKey }),
+      ...(opts?.isolate !== undefined && { isolate: opts.isolate }),
+      ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
+      ...(opts?.agentIdOverride !== undefined && { agentIdOverride: opts.agentIdOverride }),
+    };
+    return submitInstruction(
+      project,
+      text,
+      [],
+      opts?.mode ?? 'apply',
+      opts?.origin ?? 'remote',
+      undefined,
+      Object.keys(runOpts).length > 0 ? runOpts : undefined,
+    );
+  });
   deps.runGateway?.bindStop((project) => deps.stopProject.execute(project));
+  // S-56 T12: the relay answers a blocked tool call (the assignment question).
+  deps.runGateway?.bindToolResult((project, callId, answer) => {
+    const safe = String(answer ?? '').slice(0, 10_000).replace(/\0/g, '');
+    deps.registry.writeToolResult(project, callId, safe);
+  });
   // Reset the session AND drop its pending queue: a reset starts the
   // conversation from scratch, so any instruction still parked for this
   // session belongs to the old one (e.g. a Telegram `/clean` while a queued

@@ -31,7 +31,10 @@ const FILE: RunFile = {
   source: 'tool',
 };
 
-function setup(autoContinue: Record<string, boolean> = {}) {
+function setup(
+  autoContinue: Record<string, boolean> = {},
+  opts: { globalAgentId?: string; effective?: (project: string, sessionId?: string) => string } = {},
+) {
   const handles = new Map<string, (...args: unknown[]) => unknown>();
   const send = vi.fn();
   const ctx = {
@@ -41,16 +44,19 @@ function setup(autoContinue: Record<string, boolean> = {}) {
   } as unknown as FeatureContext;
 
   const captured: RunInstructionHandlers[] = [];
+  const executeCalls: unknown[][] = [];
   const gateway = new RunGateway();
   const events: RunGatewayEvent[] = [];
   gateway.subscribe((e) => events.push(e));
 
   const dispatchNext = vi.fn();
+  const writeToolResult = vi.fn();
   const configChanges = new ConfigChangeBus();
   const deps = {
     runInstruction: {
-      execute: (_p: string, _t: string, _a: unknown, handlers: RunInstructionHandlers) => {
-        captured.push(handlers);
+      execute: (...args: unknown[]) => {
+        executeCalls.push(args);
+        captured.push(args[3] as RunInstructionHandlers);
       },
     },
     stopProject: { execute: vi.fn() },
@@ -63,8 +69,13 @@ function setup(autoContinue: Record<string, boolean> = {}) {
       dispatchNext,
       clear: vi.fn(),
     },
-    registry: {},
-    config: { get: () => ({ agentId: 'claude', autoContinueSessions: autoContinue }) },
+    registry: { writeToolResult },
+    config: { get: () => ({ agentId: opts.globalAgentId ?? 'claude', autoContinueSessions: autoContinue }) },
+    ...(opts.effective && {
+      effectiveAgent: {
+        forRun: (p: string, sid?: string) => ({ agentId: opts.effective!(p, sid), source: 'project' as const }),
+      },
+    }),
     auditLog: { append: vi.fn(), readLast: () => [] },
     runGateway: gateway,
     configChanges,
@@ -80,7 +91,7 @@ function setup(autoContinue: Record<string, boolean> = {}) {
     return captured[captured.length - 1]!;
   };
   const fileEvents = () => events.filter((e) => e.type === 'file');
-  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges };
+  return { start, send, fileEvents, events, ipc, handles, dispatchNext, configChanges, captured, gateway, executeCalls, writeToolResult };
 }
 
 describe('claude.ipc — auto-continue after the usage limit', () => {
@@ -169,6 +180,38 @@ describe('claude.ipc — auto-continue after the usage limit', () => {
     t.ipc.dispose();
     t.configChanges.publish(cfgWith({ claude: false }));
     expect(t.send).not.toHaveBeenCalledWith('autoresume:cancelled', expect.anything());
+  });
+});
+
+describe('claude.ipc — auto-continue follows the effective agent (S-53)', () => {
+  const rateLimit = (t: ReturnType<typeof setup>, project: string) =>
+    t.start(project).onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: Date.now() + 60_000 });
+
+  it('resumes when the PROJECT agent is still the one that was rate-limited, even if the global agent differs', () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup({ claude: true }, { globalAgentId: 'codex', effective: () => 'claude' });
+      rateLimit(t, 'proj-a');
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(t.captured).toHaveLength(2); // the original run + the automatic continue
+      t.ipc.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not resume when the project switched to another agent while waiting, even if the global agent matches', () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup({ claude: true }, { globalAgentId: 'claude', effective: () => 'codex' });
+      rateLimit(t, 'proj-a');
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(t.captured).toHaveLength(1);
+      expect(t.dispatchNext).toHaveBeenCalledWith('proj-a');
+      t.ipc.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -265,5 +308,96 @@ describe('claude.ipc — run end on the gateway', () => {
     start('proj-a').onProcessEnd({ runId: RUN_ID, code: 0 });
 
     expect(events.filter((e) => e.type === 'end')).toEqual([{ type: 'end', project: 'proj-a', runId: RUN_ID, code: 0 }]);
+  });
+});
+
+describe('claude.ipc — gateway submit with its own run identity (S-56)', () => {
+  it('starts the run under the given run key, session, isolation and agent', () => {
+    const t = setup();
+    const runKey = 'devia-worker:proj-a:T-1:1';
+    t.gateway.submit('proj-a', 'implement T-1', {
+      mode: 'apply-yolo',
+      origin: 'renderer',
+      runKey,
+      sessionId: 'worker-session-1',
+      isolate: true,
+      agentIdOverride: 'pi',
+    });
+
+    const call = t.executeCalls[0] as unknown[];
+    expect(call[0]).toBe('proj-a');
+    expect(call[4]).toBe('apply-yolo');
+    expect(call[6]).toBe('renderer');
+    expect(call.slice(7, 11)).toEqual([true, runKey, 'worker-session-1', 'pi']);
+
+    // Events of that run reach the gateway under the run key, so a completion
+    // waiter keyed by it sees them and nobody else's.
+    const handlers = t.captured[0] as RunInstructionHandlers;
+    handlers.onProcessStart({ runId: RUN_ID, agentId: 'pi' });
+    expect(t.events).toContainEqual(expect.objectContaining({ type: 'start', project: runKey }));
+    t.ipc.dispose();
+  });
+
+  it('a plain submit keeps the old behaviour: no run key, no isolation, no override', () => {
+    const t = setup();
+    t.gateway.submit('proj-a', 'hello', { mode: 'apply', origin: 'remote' });
+    const call = t.executeCalls[0] as unknown[];
+    expect(call.slice(7, 11)).toEqual([false, undefined, undefined, undefined]);
+    t.ipc.dispose();
+  });
+});
+
+describe('claude.ipc — remote assignment question (S-56 T12)', () => {
+  const QUESTION = {
+    roles: ['implementer'] as Array<'implementer'>,
+    options: [{ key: 'a', agentId: 'main' }, { key: 'b', agentId: 'pi' }],
+  };
+
+  it('publishes the question on the gateway under the run identity, for the relay to ask as text', () => {
+    const t = setup();
+    const handlers = t.start('proj-a');
+    handlers.onRemoteAssign?.('call-1', { question: QUESTION, mainAgentId: 'claude' }, RUN_ID);
+    expect(t.events).toContainEqual({
+      type: 'ask',
+      project: 'proj-a',
+      runId: RUN_ID,
+      callId: 'call-1',
+      question: QUESTION,
+      mainAgentId: 'claude',
+    });
+    t.ipc.dispose();
+  });
+
+  it('routes the relay\'s answer to the blocked tool call, sanitised', () => {
+    const t = setup();
+    t.start('proj-a');
+    expect(t.gateway.answerTool('proj-a', 'call-1', '1. b\0')).toBe(true);
+    expect(t.writeToolResult).toHaveBeenCalledWith('proj-a', 'call-1', '1. b');
+    t.ipc.dispose();
+  });
+});
+
+describe('claude.ipc — user-facing error forwarding (S-54)', () => {
+  const userError = { code: 'auth_required', title: 't', cause: 'c', actions: [], details: 'HTTP 401' };
+
+  it('forwards userError to the renderer and the run gateway, raw error untouched', () => {
+    const t = setup();
+    const handlers = t.start('proj-a');
+    handlers.onProcessEnd({ runId: RUN_ID, code: 1, error: 'HTTP 401', userError });
+
+    expect(t.send).toHaveBeenCalledWith('process:end', expect.objectContaining({ error: 'HTTP 401', userError }));
+    expect(t.events.find((e) => e.type === 'end')).toMatchObject({ error: 'HTTP 401', userError });
+    t.ipc.dispose();
+  });
+
+  it('a usage limit still schedules the resume while the error is explained', () => {
+    const t = setup({ claude: true });
+    const handlers = t.start('proj-a');
+    handlers.onRateLimited!({ runId: RUN_ID, agentId: 'claude', resetsAt: Date.now() + 60_000 });
+    handlers.onProcessEnd({ runId: RUN_ID, code: 1, error: 'limit', userError: { ...userError, code: 'usage_limit' } });
+
+    expect(t.send).toHaveBeenCalledWith('autoresume:scheduled', expect.objectContaining({ project: 'proj-a' }));
+    expect(t.send).toHaveBeenCalledWith('process:end', expect.objectContaining({ userError: expect.objectContaining({ code: 'usage_limit' }) }));
+    t.ipc.dispose();
   });
 });

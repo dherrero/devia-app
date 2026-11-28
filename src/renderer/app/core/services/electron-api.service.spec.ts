@@ -43,6 +43,8 @@ describe('ElectronApiService.onMcpListChanged', () => {
       onConfigChanged: noop,
       onNotificationClick: noop,
       onAgentChanged: noop,
+      onEffectiveAgentChanged: noop,
+      onWorkerChanged: noop,
       onQueueChanged: noop,
       onQueueDispatched: noop,
       onTerminalData: noop,

@@ -303,3 +303,28 @@ describe('ChildProcessCliLauncher — mapper-owned env', () => {
     expect(env['NOT_ALLOWED']).toBeUndefined();
   });
 });
+
+// ── idle watchdog + keepAlive (S-56) ──────────────────────────────────────
+
+describe('ChildProcessCliLauncher — idle watchdog and keepAlive (S-56)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+
+  const minutes = (n: number): number => n * 60_000;
+
+  it('kills a process that stays silent for more than five minutes', () => {
+    launch(makeStreamJsonDef(), { prompt: 'wait' });
+    vi.advanceTimersByTime(minutes(5) + 31_000);
+    expect(currentFakeProc.kill).toHaveBeenCalled();
+  });
+
+  it('keepAlive postpones the watchdog: a controller waiting on a worker is not idle', () => {
+    const handle = launch(makeStreamJsonDef(), { prompt: 'wait' });
+    vi.advanceTimersByTime(minutes(4));
+    handle.keepAlive?.();
+    vi.advanceTimersByTime(minutes(4));
+    expect(currentFakeProc.kill).not.toHaveBeenCalled();
+    // ...and it is a postponement, not a pardon.
+    vi.advanceTimersByTime(minutes(2));
+    expect(currentFakeProc.kill).toHaveBeenCalled();
+  });
+});

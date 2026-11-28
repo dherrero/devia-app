@@ -15,6 +15,9 @@
  * `src/main/features/security/audit-log.test.ts` (FR5), so this file uses a
  * lightweight recording fake instead.
  */
+import { DEFAULT_CROSS_AGENT_CONFIG } from '../../../../shared/domain/cross-agent-config';
+import type { AssignAgentsPort, SpawnWorkerCall } from './run-instruction.use-case';
+import { workerRunKey } from '../../../../shared/domain/cross-agent';
 import {
   ASK_USER_MANDATE_TAG,
   REMINDER_TAG,
@@ -25,6 +28,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createEffectiveAgentResolver } from '../../../shared/effective-agent-resolver';
 import { RunInstructionUseCase, type RunInstructionHandlers } from './run-instruction.use-case';
 import { REMOTE_PROTOCOL, REMOTE_QUESTION_UNAVAILABLE_ANSWER, REMOTE_SEND_FILE_LINE } from '../infrastructure/remote-protocol';
 import { buildUiFallbackHint } from '../infrastructure/ui-tools-protocol';
@@ -276,9 +280,10 @@ function makeDef(overrides: Partial<RuntimeAgentDef> = {}): RuntimeAgentDef {
 }
 
 class FakeRegistry implements CliAdapterRegistry {
-  constructor(private readonly def: RuntimeAgentDef) {}
-  all(): readonly RuntimeAgentDef[] { return [this.def]; }
-  get(id: string): RuntimeAgentDef | null { return id === this.def.id ? this.def : null; }
+  private readonly defs: RuntimeAgentDef[];
+  constructor(def: RuntimeAgentDef, others: RuntimeAgentDef[] = []) { this.defs = [def, ...others]; }
+  all(): readonly RuntimeAgentDef[] { return this.defs; }
+  get(id: string): RuntimeAgentDef | null { return this.defs.find((d) => d.id === id) ?? null; }
   registerAdditional(): void { /* no-op */ }
   installMetaForAgent(): { installUrl?: string; docsUrl?: string } { return {}; }
 }
@@ -314,6 +319,10 @@ interface Harness {
 
 interface BuildExtras {
   config?: ConfigRepository;
+  /** Extra agents installed next to the main fake one (S-53). */
+  otherDefs?: RuntimeAgentDef[];
+  /** S-53 phase 2: the persisted session's own agent. */
+  sessionAgentId?: (project: string, sessionId: string) => string | null | undefined;
   kanbanMcpServer?: (projectAbs: string) => McpServerConfig;
   memoryMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig;
   codeGraphMcpServer?: (projectAbs: string, agentId?: string) => McpServerConfig | null;
@@ -334,6 +343,11 @@ interface BuildExtras {
   /** How a native-config agent's MCP write behaves (default: nothing lands). */
   nativeMcp?: { deliver: (agentId: string, cwd: string, servers: readonly McpServerConfig[]) => NativeConfigDelivery };
   implementedUiTools?: readonly UiToolName[];
+  /** S-56: launches a cross-agent worker for devia_spawn_agent. */
+  spawnWorker?: (req: SpawnWorkerCall) => Promise<string>;
+  usableAgentCount?: () => number;
+  assignAgents?: AssignAgentsPort;
+  cancelWorkers?: (parentKey: string) => number;
   isConfirmationGranted?: (project: string, action: string) => boolean;
   remoteRelayConnected?: () => boolean;
   isLiveSessionWorktree?: (workdir: string) => boolean;
@@ -359,13 +373,19 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
   const registry = new InMemoryProjectRegistry();
   const audit = new RecordingAuditLog();
   const mappers = makeMappers(extras);
+  const config = extras.config ?? new FakeConfig();
+  const agents = new FakeRegistry(def, extras.otherDefs ?? []);
   const uc = new RunInstructionUseCase({
-    config: extras.config ?? new FakeConfig(),
+    config,
+    effectiveAgent: createEffectiveAgentResolver({
+      config, registry, agents,
+      ...(extras.sessionAgentId && { sessionAgentId: extras.sessionAgentId }),
+    }),
     sessions: extras.sessions ?? new FakeSessions(),
     state: new FakeState(),
     registry,
     runner,
-    agents: new FakeRegistry(def),
+    agents,
     mappers,
     attachments: new FakeAttachments(),
     outbox: extras.outbox ?? new FakeOutbox(),
@@ -389,6 +409,10 @@ function build(defOverrides: Partial<RuntimeAgentDef> = {}, extras: BuildExtras 
     ...(extras.ensureSessionWorktree ? { ensureSessionWorktree: extras.ensureSessionWorktree } : {}),
     ...(extras.uiMcpServer ? { uiMcpServer: extras.uiMcpServer } : {}),
     ...(extras.implementedUiTools ? { implementedUiTools: extras.implementedUiTools } : {}),
+    ...(extras.spawnWorker ? { spawnWorker: extras.spawnWorker } : {}),
+    ...(extras.usableAgentCount ? { usableAgentCount: extras.usableAgentCount } : {}),
+    ...(extras.assignAgents ? { assignAgents: extras.assignAgents } : {}),
+    ...(extras.cancelWorkers ? { cancelWorkers: extras.cancelWorkers } : {}),
     ...(extras.isConfirmationGranted ? { isConfirmationGranted: extras.isConfirmationGranted } : {}),
     ...(extras.remoteRelayConnected ? { remoteRelayConnected: extras.remoteRelayConnected } : {}),
     ...(extras.isLiveSessionWorktree ? { isLiveSessionWorktree: extras.isLiveSessionWorktree } : {}),
@@ -1197,6 +1221,151 @@ describe('RunInstructionUseCase — devia-ui delivery (S-25)', () => {
       expect(tools).not.toContain('confirm');
       expect(tools).toContain('todo');
     }
+  });
+
+  it('offers a cross-agent worker run (worker run key) no interactive tool (S-56)', () => {
+    const seen: Array<readonly string[]> = [];
+    const h = build({ id: 'pi', name: 'Pi' }, {
+      config: projectConfig(),
+      uiMcpServer: (_dir, tools) => { seen.push(tools); return enabledServer('devia-ui'); },
+      nativeMcp: nativeDelivery(true),
+    });
+    h.uc.execute(
+      'proj-a', 'implement T-1', [], makeHandlers(), 'apply', [], 'renderer', true,
+      workerRunKey('proj-a', 'T-1', 1), 'worker-session-1', 'pi',
+    );
+
+    expect(seen).toHaveLength(1);
+    for (const name of ['ask_user', 'confirm', 'pick', 'request_review', 'notify', 'send_file']) {
+      expect(seen[0]).not.toContain(name);
+    }
+    expect(seen[0]).toContain('todo');
+  });
+
+  describe('devia_spawn_agent wiring (S-56)', () => {
+    const crossOn = (over: Partial<typeof DEFAULT_CROSS_AGENT_CONFIG> = {}): FakeConfig => {
+      const cfg = projectConfig();
+      cfg.set({ crossAgent: { ...DEFAULT_CROSS_AGENT_CONFIG, enabled: true, ...over } });
+      return cfg;
+    };
+    const advertisedWith = (
+      config: FakeConfig,
+      extras: { spawn?: boolean; agents?: number; mode?: 'plan' | 'apply'; runKey?: string } = {},
+    ): { tools: readonly string[] | undefined; harness: { workerToolTimeoutMs?: number } | undefined } => {
+      let tools: readonly string[] | undefined;
+      let harness: { workerToolTimeoutMs?: number } | undefined;
+      const h = build({ id: 'claude', name: 'Claude Code' }, {
+        config,
+        uiMcpServer: (_dir, t, hn) => { tools = t; harness = hn; return enabledServer('devia-ui'); },
+        ...(extras.spawn !== false && { spawnWorker: async () => 'ok' }),
+        usableAgentCount: () => extras.agents ?? 2,
+      });
+      h.uc.execute('proj-a', 'do thing', [], makeHandlers(), extras.mode ?? 'apply', [], 'renderer', false, extras.runKey);
+      return { tools, harness };
+    };
+
+    it('advertises the tool when the feature is on, two agents are usable and a runner exists', () => {
+      expect(advertisedWith(crossOn()).tools).toContain('spawn_agent');
+    });
+
+    it('does not advertise it when the feature is off, with one agent, in plan mode, to a worker, or without a runner', () => {
+      expect(advertisedWith(projectConfig()).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { agents: 1 }).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { mode: 'plan' }).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { runKey: 'devia-worker:proj-a:T-1:1' }).tools).not.toContain('spawn_agent');
+      expect(advertisedWith(crossOn(), { spawn: false }).tools).not.toContain('spawn_agent');
+    });
+
+    it('gives the MCP server a wait longer than the worker timeout', () => {
+      const { harness } = advertisedWith(crossOn({ defaultTimeoutSec: 600 }));
+      expect(harness?.workerToolTimeoutMs).toBe((600 + 120) * 1000);
+    });
+
+    it('serves a spawn request: the worker gets the project, the controller run, the mode and the cwd', async () => {
+      const spawnWorker = vi.fn(async () => '[pi · implementer · T-1] DONE');
+      const h = build({ id: 'claude', name: 'Claude Code' }, {
+        config: crossOn(),
+        uiMcpServer: () => enabledServer('devia-ui'),
+        spawnWorker,
+        usableAgentCount: () => 2,
+      });
+      const handlers = makeHandlers();
+      h.uc.execute('proj-a', 'do thing', [], handlers);
+      const dir = uiDirFor(handlers);
+      writeUiRequest(dir, { callId: 'sp-1', tool: 'spawn_agent', toolInput: { role: 'implementer', taskId: 'T-1' } });
+      await vi.advanceTimersByTimeAsync(150);
+
+      const startArg = (handlers.onProcessStart as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { runId: RunId };
+      expect(spawnWorker).toHaveBeenCalledWith(
+        expect.objectContaining({ project: 'proj-a', parentKey: 'proj-a', turnId: startArg.runId, role: 'implementer', taskId: 'T-1', mode: 'apply' }),
+      );
+      expect(typeof (spawnWorker.mock.calls[0] as unknown as [SpawnWorkerCall])[0].controllerCwd).toBe('string');
+    });
+
+    describe('devia_assign_agents', () => {
+      const assign: AssignAgentsPort = {
+        prepare: vi.fn(async () => ({ kind: 'cached' as const, text: 'Saved for this project: implementer → pi.' })),
+        finish: vi.fn(async () => 'saved'),
+      };
+      const planTools = (config: FakeConfig, opts: { agents?: number; port?: boolean; mode?: 'plan' | 'apply'; runKey?: string } = {}) => {
+        let tools: readonly string[] | undefined;
+        const h = build({ id: 'claude', name: 'Claude Code' }, {
+          config,
+          uiMcpServer: (_dir, t) => { tools = t; return enabledServer('devia-ui'); },
+          ...(opts.port !== false && { assignAgents: assign }),
+          usableAgentCount: () => opts.agents ?? 2,
+        });
+        h.uc.execute('proj-a', 'plan it', [], makeHandlers(), opts.mode ?? 'plan', [], 'renderer', false, opts.runKey);
+        return tools;
+      };
+
+      it('is offered in plan mode when the feature is on, two agents are usable and the port exists', () => {
+        expect(planTools(crossOn())).toContain('assign_agents');
+      });
+
+      it('is not offered when the feature is off, with one agent, without the port, in apply, or to a worker', () => {
+        expect(planTools(projectConfig())).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { agents: 1 })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { port: false })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { mode: 'apply' })).not.toContain('assign_agents');
+        expect(planTools(crossOn(), { runKey: 'devia-worker:proj-a:T-1:1' })).not.toContain('assign_agents');
+      });
+
+      it('serves a request with the project of the run', async () => {
+        const h = build({ id: 'claude', name: 'Claude Code' }, {
+          config: crossOn(),
+          uiMcpServer: () => enabledServer('devia-ui'),
+          assignAgents: assign,
+          usableAgentCount: () => 2,
+        });
+        const handlers = makeHandlers();
+        h.uc.execute('proj-a', 'plan it', [], handlers, 'plan');
+        writeUiRequest(uiDirFor(handlers), { callId: 'as-1', tool: 'assign_agents', toolInput: { roles: ['implementer'] } });
+        await vi.advanceTimersByTimeAsync(150);
+        expect(assign.prepare).toHaveBeenCalledWith('proj-a', { roles: ['implementer'], reassign: false });
+      });
+    });
+
+    it('cancels the controller\'s workers when its run ends, however it ends', () => {
+      const cancelWorkers = vi.fn(() => 0);
+      const build2 = (): Harness => build({ id: 'claude', name: 'Claude Code' }, {
+        config: crossOn(),
+        uiMcpServer: () => enabledServer('devia-ui'),
+        spawnWorker: async () => 'ok',
+        usableAgentCount: () => 2,
+        cancelWorkers,
+      });
+      const done = build2();
+      done.uc.execute('proj-a', 'do thing', [], makeHandlers());
+      done.runner.last().handlers.onDone(0);
+      expect(cancelWorkers).toHaveBeenCalledWith('proj-a');
+
+      cancelWorkers.mockClear();
+      const failed = build2();
+      failed.uc.execute('proj-b', 'do thing', [], makeHandlers());
+      failed.runner.last().handlers.onError('boom');
+      expect(cancelWorkers).toHaveBeenCalledWith('proj-b');
+    });
   });
 
   it('does not deliver devia-ui under an enterprise MCP config', () => {
@@ -4019,5 +4188,215 @@ describe('RunInstructionUseCase — code mode events and cleanup (S-50 T-557)', 
     const h = build(claudeStreamDef, { config, mcpServers: makeMcpRegistry([enabledServer('plain')]), codeMode: buildCodeModeFeature({ config }).codeMode });
     h.uc.execute('proj-a', 'x', [], makeHandlers(), 'apply');
     expect(fs.existsSync(path.join(deviaDir(), 'tmp', 'code-mode'))).toBe(false);
+  });
+});
+
+// ── S-54 safety net — auto-continue after the usage limit ──────────────────
+//
+// The error-explanation work must never change how a rejected usage limit is
+// reported: `onRateLimited` fires with the agent id and `resetsAt`, ahead of
+// `onProcessEnd`, on a clean exit AND on an error exit.
+
+describe('RunInstructionUseCase — usage limit reporting (auto-continue contract)', () => {
+  const RESETS_AT = 1_900_000_000_000;
+
+  /** Records the relative order of the two lifecycle calls that matter. */
+  function trackedHandlers(): { handlers: RunInstructionHandlers; order: string[]; limited: ReturnType<typeof vi.fn> } {
+    const order: string[] = [];
+    const limited = vi.fn(() => { order.push('limited'); });
+    const handlers = makeHandlers({
+      onRateLimited: limited,
+      onProcessEnd: vi.fn(() => { order.push('end'); }),
+    });
+    return { handlers, order, limited };
+  }
+
+  it('reports onRateLimited with the agent id and resetsAt BEFORE onProcessEnd on an error exit', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, order, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected', resetsAt: RESETS_AT });
+    capture.handlers.onError('usage limit reached');
+
+    expect(limited).toHaveBeenCalledOnce();
+    expect(limited).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'claude', resetsAt: RESETS_AT }));
+    expect(order).toEqual(['limited', 'end']);
+  });
+
+  it('reports it on a clean exit too, before onProcessEnd', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, order, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected', resetsAt: RESETS_AT });
+    capture.handlers.onDone(0);
+
+    expect(limited).toHaveBeenCalledOnce();
+    expect(order).toEqual(['limited', 'end']);
+  });
+
+  it('reports a rejection without resetsAt as an empty payload (no resetsAt key)', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected' });
+    capture.handlers.onError('limit');
+
+    expect(limited).toHaveBeenCalledOnce();
+    const payload = limited.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect('resetsAt' in payload).toBe(false);
+  });
+
+  it('stays silent for an allowed (non-rejected) status', () => {
+    const h = build({ id: 'claude' });
+    const { handlers, limited } = trackedHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'allowed_warning', resetsAt: RESETS_AT });
+    capture.handlers.onDone(0);
+
+    expect(limited).not.toHaveBeenCalled();
+  });
+});
+
+// ── S-54 — user-facing error beside the raw one ────────────────────────────
+
+describe('RunInstructionUseCase — user-facing errors (S-54)', () => {
+  const lastEnd = (handlers: RunInstructionHandlers): Record<string, unknown> =>
+    (handlers.onProcessEnd as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Record<string, unknown>;
+
+  it('adds userError to process end and keeps the raw error text untouched', () => {
+    const h = build();
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+    h.runner.last().handlers.onError('HTTP 401 unauthorized');
+
+    const end = lastEnd(handlers);
+    expect(end['error']).toBe('HTTP 401 unauthorized');
+    expect(end['userError']).toMatchObject({ code: 'auth_required', details: 'HTTP 401 unauthorized' });
+  });
+
+  it('explains an error that arrives as a stream event (PI/OpenCode shape) and keeps the message', () => {
+    const h = build();
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'error', message: 'OpenAI API error (401): {"code":"invalid_api_key","message":"Incorrect API key provided"}' });
+
+    const out = (handlers.onClaudeOutput as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string) as Record<string, unknown>);
+    const err = out.find((e) => e['type'] === 'error');
+    expect(err?.['message']).toContain('OpenAI API error (401)');
+    expect(err?.['userError']).toMatchObject({ code: 'auth_required' });
+  });
+
+  it('does not add userError to a deliberate cancellation', () => {
+    const h = build();
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'work', [], handlers);
+    h.runner.last().handlers.onError('Cancelado por ti.', undefined, 'SIGTERM', 'user');
+
+    expect(lastEnd(handlers)['userError']).toBeUndefined();
+  });
+
+  it('never lets explaining change the usage-limit report: onRateLimited still fires first with resetsAt', () => {
+    const h = build({ id: 'claude' });
+    const order: string[] = [];
+    const limited = vi.fn(() => { order.push('limited'); });
+    const handlers = makeHandlers({ onRateLimited: limited, onProcessEnd: vi.fn(() => { order.push('end'); }) });
+    h.uc.execute('proj-a', 'work', [], handlers);
+    const capture = h.runner.last();
+    emitEvent(capture, { type: 'rate_limit', status: 'rejected', resetsAt: 1_900_000_000_000 });
+    capture.handlers.onError('usage limit reached');
+
+    expect(limited).toHaveBeenCalledWith(expect.objectContaining({ resetsAt: 1_900_000_000_000 }));
+    expect(order).toEqual(['limited', 'end']);
+  });
+});
+
+describe('RunInstructionUseCase — effective agent per project (S-53)', () => {
+  const codex = () => makeDef({ id: 'codex', name: 'Codex' });
+
+  it('runs the project agent instead of the global one', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.uc.execute('proj-a', 'hola', [], makeHandlers());
+    expect(h.runner.last().req.def.id).toBe('codex');
+  });
+
+  it('keeps two projects on their own agents at the same time', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.registry.getOrCreate('proj-b');
+    h.uc.execute('proj-a', 'a', [], makeHandlers());
+    h.uc.execute('proj-b', 'b', [], makeHandlers());
+    expect(h.runner.captured.map((c) => c.req.def.id)).toEqual(['codex', 'fake-agent']);
+  });
+
+  it('agentIdOverride wins over the project agent', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.uc.execute('proj-a', 'x', [], makeHandlers(), 'apply', [], 'renderer', false, undefined, undefined, 'fake-agent');
+    expect(h.runner.last().req.def.id).toBe('fake-agent');
+  });
+
+  it('falls back to the global agent when the project agent is not installed, without failing the run', () => {
+    const h = build();
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'gone';
+    const handlers = makeHandlers();
+    h.uc.execute('proj-a', 'x', [], handlers);
+    expect(h.runner.last().req.def.id).toBe('fake-agent');
+    expect(handlers.onProcessEnd).not.toHaveBeenCalled();
+  });
+
+  it('a project agent that differs from the session owner never resumes a foreign native id', () => {
+    const h = build({}, { otherDefs: [codex()] });
+    const rec = h.registry.getOrCreate('proj-a');
+    rec.preferredAgentId = 'codex';
+    rec.agentSessionId = 'native-fake-1';
+    rec.agentSessionAgentId = 'fake-agent';
+    h.uc.execute('proj-a', 'sigue', [], makeHandlers());
+    expect(h.runner.last().req.def.id).toBe('codex');
+    expect(h.runner.last().req.prepared.args.join(' ')).not.toContain('native-fake-1');
+  });
+
+  it('the session agent wins over the project agent for that session only (S-53 phase 2)', () => {
+    const pi = makeDef({ id: 'pi', name: 'Pi' });
+    const h = build({}, {
+      otherDefs: [codex(), pi],
+      sessionAgentId: (_p, sessionId) => (sessionId === 'sess-x' ? 'pi' : null),
+    });
+    const rec = h.registry.getOrCreate('proj-a');
+    rec.preferredAgentId = 'codex';
+    rec.activeSessionId = 'sess-x';
+    h.uc.execute('proj-a', 'uno', [], makeHandlers());
+    expect(h.runner.last().req.def.id).toBe('pi');
+
+    rec.activeSessionId = 'sess-y';
+    h.uc.execute('proj-b-unused', 'x', [], makeHandlers()); // another project does not interfere
+    const h2 = build({}, { otherDefs: [codex(), pi], sessionAgentId: () => null });
+    const rec2 = h2.registry.getOrCreate('proj-a');
+    rec2.preferredAgentId = 'codex';
+    rec2.activeSessionId = 'sess-y';
+    h2.uc.execute('proj-a', 'dos', [], makeHandlers());
+    expect(h2.runner.last().req.def.id).toBe('codex');
+  });
+
+  it('an additional pane runs its OWN session agent while the primary keeps the project agent', () => {
+    const pi = makeDef({ id: 'pi', name: 'Pi' });
+    const h = build({}, {
+      otherDefs: [codex(), pi],
+      sessionAgentId: (_p, sessionId) => (sessionId === '22222222-2222-4222-8222-222222222222' ? 'pi' : null),
+    });
+    h.registry.getOrCreate('proj-a').preferredAgentId = 'codex';
+    h.uc.execute('proj-a', 'primary', [], makeHandlers());
+    h.uc.execute('proj-a', 'pane', [], makeHandlers(), 'apply', [], 'renderer', false,
+      '22222222-2222-4222-8222-222222222222', '22222222-2222-4222-8222-222222222222');
+    expect(h.runner.captured.map((c) => c.req.def.id)).toEqual(['codex', 'pi']);
   });
 });

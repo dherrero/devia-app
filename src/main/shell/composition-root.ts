@@ -58,6 +58,9 @@ import { buildMemoryFeature } from '../features/memory';
 import { buildCodeGraphFeature, codeGraphProtocol } from '../features/code-graph';
 import { buildCodeModeFeature } from '../features/code-mode';
 import { buildStarterKitsFeature } from '../features/starter-kits';
+import { createEffectiveAgentResolver } from '../shared/effective-agent-resolver';
+import { SessionAgentIndex } from '../shared/session-agent-index';
+import { prepareHandoffsAfterAgentChange } from './agent-switch-handoff';
 import { buildUiToolsFeature } from '../features/ui-tools';
 import { enterpriseMcpConfigPresent } from '../features/claude-runner/infrastructure/enterprise-mcp-detector';
 import { NativeConfigMcpDelivery, StaticMapperRegistry } from '../features/agents';
@@ -70,6 +73,10 @@ import {
   createShellRunner,
 } from '../features/telegram-controller';
 import { RunGateway } from '../shared/run-gateway';
+import { buildCrossAgentFeature } from '../features/cross-agent';
+import { createGitRunner } from '../features/cross-agent/infrastructure/git-runner';
+import { ensureWorktreeSync } from '../features/git/infrastructure/cli-git-worktree-manager';
+import { resolveAndValidateCwd } from '../features/cli-adapters/infrastructure/resolve-cwd';
 import { RunModeStore } from '../shared/run-mode-store';
 import { ConfigChangeBus } from '../shared/config-change-bus';
 import { seedRunModes } from '../shared/seed-run-modes';
@@ -196,14 +203,28 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     },
   });
 
+  // S-53: one answer to "which agent runs here" for runs, Telegram, the queue,
+  // auto-continue, handoff and kit detection. `cliAdapters` is built below; the
+  // lookups are lazy so ordering doesn't matter (nothing runs before bootstrap ends).
+  const sessionAgents = new SessionAgentIndex({ sessions: sessionStore });
+  const effectiveAgent = createEffectiveAgentResolver({
+    config,
+    registry,
+    agents: { get: (id) => cliAdapters.exports.registry.get(id) },
+    sessionAgentId: (projectPath, sessionId) => sessionAgents.get(projectPath, sessionId),
+  });
+  // Pane records are keyed by a session UUID whose base project main can't
+  // resolve: those fall back to the global agent until the session agent lands.
+  const agentIdForIdentity = (identity: string): string =>
+    sessionStore.isValidSessionId(identity) ? config.get().agentId : effectiveAgent.forRun(identity).agentId;
   // S-2 F2.3: background LLM enrichment of the cross-agent handoff brief.
   // The runner's execute() is synchronous, so the summary is precomputed the
   // moment a handoff becomes foreseeable (agent switch / foreign-session
   // switch/adopt) and consumed from this cache with zero added run latency.
   const handoffSummariser = new HandoffSummariser({
-    client: () => selectAuxiliaryClient(config.get().agentId),
-    clientAvailable: () =>
-      !(selectAuxiliaryClient(config.get().agentId) instanceof UnavailableAuxiliaryLLMClient),
+    client: (identity) => selectAuxiliaryClient(agentIdForIdentity(identity)),
+    clientAvailable: (identity) =>
+      !(selectAuxiliaryClient(agentIdForIdentity(identity)) instanceof UnavailableAuxiliaryLLMClient),
   });
   const prepareHandoffIfForeign = (
     identity: string,
@@ -211,7 +232,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     messages: unknown[],
     ownerAgentId: string | null,
   ): void => {
-    if (!ownerAgentId || ownerAgentId === config.get().agentId) return;
+    if (!ownerAgentId || ownerAgentId === agentIdForIdentity(identity)) return;
     handoffSummariser.prepare(identity, sessionId, messages);
   };
 
@@ -223,6 +244,11 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     enterpriseMcpConfigPresent: () => enterpriseMcpConfigPresent(),
   });
   const cliAdapters = buildCliAdaptersFeature({
+    effectiveAgent,
+    projects: registry,
+    state: stateStore,
+    sessions: sessionStore,
+    sessionAgents,
     describeHarness: (def) => {
       const mapper = mappers.forDef(def);
       return { ...mapper.harnessSupport, isolatesExternalMcp: mapper.isolatesExternalMcp };
@@ -232,20 +258,15 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     // session another agent owns. Pane records key by runKey (a session
     // UUID) whose base project main can't resolve here — skipped; their
     // adopt flow already prepares them.
-    onAgentSelected: (newAgentId) => {
-      for (const [identityKey, record] of registry.entries()) {
-        if (!record.agentSessionAgentId || record.agentSessionAgentId === newAgentId) continue;
-        if (!record.activeSessionId) continue;
-        if (sessionStore.isValidSessionId(identityKey)) continue; // pane runKey, not a project path
-        try {
-          const session = sessionStore.load(identityKey, record.activeSessionId);
-          if (session && session.messages.length > 0) {
-            handoffSummariser.prepare(identityKey, record.activeSessionId, session.messages);
-          }
-        } catch {
-          /* best-effort */
-        }
-      }
+    onAgentSelected: (_agentId, projectPath) => {
+      prepareHandoffsAfterAgentChange({
+        projectPath,
+        entries: () => registry.entries(),
+        effectiveAgentId: (p) => effectiveAgent.forRun(p).agentId,
+        isPaneKey: (k) => sessionStore.isValidSessionId(k),
+        loadMessages: (p, sid) => sessionStore.load(p, sid)?.messages ?? null,
+        prepare: (identity, sid, messages) => handoffSummariser.prepare(identity, sid, messages),
+      });
     },
   });
   // REV-AGENT-CORE-003: prompt-packs feature built before the runner so its
@@ -317,6 +338,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
   // development they are read from the repository's `resources/kits`.
   const starterKitsBuilt = buildStarterKitsFeature({
     config,
+    effectiveAgentId: (projectPath) => effectiveAgent.forRun(projectPath ?? '').agentId,
     bundledKitsDir: () =>
       app.isPackaged ? path.join(process.resourcesPath, 'kits') : path.resolve(__dirname, '..', '..', '..', '..', 'resources', 'kits'),
   });
@@ -353,10 +375,18 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
         isRunnable: (p) => tech.detect(p) !== 'folder',
         saveAttachment: (payload) => attachments.save(payload).path,
         isRunning: (project) => registry.isRunning(project),
-        agentLabel: () => {
+        // S-56: the workers of a controller, as the chat lists and cancels them.
+        workers: {
+          list: (project) =>
+            crossAgent.registry.list(project).filter((w) => w.state === 'queued' || w.state === 'running'),
+          cancel: (workerId) => crossAgent.registry.cancel(workerId),
+          cancelAll: (project) => crossAgent.registry.cancelParent(project),
+        },
+        agentLabel: (project) => {
           const c = config.get();
-          const model = c.agentModels[c.agentId]?.model;
-          return model ? `${c.agentId} (${model})` : c.agentId;
+          const agentId = project ? effectiveAgent.forRun(project).agentId : c.agentId;
+          const model = c.agentModels[agentId]?.model;
+          return model ? `${agentId} (${model})` : agentId;
         },
         // /status: active project's branch + working-tree state.
         gitInfo: (project) => gitBuilt.exports.inspector.info(project),
@@ -392,7 +422,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
         auditSendFile(
           auditLog,
           {
-            agentId: ctx.agentId ?? config.get().agentId,
+            agentId: ctx.agentId ?? agentIdForIdentity(ctx.project),
             project: ctx.project,
             ...(ctx.runId !== undefined && { runId: ctx.runId }),
           },
@@ -405,6 +435,28 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
     }),
   });
 
+  // S-56: workers of other agents for the Devia Method loop. Off by default (config);
+  // `execute()` offers `devia_spawn_agent` only when it is on and 2+ agents are usable.
+  const crossAgent = buildCrossAgentFeature({
+    config,
+    registry,
+    agents: { get: (id) => cliAdapters.exports.registry.get(id) },
+    state: stateStore,
+    effective: effectiveAgent,
+    detector: cliAdapters.exports.detector,
+    gateway: runGateway,
+    stopRun: (runKey) => runGateway.stop(runKey),
+    git: createGitRunner(),
+    // A worker starts from the controller's HEAD, not from the configured base ref.
+    ensureWorktree: (ref, baseRef) => ensureWorktreeSync(ref, undefined, baseRef),
+    projectDir: (project, workspaceRoot) => {
+      const resolved = resolveAndValidateCwd(project, workspaceRoot);
+      return resolved.ok ? resolved.resolvedPath : null;
+    },
+  });
+  void crossAgent.refreshAgents();
+  setInterval(() => void crossAgent.refreshAgents(), 60_000).unref();
+
   const features: Feature[] = [
     // S-25 F3.3: read-only catalog + the confirm grants the settings panel manages.
     uiToolsBuilt.feature,
@@ -416,12 +468,14 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       configChanges,
     }),
     cliAdapters.feature,
+    crossAgent.feature,
     promptPacksBuilt.feature,
     mcpBuilt.feature,
     queueBuilt.feature,
     buildClaudeRunnerFeature({
       mappers,
       config,
+      effectiveAgent,
       sessions: sessionStore, state: stateStore,
       attachments, outbox, tech, registry,
       agents: cliAdapters.exports.registry,
@@ -482,6 +536,13 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       // E-DSK-14: bind the queue-aware submit + republish run events so the
       // Telegram controller can drive and mirror runs.
       runGateway,
+      spawnWorker: crossAgent.spawnWorker,
+      assignAgents: {
+        prepare: (project, input) => crossAgent.assignAgents.prepare(project, input),
+        finish: (project, question, text) => crossAgent.assignAgents.finish(project, question, text),
+      },
+      usableAgentCount: crossAgent.usableAgentCount,
+      cancelWorkers: crossAgent.cancelWorkers,
       // A reset session starts over in plan mode.
       onSessionReset: (project) => runModes.reset(project),
       // S-32: `devia_send_file` is only offered while the relay is connected.
@@ -499,6 +560,7 @@ export function bootstrap(opts: BootstrapOptions): BootstrapResult {
       registry,
       sessions: sessionStore,
       state: stateStore,
+      sessionAgents,
       // S-2 F0.4: a switch with parked items would dispatch them into the
       // newly chosen session — sessions consults the queue through this port.
       queue: { pendingCount: (identity) => queueBuilt.service.view(identity).items.length },

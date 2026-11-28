@@ -7,12 +7,17 @@ import type {
   SessionStore,
   StateStore,
 } from '../ports';
+import { sanitizeRoleAgents } from '../../../shared/domain/cross-agent';
 
 interface PersistedProject {
   newSession: boolean;
   activeSessionId: string | null;
   agentSessionId?: string | null;
   agentSessionAgentId?: string | null;
+  /** S-53: project-level agent override. Absent = follow the global default. */
+  preferredAgentId?: string | null;
+  /** S-56: role → agent for cross-agent workers. Absent = every role runs with the main agent. */
+  roleAgents?: Record<string, string>;
 }
 
 interface PersistedState {
@@ -45,6 +50,8 @@ export class FsStateStore implements StateStore {
         activeSessionId: record.activeSessionId,
         agentSessionId: record.agentSessionId,
         agentSessionAgentId: record.agentSessionAgentId,
+        ...(record.preferredAgentId ? { preferredAgentId: record.preferredAgentId } : {}),
+        ...(record.roleAgents && Object.keys(record.roleAgents).length > 0 ? { roleAgents: record.roleAgents } : {}),
       };
     }
     const payload: PersistedState = {
@@ -100,6 +107,10 @@ export class FsStateStore implements StateStore {
       record.agentSessionAgentId = typeof info?.agentSessionAgentId === 'string'
         ? info.agentSessionAgentId
         : null;
+      record.preferredAgentId = typeof info?.preferredAgentId === 'string' && info.preferredAgentId.length > 0
+        ? info.preferredAgentId
+        : null;
+      record.roleAgents = sanitizeRoleAgents(info?.roleAgents);
     }
   }
 }

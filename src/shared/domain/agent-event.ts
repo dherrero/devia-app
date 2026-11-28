@@ -1,3 +1,4 @@
+import type { UserFacingError } from './user-facing-error';
 /**
  * Contract A (render ↔ core, S-30): the canonical events every agent's mapper
  * emits, whatever its CLI. The renderer and the core consume ONLY these — no
@@ -74,7 +75,7 @@ export type AgentEvent =
    *  inputTokens + cachedInputTokens of the LAST request, never a run sum. */
   | { type: 'usage'; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningOutputTokens?: number; costUsd?: number; durationMs?: number; contextWindow?: number }
   | { type: 'turn_end'; stopReason: string }
-  | { type: 'error'; message: string; classification?: ErrorClassification }
+  | { type: 'error'; message: string; classification?: ErrorClassification; userError?: UserFacingError }
   /** Emitted once per run when the agent confirms its session ID. The use
    *  case stores it and passes it back on the next run via def.buildResumeArgs.
    *  Never emitted if the agent fails before completing its first turn. */

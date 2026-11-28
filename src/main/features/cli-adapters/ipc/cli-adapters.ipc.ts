@@ -7,6 +7,9 @@ import type { SelectAgentUseCase } from '../application/select-agent.use-case';
 import type { SetAgentModelUseCase } from '../application/set-agent-model.use-case';
 import type { SetAgentEnvUseCase } from '../application/set-agent-env.use-case';
 import type { TestAgentUseCase } from '../application/test-agent.use-case';
+import type { SetContextAgentUseCase } from '../application/set-context-agent.use-case';
+import type { GetEffectiveAgentUseCase } from '../application/get-effective-agent.use-case';
+import type { SetContextAgentInput } from '../../../../shared/domain/effective-agent';
 
 export interface CliAdaptersIpcDeps {
   listAgents: ListAgentsUseCase;
@@ -14,6 +17,8 @@ export interface CliAdaptersIpcDeps {
   setAgentModel: SetAgentModelUseCase;
   setAgentEnv: SetAgentEnvUseCase;
   testAgent: TestAgentUseCase;
+  setContextAgent?: SetContextAgentUseCase;
+  getEffectiveAgent?: GetEffectiveAgentUseCase;
   /** Called after a successful agent selection to invalidate the detection cache. */
   onAgentSelected?: () => void;
   /** The agent's harness capabilities (from its mapper), when known. */
@@ -64,7 +69,26 @@ export function registerCliAdaptersIpc(ctx: FeatureContext, deps: CliAdaptersIpc
     const result = deps.selectAgent.execute({ agentId });
     if (result.accepted) deps.onAgentSelected?.();
     ctx.send('agent:changed', { agentId: result.agentId });
+    // The global default moved: every project without its own agent changed too.
+    if (result.accepted) ctx.send('agents:effective-changed', {});
     return result;
+  });
+
+  ctx.ipc.handle(IPC.agentSetContext, (_e, input: SetContextAgentInput) => {
+    if (!deps.setContextAgent) throw new Error('setContextAgent is not wired');
+    const result = deps.setContextAgent.execute(input);
+    if (result.accepted) {
+      ctx.send('agents:effective-changed', {
+        projectPath: input.projectPath,
+        ...(input.sessionId !== undefined && { sessionId: input.sessionId }),
+      });
+    }
+    return result;
+  });
+
+  ctx.ipc.handle(IPC.agentEffective, (_e, input: { projectPath: string; sessionId?: string }) => {
+    if (!deps.getEffectiveAgent) throw new Error('getEffectiveAgent is not wired');
+    return deps.getEffectiveAgent.execute(input);
   });
 
   ctx.ipc.handle(IPC.agentSetModel, (_e, input: { agentId: string; model?: string | null; reasoning?: string | null }) =>

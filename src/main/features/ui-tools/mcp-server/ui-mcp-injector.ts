@@ -30,6 +30,12 @@ export interface UiServerHarness {
    * dir. Same rule as `sendRoots`: only emitted with `send_file`.
    */
   readonly denyRoots?: readonly string[];
+  /**
+   * S-56: how long `devia_spawn_agent` may wait for its worker before the
+   * server gives up (must exceed the worker's own timeout). Emitted ONLY when
+   * `spawn_agent` is advertised.
+   */
+  readonly workerToolTimeoutMs?: number;
 }
 
 /**
@@ -57,6 +63,11 @@ export class UiMcpInjector {
     ];
   }
 
+  private spawnAgentArgs(tools: readonly UiToolName[], harness: UiServerHarness): string[] {
+    if (!tools.includes('spawn_agent') || harness.workerToolTimeoutMs === undefined) return [];
+    return ['--worker-timeout-ms', String(harness.workerToolTimeoutMs)];
+  }
+
   /**
    * Build the devia-ui server config for one run. `uiDir` is the per-run
    * rendezvous directory the main process polls; `tools` is the advertised
@@ -81,6 +92,7 @@ export class UiMcpInjector {
         ...(harness.skillsDirs ?? []).flatMap((dir) => ['--skills-dir', dir]),
         ...(harness.subagentsDir ? ['--subagents-dir', harness.subagentsDir] : []),
         ...this.sendFileArgs(tools, harness),
+        ...this.spawnAgentArgs(tools, harness),
       ],
       env: { ELECTRON_RUN_AS_NODE: '1' },
       enabled: true,

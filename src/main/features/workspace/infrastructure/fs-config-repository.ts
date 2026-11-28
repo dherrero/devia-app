@@ -12,6 +12,7 @@ import {
   type RemoteControlConfig,
   type TelegramIntegrationConfig,
 } from '../../../../shared/domain/config';
+import { normalizeCrossAgentConfig } from '../../../../shared/domain/cross-agent-config';
 
 const DIR_NAME = '.devia-app';
 const CONFIG_FILENAME = 'devia-app.config.json';
@@ -51,6 +52,7 @@ export class FsConfigRepository implements ConfigRepository {
         ...partial,
         memory: mergeMemory(partial.memory),
         remoteControl: mergeRemoteControl(partial.remoteControl),
+        crossAgent: normalizeCrossAgentConfig(partial.crossAgent),
       };
       // Decrypt the bot token sealed on disk so callers always see plaintext.
       if (this.sealer) {
@@ -88,7 +90,17 @@ export class FsConfigRepository implements ConfigRepository {
             telegram: { ...current.remoteControl.telegram, ...partial.remoteControl.telegram },
           }
         : current.remoteControl;
-    this.cache = { ...current, ...partial, memory: mergedMemory, remoteControl: mergedRemoteControl };
+    const mergedCrossAgent =
+      partial.crossAgent !== undefined
+        ? normalizeCrossAgentConfig({ ...current.crossAgent, ...partial.crossAgent })
+        : current.crossAgent;
+    this.cache = {
+      ...current,
+      ...partial,
+      memory: mergedMemory,
+      remoteControl: mergedRemoteControl,
+      ...(mergedCrossAgent !== undefined && { crossAgent: mergedCrossAgent }),
+    };
     fs.writeFileSync(this.configPath(), JSON.stringify(this.toDisk(this.cache), null, 2));
     return this.cache;
   }

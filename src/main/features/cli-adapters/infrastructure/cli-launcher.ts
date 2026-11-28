@@ -114,6 +114,12 @@ export interface CliProcessHandle {
    * session has no such pending request (or no process was ever spawned).
    */
   answer(callId: string, answer: AgentAnswer): boolean;
+  /**
+   * Tell the idle watchdog the run is alive although the CLI prints nothing: a
+   * controller blocked on `devia_spawn_agent` is waiting for work Devia is doing
+   * on its behalf, not stuck (S-56).
+   */
+  keepAlive?(): void;
 }
 
 export interface CliLauncher {
@@ -385,6 +391,9 @@ export class ChildProcessCliLauncher implements CliLauncher {
         );
       },
       answer: (callId: string, answer: AgentAnswer) => session.answer(callId, answer),
+      keepAlive: () => {
+        lastActivity = Date.now();
+      },
     };
   }
 }

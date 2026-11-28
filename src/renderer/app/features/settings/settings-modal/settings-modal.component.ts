@@ -21,11 +21,7 @@ import {
   type Theme,
 } from '../../../core/theme/accent-palettes';
 import { ToastService } from '../../../core/services/toast.service';
-import {
-  buildHandoffRequestPrompt,
-  canRequestHandoffSummary,
-  detectPendingHandoff,
-} from '../../chat/chat-panel/utils/agent-handoff.util';
+import { AgentSwitchHandoffService } from '../../../core/services/agent-switch-handoff.service';
 import type { ModalNavSection } from '../../../shared/components/modal-shell/modal-shell.component';
 import type { AgentForm, RemoteForm, WorkspaceForm } from './models/settings-forms.model';
 import { SettingsAppearanceSectionComponent } from './components/settings-appearance-section/settings-appearance-section.component';
@@ -36,6 +32,7 @@ import { SettingsUiToolsSectionComponent } from './components/settings-ui-tools-
 import type { UiToolName } from '../../../../../shared/domain/ui-tools';
 import { SettingsRemoteSectionComponent } from './components/settings-remote-section/settings-remote-section.component';
 import { SettingsWorkspaceSectionComponent } from './components/settings-workspace-section/settings-workspace-section.component';
+import { DEFAULT_CROSS_AGENT_CONFIG, normalizeCrossAgentConfig, type CrossAgentConfig } from '../../../../../shared/domain/cross-agent-config';
 
 function isDarkTheme(theme: Theme): boolean {
   return theme === 'dark' || theme === 'navy-dark';
@@ -97,6 +94,7 @@ export class SettingsModalComponent implements OnInit {
 
   private readonly api = inject(ElectronApiService);
   readonly state = inject(AppStateService);
+  private readonly handoff = inject(AgentSwitchHandoffService);
   readonly ref = inject(DialogRef, { optional: true });
   private readonly dialog = inject(Dialog);
   readonly i18n = inject(I18nService);
@@ -175,6 +173,7 @@ export class SettingsModalComponent implements OnInit {
     },
     uiTools: this.uiToolsEnabled(),
     autoContinue: this.autoContinueSessions(),
+    crossAgent: this.crossAgent(),
     remote: this.remoteForm(),
     // Appearance is applied live (localStorage) but reverts on close-without-save.
     // Tracking it here marks the form dirty so Save enables and commits it.
@@ -200,6 +199,9 @@ export class SettingsModalComponent implements OnInit {
   // An absent entry means "use the run-mode default"; only an explicit `false`
   // withholds a tool. A preference can never WIDEN the policy.
   readonly uiToolsEnabled = signal<Partial<Record<UiToolName, boolean>>>({});
+
+  /** S-56: workers of other agents (off by default). */
+  readonly crossAgent = signal<CrossAgentConfig>({ ...DEFAULT_CROSS_AGENT_CONFIG });
 
   /** Per-agent switch: resume a session cut short by the account's usage limit. */
   readonly autoContinueSessions = signal<Record<string, boolean>>({});
@@ -248,6 +250,7 @@ export class SettingsModalComponent implements OnInit {
     // S-25 F3.3: absent config means "every tool at its mode default".
     this.uiToolsEnabled.set({ ...(cfg.uiTools?.enabled ?? {}) });
     this.autoContinueSessions.set({ ...(cfg.autoContinueSessions ?? {}) });
+    this.crossAgent.set(normalizeCrossAgentConfig(cfg.crossAgent));
 
     // E-DSK-14: hydrate the remote-control form (the remote section loads the
     // current connection status itself when mounted).
@@ -349,6 +352,7 @@ export class SettingsModalComponent implements OnInit {
         // S-1: persist the memory toggles, preserving engramImported/at.
         uiTools: { enabled: this.uiToolsEnabled() },
         autoContinueSessions: this.autoContinueSessions(),
+        crossAgent: this.crossAgent(),
         // S-1: persist the memory toggles, preserving engramImported/at.
         memory: {
           ...persistedMemory,
@@ -381,7 +385,11 @@ export class SettingsModalComponent implements OnInit {
       this.initialStyle = this.isSharp() ? 'sharp' : 'rounded';
 
       const agentId = this.selectedAgentId();
-      const previousAgentId = this.persistedAgentId;
+      // S-53: Settings sets the GLOBAL default, so the focused pane only changes agent
+      // when it follows that default (no project/session agent of its own).
+      const effectiveBefore = this.state.effectiveAgent();
+      const followsDefault = effectiveBefore === null || effectiveBefore.source === 'global';
+      const previousEffectiveId = this.state.effectiveAgentId() || this.persistedAgentId;
       const result = await this.api.selectAgent(agentId);
 
       if (!result.accepted) {
@@ -391,7 +399,7 @@ export class SettingsModalComponent implements OnInit {
       }
 
       this.persistedAgentId = result.agentId;
-      this.notifyPendingHandoff(previousAgentId, result.agentId);
+      if (followsDefault) this.handoff.notify(previousEffectiveId, result.agentId);
 
       const af = this.agentForm();
       await this.api.setAgentModel({
@@ -406,60 +414,6 @@ export class SettingsModalComponent implements OnInit {
     } finally {
       this.saving.set(false);
     }
-  }
-
-  /**
-   * S-2 F3.3: after a successful agent switch, inform (no confirmation — the
-   * base handoff is automatic on the next prompt) when the focused session or
-   * other mounted panes belong to a different agent.
-   */
-  private notifyPendingHandoff(previousAgentId: string, newAgentId: string): void {
-    if (previousAgentId === newAgentId) return;
-    const pending = detectPendingHandoff({
-      newAgentId,
-      focusedKey: this.state.focusedSessionKey() ?? this.state.selectedProject(),
-      mountedKeys: [...this.state.mountedPaneSessions()],
-      chats: this.state.chats(),
-    });
-    if (!pending) return;
-    const fromLabel =
-      this.agents().find((a) => a.id === pending.fromAgentId)?.name ?? pending.fromAgentId;
-    const others = pending.affectedKeys.length - 1;
-    const text = others > 0
-      ? (this.translate.instant('toasts.agent_handoff_pending_multi', { from: fromLabel, count: others }) as string)
-      : (this.translate.instant('toasts.agent_handoff_pending', { from: fromLabel }) as string);
-    // F3.4: offer to ask the PREVIOUS agent for a rich handoff summary — only
-    // when it is still operative (detected + selectable + authenticated).
-    const action = canRequestHandoffSummary(this.agents(), pending.fromAgentId)
-      ? {
-          label: this.translate.instant('toasts.agent_handoff_request_action', { from: fromLabel }) as string,
-          onAction: () => this.requestHandoffSummary(pending.fromAgentId),
-        }
-      : undefined;
-    this.toast.show(text, { kind: 'warning', durationMs: 10_000, ...(action !== undefined && { action }) });
-  }
-
-  /**
-   * S-2 F3.4: run an internal instruction on the FOCUSED session with the
-   * PREVIOUS agent (agentIdOverride) so it records a rich handoff summary via
-   * mem_session_summary before the new agent's first turn. The run shows in
-   * the chat as a normal one (displayText hides the internal prompt).
-   */
-  private requestHandoffSummary(fromAgentId: string): void {
-    const base = this.state.selectedProject();
-    if (!base) return;
-    const focusedPane = this.state.focusedSessionKey();
-    const displayText = this.translate.instant('chat.handoff_request_display') as string;
-    void this.api.sendInstruction(
-      base,
-      buildHandoffRequestPrompt(),
-      [],
-      'apply',
-      displayText,
-      focusedPane === null
-        ? { agentIdOverride: fromAgentId }
-        : { runKey: focusedPane, sessionId: focusedPane, isolate: false, agentIdOverride: fromAgentId },
-    );
   }
 
   // ── Audit Log methods ────────────────────────────────────────────
